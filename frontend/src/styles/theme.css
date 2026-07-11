@@ -1,0 +1,214 @@
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  /* Light mode — muted bronze-gold accent (bright gold on white reads "cheap") */
+  --background: #f7f8fa;
+  --background-alt: #ffffff;
+  --foreground: #0f1420;
+  --foreground-muted: #5c6478;
+  --card: #ffffff;
+  --card-foreground: #0f1420;
+  --card-border: #e4e7ec;
+  --popover: #ffffff;
+  --popover-foreground: #0f1420;
+  --primary: #a9791e;
+  --primary-foreground: #ffffff;
+  --gold-solid: #a9791e;
+  --gold-grad-from: #d4af37;
+  --gold-grad-via: #e8c874;
+  --gold-grad-to: #c9a250;
+  --secondary: #1e3a8a;
+  --secondary-foreground: #ffffff;
+  --muted: #f0f2f5;
+  --muted-foreground: #5c6478;
+  --accent: #eef0f4;
+  --accent-foreground: #0f1420;
+  --destructive: #e5484d;
+  --destructive-foreground: #ffffff;
+  --success: #2fbf71;
+  --danger: #e5484d;
+  --warning: #f5a623;
+  --border: #e4e7ec;
+  --input-bg: #f7f8fa;
+  --switch-background: #e4e7ec;
+  --ring: #d4af37;
+  --radius: 1.125rem;
+}
+
+.dark {
+  /* Dark mode — default, primary "hero" mode */
+  --background: #0a0e1a;
+  --background-alt: #0d1530;
+  --foreground: #f5f6fa;
+  --foreground-muted: #8a93a8;
+  --card: #111828;
+  --card-foreground: #f5f6fa;
+  --card-border: #2a3348;
+  --popover: #111828;
+  --popover-foreground: #f5f6fa;
+  --primary: #d4af37;
+  --primary-foreground: #0a0e1a;
+  --gold-solid: #d4af37;
+  --gold-grad-from: #d4af37;
+  --gold-grad-via: #e8c874;
+  --gold-grad-to: #c9a250;
+  --secondary: #4c6fff;
+  --secondary-foreground: #f5f6fa;
+  --muted: rgba(42, 51, 72, 0.5);
+  --muted-foreground: #8a93a8;
+  --accent: rgba(42, 51, 72, 0.4);
+  --accent-foreground: #f5f6fa;
+  --destructive: #e5484d;
+  --destructive-foreground: #f5f6fa;
+  --success: #2fbf71;
+  --danger: #e5484d;
+  --warning: #f5a623;
+  --border: #2a3348;
+  --input-bg: #111828;
+  --switch-background: #2a3348;
+  --ring: #d4af37;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-background-alt: var(--background-alt);
+  --color-foreground: var(--foreground);
+  --color-foreground-muted: var(--foreground-muted);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-card-border: var(--card-border);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-gold-solid: var(--gold-solid);
+  --color-gold-grad-from: var(--gold-grad-from);
+  --color-gold-grad-via: var(--gold-grad-via);
+  --color-gold-grad-to: var(--gold-grad-to);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-danger: var(--danger);
+  --color-warning: var(--warning);
+  --color-border: var(--border);
+  --color-input: var(--input-bg);
+  --color-input-background: var(--input-bg);
+  --color-switch-background: var(--switch-background);
+  --color-ring: var(--ring);
+
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 4px);
+  --radius-sm: calc(var(--radius) - 8px);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --font-heading: "Manrope", "Inter", sans-serif;
+  --font-body: "Inter", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-background text-foreground font-body;
+    transition:
+      background-color 0.3s ease,
+      color 0.3s ease;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-card/75 border-card-border rounded-2xl border shadow-2xl backdrop-blur-xl;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+  }
+
+  .dark .glass-card {
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+  }
+
+  :not(.dark) .glass-card {
+    box-shadow: 0 24px 64px rgba(10, 14, 26, 0.1);
+  }
+
+  .gold-gradient-text {
+    background: linear-gradient(135deg, var(--gold-grad-from), var(--gold-grad-via), var(--gold-grad-to));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .gold-gradient-bg {
+    background: linear-gradient(135deg, var(--gold-grad-from) 0%, var(--gold-grad-via) 60%, var(--gold-grad-to) 100%);
+  }
+
+  .auth-card-enter {
+    animation: auth-card-enter 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+}
+
+@keyframes auth-card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes orbit {
+  from {
+    transform: rotate(0deg) translateX(var(--orbit-radius, 110px)) rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg) translateX(var(--orbit-radius, 110px)) rotate(-360deg);
+  }
+}
+
+@keyframes rise {
+  0% {
+    transform: translateY(0) scale(0.6);
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-36px) scale(1);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
