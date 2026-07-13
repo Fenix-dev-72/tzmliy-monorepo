@@ -83,14 +83,14 @@ export function IntegrationsSection() {
   const doubled = [...integrations, ...integrations, ...integrations, ...integrations];
 
   return (
-    <section id="integrations" ref={sectionRef} className="overflow-hidden py-20">
-      <div className="mx-auto mb-14 max-w-7xl px-6">
+    <section id="integrations" ref={sectionRef} className="overflow-hidden py-12 sm:py-20">
+      <div className="mx-auto mb-10 max-w-7xl px-4 sm:mb-14 sm:px-6">
         <SectionHeading badge={<SectionBadge>{c.badge}</SectionBadge>} title={c.title} subtitle={c.subtitle} />
       </div>
 
       <div className="relative overflow-hidden">
-        <div className="from-background pointer-events-none absolute inset-y-0 left-0 z-10 w-[120px] bg-gradient-to-r to-transparent" />
-        <div className="from-background pointer-events-none absolute inset-y-0 right-0 z-10 w-[120px] bg-gradient-to-l to-transparent" />
+        <div className="from-background pointer-events-none absolute inset-y-0 left-0 z-10 w-[60px] bg-gradient-to-r to-transparent sm:w-[120px]" />
+        <div className="from-background pointer-events-none absolute inset-y-0 right-0 z-10 w-[60px] bg-gradient-to-l to-transparent sm:w-[120px]" />
 
         <div className="flex w-[200%]" style={{ willChange: "transform" }}>
           <div ref={track1} className="flex gap-4 py-2">

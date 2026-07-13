@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Building2, Users, Shield, Clock } from "lucide-react";
 import { useLang } from "@/lib/i18n/LangContext";
+import { useReveal, revealClass } from "@/lib/hooks/useReveal";
 
 function CountUp({ to, suffix = "" }: { to: number; suffix?: string }) {
   const [val, setVal] = useState(0);
@@ -37,6 +38,7 @@ function CountUp({ to, suffix = "" }: { to: number; suffix?: string }) {
 
 export function StatsBar() {
   const { lang } = useLang();
+  const { ref, visible } = useReveal<HTMLDivElement>();
 
   const stats =
     lang === "uz"
@@ -54,32 +56,37 @@ export function StatsBar() {
         ];
 
   return (
-    <section className="mt-[-20px] mb-20 px-6">
-      <div className="mx-auto grid max-w-7xl grid-cols-2 gap-4 lg:grid-cols-4">
+    <section ref={ref} className="mt-[-20px] mb-12 px-4 sm:mb-20 sm:px-6">
+      <div className="mx-auto grid max-w-7xl grid-cols-2 gap-2.5 sm:gap-4 lg:grid-cols-4">
         {stats.map((stat, i) => (
           <div
             key={i}
-            className="bg-card/70 border-card-border flex items-center gap-4 rounded-2xl border p-6 shadow-[0_8px_32px_rgba(0,0,0,0.15)] backdrop-blur-md transition-transform hover:-translate-y-1"
+            className={revealClass(
+              visible,
+              "bg-card/70 border-card-border flex items-center gap-3 rounded-xl border p-3 shadow-[0_8px_32px_rgba(0,0,0,0.15)] backdrop-blur-md hover:-translate-y-1.5 hover:shadow-[0_16px_40px_rgba(0,0,0,0.25)] hover:duration-300 sm:gap-4 sm:rounded-2xl sm:p-5 md:p-6",
+            )}
+            style={{ transitionDelay: `${i * 80}ms` }}
           >
             <div
-              className="flex size-12 shrink-0 items-center justify-center rounded-2xl border"
-              style={{ background: `${stat.color}15`, borderColor: `${stat.color}30` }}
+              className="animate-icon-pulse flex size-10 shrink-0 items-center justify-center rounded-xl border sm:size-12 sm:rounded-2xl"
+              style={{ background: `${stat.color}15`, borderColor: `${stat.color}30`, color: stat.color }}
             >
-              <stat.icon size={22} color={stat.color} />
+              <stat.icon size={18} color={stat.color} className="sm:hidden" />
+              <stat.icon size={22} color={stat.color} className="hidden sm:block" />
             </div>
             <div>
-              <div className="mb-1 text-2xl font-bold text-foreground">
+              <div className="mb-0.5 text-lg font-bold text-foreground sm:mb-1 sm:text-2xl">
                 {stat.isFloat ? (
                   <span className="font-mono">
                     99.9{stat.suffix}
                   </span>
                 ) : stat.extra ? (
-                  <span className="font-mono text-xl">{stat.extra}</span>
+                  <span className="font-mono text-sm sm:text-xl">{stat.extra}</span>
                 ) : (
                   <CountUp to={stat.value} suffix={stat.suffix} />
                 )}
               </div>
-              <div className="text-[13px] font-medium text-foreground-muted">{stat.label}</div>
+              <div className="text-[11px] font-medium text-foreground-muted sm:text-[13px]">{stat.label}</div>
             </div>
           </div>
         ))}

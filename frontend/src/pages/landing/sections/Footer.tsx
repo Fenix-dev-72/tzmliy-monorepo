@@ -36,10 +36,10 @@ export function Footer() {
   ];
 
   return (
-    <footer id="contact" className="bg-background border-card-border border-t px-6 pt-16 pb-8">
+    <footer id="contact" className="bg-background border-card-border border-t px-4 pt-12 pb-6 sm:px-6 sm:pt-16 sm:pb-8">
       <div className="mx-auto max-w-7xl">
-        <div className="mb-14 grid grid-cols-1 gap-12 md:grid-cols-[2fr_1fr_1fr_1fr]">
-          <div>
+        <div className="mb-10 grid grid-cols-2 gap-8 sm:mb-14 sm:gap-12 md:grid-cols-[2fr_1fr_1fr_1fr]">
+          <div className="col-span-2 sm:col-span-1">
             <div className="mb-4 flex items-center gap-2.5">
               <TzmliyLogo size={28} gradientId="footerGoldGrad" />
               <TzmliyWordmark className="text-xl" />
@@ -59,12 +59,12 @@ export function Footer() {
 
           {columns.map((col) => (
             <div key={col.title}>
-              <h4 className="font-heading mb-4 text-sm font-bold tracking-wide text-foreground">{col.title}</h4>
+              <h4 className="font-heading mb-3 text-sm font-bold tracking-wide text-foreground sm:mb-4">{col.title}</h4>
               {col.links.map((link) => (
                 <a
                   key={link}
                   href="#"
-                  className="mb-2.5 block text-sm text-foreground-muted transition-colors hover:text-primary"
+                  className="mb-2 block text-xs text-foreground-muted transition-all duration-200 hover:translate-x-0.5 hover:text-primary sm:mb-2.5 sm:text-sm"
                 >
                   {link}
                 </a>
@@ -73,12 +73,12 @@ export function Footer() {
           ))}
         </div>
 
-        <div className="border-card-border flex flex-wrap items-center justify-between gap-3 border-t pt-6">
-          <span className="text-[13px] text-foreground-muted">{c.copyright}</span>
+        <div className="border-card-border flex flex-col items-center gap-3 border-t pt-5 sm:flex-row sm:flex-wrap sm:justify-between sm:gap-4 sm:pt-6">
+          <span className="text-[12px] text-foreground-muted sm:text-[13px]">{c.copyright}</span>
           <div className="flex items-center gap-1.5 text-foreground-muted">
             <Globe size={14} />
-            <span className="text-[13px]">UZ / RU</span>
-            <span className="ml-3 text-[13px]">UZS / USD</span>
+            <span className="text-[12px] sm:text-[13px]">UZ / RU</span>
+            <span className="ml-2 text-[12px] sm:ml-3 sm:text-[13px]">UZS / USD</span>
           </div>
         </div>
       </div>

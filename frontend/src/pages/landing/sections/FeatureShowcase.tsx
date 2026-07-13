@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type ComponentType } from "react";
+import type { ComponentType } from "react";
 import { Phone, Send, Smartphone, Wifi, Battery, CheckCheck } from "lucide-react";
 import { useLang } from "@/lib/i18n/LangContext";
 import { SectionBadge, SectionHeading } from "@/components/shared/SectionBadge";
+import { useReveal } from "@/lib/hooks/useReveal";
 
 const content = {
   uz: {
@@ -84,29 +85,6 @@ const content = {
   },
 };
 
-function useReveal<T extends HTMLElement>() {
-  const ref = useRef<T>(null);
-  const [visible, setVisible] = useState(false);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setVisible(true);
-          observer.disconnect();
-        }
-      },
-      { threshold: 0.2 },
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-
-  return { ref, visible };
-}
-
 const kanbanColumns = [
   { label: "New", color: "#4C6FFF", items: [{ name: "Alisher T.", amount: "$2.4k" }, { name: "Http Shop", amount: "$890" }] },
   { label: "Contacted", color: "#F5A623", items: [{ name: "Nodira K.", amount: "$5.1k" }] },
@@ -124,7 +102,7 @@ function initials(name: string) {
 
 function KanbanMockup() {
   return (
-    <div className="group bg-card border-card-border rounded-3xl border p-5 shadow-[0_8px_32px_rgba(0,0,0,0.12)] backdrop-blur-md transition-all duration-500 hover:-translate-y-1.5 hover:shadow-[0_16px_48px_rgba(0,0,0,0.2)]">
+    <div className="group bg-card border-card-border overflow-x-auto rounded-2xl border p-4 shadow-[0_8px_32px_rgba(0,0,0,0.12)] backdrop-blur-md transition-all duration-500 hover:-translate-y-1.5 hover:shadow-[0_16px_48px_rgba(0,0,0,0.2)] sm:rounded-3xl sm:p-5">
       <div className="mb-4 flex items-center justify-between">
         <span className="text-xs font-semibold text-foreground-muted">Pipeline · Iyul</span>
         <div className="flex items-center -space-x-2">
@@ -139,7 +117,7 @@ function KanbanMockup() {
           ))}
         </div>
       </div>
-      <div className="grid grid-cols-4 gap-2">
+      <div className="grid min-w-[280px] grid-cols-4 gap-2">
         {kanbanColumns.map((col) => (
           <div key={col.label} className="flex flex-col gap-1.5">
             <div className="mb-0.5 flex items-center gap-1">
@@ -333,7 +311,7 @@ function FeatureRow({
   return (
     <div
       ref={ref}
-      className={`relative grid grid-cols-1 items-center gap-10 transition-all duration-700 ease-out md:grid-cols-2 md:pl-16 ${
+      className={`relative grid grid-cols-1 items-center gap-6 transition-all duration-700 ease-out sm:gap-10 md:grid-cols-2 md:pl-16 ${
         visible ? "translate-y-0 opacity-100" : "translate-y-10 opacity-0"
       }`}
     >
@@ -352,13 +330,13 @@ function FeatureRow({
         <span className="mb-2 block text-xs font-bold tracking-wider uppercase" style={{ color: feature.color }}>
           {feature.kicker}
         </span>
-        <h3 className="font-heading mb-3 text-2xl font-bold text-foreground">{feature.title}</h3>
-        <p className="mb-5 max-w-md text-[15px] leading-relaxed text-foreground-muted">{feature.desc}</p>
+        <h3 className="font-heading mb-2 text-xl font-bold text-foreground sm:mb-3 sm:text-2xl">{feature.title}</h3>
+        <p className="mb-4 max-w-md text-sm leading-relaxed text-foreground-muted sm:mb-5 sm:text-[15px]">{feature.desc}</p>
         <div className="flex items-baseline gap-2">
-          <span className="font-heading text-3xl font-extrabold" style={{ color: feature.color }}>
+          <span className="font-heading text-2xl font-extrabold sm:text-3xl" style={{ color: feature.color }}>
             {feature.statValue}
           </span>
-          <span className="text-sm font-medium text-foreground-muted">{feature.statLabel}</span>
+          <span className="text-xs font-medium text-foreground-muted sm:text-sm">{feature.statLabel}</span>
         </div>
       </div>
 
@@ -374,14 +352,14 @@ export function FeatureShowcase() {
   const c = content[lang];
 
   return (
-    <section id="showcase" className="px-6 py-20">
+    <section id="showcase" className="px-4 py-12 sm:px-6 sm:py-20">
       <div className="mx-auto max-w-7xl">
         <SectionHeading badge={<SectionBadge>{c.badge}</SectionBadge>} title={c.title} subtitle={c.subtitle} />
 
         <div className="relative">
           <div className="border-card-border absolute top-5 bottom-5 left-5 hidden w-px border-l border-dashed md:block" />
 
-          <div className="space-y-20">
+          <div className="space-y-12 sm:space-y-20">
             {c.features.map((feature, i) => (
               <FeatureRow key={feature.title} feature={feature} index={i} Mockup={mockups[i]} reverse={i % 2 === 1} />
             ))}

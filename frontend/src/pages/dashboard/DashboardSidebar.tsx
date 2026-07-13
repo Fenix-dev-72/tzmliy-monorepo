@@ -134,10 +134,10 @@ function NavItems({ onNavigate }: { onNavigate?: () => void }) {
           end={item.end}
           onClick={onNavigate}
           className={({ isActive }) =>
-            `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
+            `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
               isActive
                 ? "bg-primary/12 text-primary"
-                : "text-foreground-muted hover:bg-accent hover:text-foreground"
+                : "text-foreground-muted hover:translate-x-0.5 hover:bg-accent hover:text-foreground"
             }`
           }
         >
@@ -152,8 +152,10 @@ function NavItems({ onNavigate }: { onNavigate?: () => void }) {
         to="/dashboard/settings/2fa"
         onClick={onNavigate}
         className={({ isActive }) =>
-          `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
-            isActive ? "bg-primary/12 text-primary" : "text-foreground-muted hover:bg-accent hover:text-foreground"
+          `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
+            isActive
+              ? "bg-primary/12 text-primary"
+              : "text-foreground-muted hover:translate-x-0.5 hover:bg-accent hover:text-foreground"
           }`
         }
       >
@@ -179,8 +181,15 @@ export function DashboardMobileDrawer({ open, onClose }: { open: boolean; onClos
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 lg:hidden">
-      <div className="bg-background/80 absolute inset-0 backdrop-blur-sm" onClick={onClose} />
-      <div className="bg-background border-card-border relative flex h-full w-72 flex-col border-r pt-5 pb-6">
+      <div
+        className="bg-background/80 absolute inset-0 backdrop-blur-sm"
+        style={{ animation: "fade-up-in 0.25s ease-out both" }}
+        onClick={onClose}
+      />
+      <div
+        className="bg-background border-card-border relative flex h-full w-72 flex-col border-r pt-5 pb-6"
+        style={{ animation: "drawer-slide-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both" }}
+      >
         <div className="mb-6 flex items-center justify-between px-4">
           <div className="flex items-center gap-2">
             <TzmliyLogo size={26} />
@@ -188,7 +197,7 @@ export function DashboardMobileDrawer({ open, onClose }: { open: boolean; onClos
           </div>
           <button
             onClick={onClose}
-            className="text-foreground-muted flex size-8 items-center justify-center rounded-lg"
+            className="text-foreground-muted flex size-8 items-center justify-center rounded-lg transition-transform duration-150 hover:bg-accent active:scale-90"
             aria-label="Close menu"
           >
             <X size={18} />

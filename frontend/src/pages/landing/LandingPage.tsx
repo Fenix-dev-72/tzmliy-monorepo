@@ -14,15 +14,17 @@ export function LandingPage() {
   return (
     <div className="overflow-x-hidden">
       <Navbar />
-      <HeroSection />
-      <StatsBar />
-      <FeatureShowcase />
-      <ProblemSolution />
-      <FeaturesGrid />
-      <SecuritySection />
-      <IntegrationsSection />
-      <PricingSection />
-      <CTASection />
+      <main>
+        <HeroSection />
+        <StatsBar />
+        <FeatureShowcase />
+        <ProblemSolution />
+        <FeaturesGrid />
+        <SecuritySection />
+        <IntegrationsSection />
+        <PricingSection />
+        <CTASection />
+      </main>
       <Footer />
     </div>
   );

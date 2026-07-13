@@ -1,6 +1,7 @@
 import { Check, X } from "lucide-react";
 import { useLang } from "@/lib/i18n/LangContext";
 import { SectionBadge, SectionHeading } from "@/components/shared/SectionBadge";
+import { useReveal, revealDirClass } from "@/lib/hooks/useReveal";
 
 const content = {
   uz: {
@@ -48,13 +49,20 @@ const content = {
 export function ProblemSolution() {
   const { lang } = useLang();
   const c = content[lang];
+  const { ref, visible } = useReveal<HTMLDivElement>();
 
   return (
-    <section className="mx-auto max-w-7xl px-6 py-20">
+    <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-20">
       <SectionHeading badge={<SectionBadge>{c.badge}</SectionBadge>} title={c.title} />
 
-      <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
-        <div className="border-danger/20 bg-danger/5 rounded-3xl border p-8">
+      <div ref={ref} className="grid grid-cols-1 gap-5 sm:gap-8 md:grid-cols-2">
+        <div
+          className={revealDirClass(
+            visible,
+            "left",
+            "border-danger/20 bg-danger/5 rounded-2xl border p-5 sm:rounded-3xl sm:p-8",
+          )}
+        >
           <div className="mb-7 flex items-center gap-3">
             <div className="bg-danger/15 flex size-10 items-center justify-center rounded-xl">
               <X size={20} className="text-danger" />
@@ -72,7 +80,14 @@ export function ProblemSolution() {
           ))}
         </div>
 
-        <div className="border-primary/20 bg-primary/5 rounded-3xl border p-8">
+        <div
+          className={revealDirClass(
+            visible,
+            "right",
+            "border-primary/20 bg-primary/5 rounded-2xl border p-5 sm:rounded-3xl sm:p-8",
+          )}
+          style={{ transitionDelay: "150ms" }}
+        >
           <div className="mb-7 flex items-center gap-3">
             <div className="flex size-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary/20 to-primary/10">
               <Check size={20} className="text-primary" />

@@ -1,6 +1,7 @@
 import { AlertCircle, Database, Eye, Key, Lock, Shield } from "lucide-react";
 import { useLang } from "@/lib/i18n/LangContext";
 import { SectionBadge, SectionHeading } from "@/components/shared/SectionBadge";
+import { useReveal, revealClass } from "@/lib/hooks/useReveal";
 
 const content = {
   uz: {
@@ -34,9 +35,10 @@ const content = {
 export function SecuritySection() {
   const { lang } = useLang();
   const c = content[lang];
+  const { ref, visible } = useReveal<HTMLDivElement>();
 
   return (
-    <section className="from-secondary/[0.03] via-secondary/[0.03] bg-gradient-to-b to-transparent px-6 py-20">
+    <section className="from-secondary/[0.03] via-secondary/[0.03] bg-gradient-to-b to-transparent px-4 py-12 sm:px-6 sm:py-20">
       <div className="mx-auto max-w-7xl">
         <SectionHeading
           badge={
@@ -48,16 +50,19 @@ export function SecuritySection() {
           subtitle={c.subtitle}
         />
 
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
+        <div ref={ref} className="grid grid-cols-1 gap-4 sm:gap-5 md:grid-cols-2 lg:grid-cols-3">
           {c.items.map((item, i) => (
             <div
               key={i}
-              className="bg-card rounded-[18px] border p-7 backdrop-blur-md transition-all hover:-translate-y-1"
-              style={{ borderColor: `${item.color}20` }}
+              className={revealClass(
+                visible,
+                "bg-card rounded-2xl border p-5 backdrop-blur-md hover:-translate-y-1 hover:shadow-[0_16px_40px_rgba(0,0,0,0.18)] hover:duration-300 sm:rounded-[18px] sm:p-7",
+              )}
+              style={{ borderColor: `${item.color}20`, transitionDelay: `${(i % 3) * 100}ms` }}
             >
               <div
-                className="mb-4.5 flex size-12 items-center justify-center rounded-2xl border"
-                style={{ background: `${item.color}12`, borderColor: `${item.color}25` }}
+                className="animate-icon-pulse mb-4.5 flex size-12 items-center justify-center rounded-2xl border"
+                style={{ background: `${item.color}12`, borderColor: `${item.color}25`, animationDelay: `${i * 0.3}s` }}
               >
                 <item.icon size={22} color={item.color} strokeWidth={1.5} />
               </div>

@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { Building2, Check, Crown, Zap } from "lucide-react";
 import { useLang } from "@/lib/i18n/LangContext";
 import { SectionBadge } from "@/components/shared/SectionBadge";
+import { useReveal, revealClass } from "@/lib/hooks/useReveal";
 
 const content = {
   uz: {
@@ -83,20 +84,21 @@ export function PricingSection() {
   const { lang } = useLang();
   const [currency, setCurrency] = useState<"uzs" | "usd">("uzs");
   const c = content[lang];
+  const { ref, visible } = useReveal<HTMLDivElement>();
 
   return (
-    <section id="pricing" className="px-6 py-20">
+    <section id="pricing" className="px-4 py-12 sm:px-6 sm:py-20">
       <div className="mx-auto max-w-7xl">
-        <div className="mb-14 text-center">
+        <div className="mb-10 text-center sm:mb-14">
           <div className="mb-4 flex justify-center">
             <SectionBadge>{c.badge}</SectionBadge>
           </div>
-          <h2 className="font-heading mb-3 text-[clamp(32px,4vw,48px)] font-extrabold tracking-tight text-foreground">
+          <h2 className="font-heading mb-3 text-[clamp(28px,4vw,48px)] font-extrabold tracking-tight text-foreground">
             {c.title}
           </h2>
-          <p className="mb-8 text-[17px] text-foreground-muted">{c.subtitle}</p>
+          <p className="mb-6 text-base text-foreground-muted sm:mb-8 sm:text-[17px]">{c.subtitle}</p>
 
-          <div className="bg-background/80 border-card-border inline-flex rounded-xl border p-1">
+          <div className="bg-background/80 border-card-border animate-shimmer inline-flex rounded-xl border p-1">
             {(["uzs", "usd"] as const).map((cur) => (
               <button
                 key={cur}
@@ -111,15 +113,19 @@ export function PricingSection() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+        <div ref={ref} className="grid grid-cols-1 gap-5 sm:gap-6 md:grid-cols-3">
           {c.plans.map((plan, i) => (
             <div
               key={i}
-              className={`relative rounded-3xl border p-9 backdrop-blur-md transition-all duration-300 hover:-translate-y-2 ${
-                plan.highlight
-                  ? "border-primary bg-primary/[0.07] scale-[1.02] border-2 shadow-[0_16px_48px_rgba(212,175,55,0.15)] hover:shadow-[0_24px_64px_rgba(212,175,55,0.25)]"
-                  : "bg-card border-card-border shadow-[0_8px_32px_rgba(0,0,0,0.15)] hover:shadow-[0_16px_48px_rgba(0,0,0,0.25)]"
-              }`}
+              className={revealClass(
+                visible,
+                `relative rounded-2xl border p-6 backdrop-blur-md hover:-translate-y-2 hover:duration-300 sm:rounded-3xl sm:p-9 ${
+                  plan.highlight
+                    ? "border-primary bg-primary/[0.07] border-2 shadow-[0_16px_48px_rgba(212,175,55,0.15)] hover:shadow-[0_24px_64px_rgba(212,175,55,0.25)] md:scale-[1.02]"
+                    : "bg-card border-card-border shadow-[0_8px_32px_rgba(0,0,0,0.15)] hover:shadow-[0_16px_48px_rgba(0,0,0,0.25)]"
+                }`,
+              )}
+              style={{ transitionDelay: `${i * 100}ms` }}
             >
               {plan.highlight && (
                 <div className="gold-gradient-bg absolute -top-3.5 left-1/2 -translate-x-1/2 rounded-full px-4 py-1 text-xs font-bold whitespace-nowrap text-[#0A0E1A]">
@@ -127,7 +133,7 @@ export function PricingSection() {
                 </div>
               )}
 
-              <div className="mb-5 flex items-center gap-3">
+              <div className="mb-5 flex items-center gap-3 sm:mb-7">
                 <div
                   className={`flex size-11 items-center justify-center rounded-xl ${plan.highlight ? "bg-primary/20" : "bg-accent"}`}
                 >
@@ -139,8 +145,8 @@ export function PricingSection() {
                 </div>
               </div>
 
-              <div className="mb-7 flex items-baseline gap-1.5">
-                <span className="font-mono text-[32px] font-bold text-foreground">{plan.price[currency]}</span>
+              <div className="mb-5 flex items-baseline gap-1.5 sm:mb-7">
+                <span className="font-mono text-2xl font-bold text-foreground sm:text-[32px]">{plan.price[currency]}</span>
                 {!NOT_CONTACT.has(plan.price[currency]) && (
                   <span className="text-[13px] text-foreground-muted">
                     / {c.monthly} {currency === "uzs" ? "UZS" : "USD"}

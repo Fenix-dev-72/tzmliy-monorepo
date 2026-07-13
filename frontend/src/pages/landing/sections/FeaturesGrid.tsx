@@ -1,6 +1,8 @@
 import { ArrowRight, BarChart3, DollarSign, Phone, Users } from "lucide-react";
 import { useLang } from "@/lib/i18n/LangContext";
 import { SectionBadge, SectionHeading } from "@/components/shared/SectionBadge";
+import { TiltCard } from "@/components/shared/TiltCard";
+import { useReveal, revealClass } from "@/lib/hooks/useReveal";
 
 const content = {
   uz: {
@@ -80,50 +82,57 @@ const content = {
 export function FeaturesGrid() {
   const { lang } = useLang();
   const c = content[lang];
+  const { ref, visible } = useReveal<HTMLDivElement>();
 
   return (
-    <section id="features" className="bg-card/30 px-6 py-20">
+    <section id="features" className="bg-card/30 px-4 py-12 sm:px-6 sm:py-20">
       <div className="mx-auto max-w-7xl">
         <SectionHeading badge={<SectionBadge>{c.badge}</SectionBadge>} title={c.title} subtitle={c.subtitle} />
 
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+        <div ref={ref} className="grid grid-cols-1 gap-4 sm:gap-6 md:grid-cols-2">
           {c.features.map((feature, i) => (
-            <div
+            <TiltCard
               key={i}
-              className="bg-card border-card-border group rounded-3xl border p-8 shadow-[0_8px_32px_rgba(0,0,0,0.12)] backdrop-blur-md transition-all hover:-translate-y-1.5"
+              className={revealClass(
+                visible,
+                "bg-card border-card-border group rounded-2xl border p-5 shadow-[0_8px_32px_rgba(0,0,0,0.12)] backdrop-blur-md hover:shadow-[0_16px_48px_rgba(0,0,0,0.2)] hover:duration-300 sm:rounded-3xl sm:p-8",
+              )}
+              maxDeg={4}
             >
-              <div className="mb-5 flex items-start gap-4">
-                <div
-                  className="flex size-13 shrink-0 items-center justify-center rounded-2xl border"
-                  style={{ background: `${feature.color}15`, borderColor: `${feature.color}30` }}
-                >
-                  <feature.icon size={24} color={feature.color} strokeWidth={1.5} />
-                </div>
-                <h3 className="font-heading mt-2 text-xl font-bold text-foreground">{feature.title}</h3>
-              </div>
-
-              <p className="mb-5 text-[15px] leading-relaxed text-foreground-muted">{feature.desc}</p>
-
-              <div className="mb-5 flex flex-wrap gap-2">
-                {feature.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="rounded-full border px-3 py-1 text-xs font-semibold"
-                    style={{ background: `${feature.color}10`, borderColor: `${feature.color}25`, color: feature.color }}
+              <div style={{ transitionDelay: `${(i % 2) * 120}ms` }}>
+                <div className="mb-5 flex items-start gap-4">
+                  <div
+                    className="flex size-13 shrink-0 items-center justify-center rounded-2xl border"
+                    style={{ background: `${feature.color}15`, borderColor: `${feature.color}30` }}
                   >
-                    {tag}
-                  </span>
-                ))}
-              </div>
+                    <feature.icon size={24} color={feature.color} strokeWidth={1.5} />
+                  </div>
+                  <h3 className="font-heading mt-2 text-xl font-bold text-foreground">{feature.title}</h3>
+                </div>
 
-              <button
-                className="flex items-center gap-1.5 text-sm font-semibold"
-                style={{ color: feature.color }}
-              >
-                {c.more}
-                <ArrowRight size={16} />
-              </button>
-            </div>
+                <p className="mb-5 text-[15px] leading-relaxed text-foreground-muted">{feature.desc}</p>
+
+                <div className="mb-5 flex flex-wrap gap-2">
+                  {feature.tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="rounded-full border px-3 py-1 text-xs font-semibold"
+                      style={{ background: `${feature.color}10`, borderColor: `${feature.color}25`, color: feature.color }}
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+
+                <button
+                  className="flex items-center gap-1.5 text-sm font-semibold"
+                  style={{ color: feature.color }}
+                >
+                  {c.more}
+                  <ArrowRight size={16} />
+                </button>
+              </div>
+            </TiltCard>
           ))}
         </div>
       </div>

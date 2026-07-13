@@ -98,7 +98,7 @@ function DealWonDrop({ t }: { t: (typeof translations)["uz"] }) {
 
 function IntegrationFunnelMockup({ t }: { t: (typeof translations)["uz"] }) {
   return (
-    <div className="bg-background/70 border-card-border relative w-full max-w-[520px] overflow-hidden rounded-3xl border p-8 shadow-[0_24px_80px_rgba(0,0,0,0.4)] backdrop-blur-xl">
+    <div className="bg-background/70 border-card-border relative w-full max-w-[420px] overflow-hidden rounded-2xl border p-5 shadow-[0_24px_80px_rgba(0,0,0,0.4)] backdrop-blur-xl sm:max-w-[520px] sm:rounded-3xl sm:p-8">
       <div
         className="pointer-events-none absolute top-1/2 left-1/2 size-[300px] -translate-x-1/2 -translate-y-1/2 rounded-full"
         style={{ background: "radial-gradient(circle, rgba(212,175,55,0.15) 0%, transparent 70%)" }}
@@ -147,57 +147,73 @@ export function HeroSection() {
   const t = translations[lang];
 
   return (
-    <section className="relative flex items-center overflow-hidden pt-[100px] pb-16 lg:min-h-screen">
+    <section className="relative flex items-center overflow-hidden pt-[80px] pb-12 sm:pt-[100px] sm:pb-16 lg:min-h-screen lg:pb-20">
       <div
-        className="pointer-events-none absolute top-[20%] left-[15%] size-[400px] rounded-full"
+        className="animate-mesh-drift pointer-events-none absolute top-[20%] left-[15%] size-[250px] sm:size-[400px] rounded-full"
         style={{ background: "radial-gradient(circle, rgba(212,175,55,0.08) 0%, transparent 70%)" }}
       />
       <div
-        className="pointer-events-none absolute top-[30%] right-[10%] size-[500px] rounded-full"
-        style={{ background: "radial-gradient(circle, rgba(76,111,255,0.07) 0%, transparent 70%)" }}
+        className="animate-mesh-drift pointer-events-none absolute top-[30%] right-[10%] size-[300px] sm:size-[500px] rounded-full"
+        style={{ background: "radial-gradient(circle, rgba(76,111,255,0.07) 0%, transparent 70%)", animationDelay: "-7s" }}
+      />
+      <div
+        className="animate-mesh-drift pointer-events-none absolute bottom-[20%] left-[40%] size-[200px] sm:size-[350px] rounded-full"
+        style={{ background: "radial-gradient(circle, rgba(47,191,113,0.05) 0%, transparent 70%)", animationDelay: "-14s" }}
       />
 
-      <div className="relative mx-auto grid w-full max-w-7xl grid-cols-1 items-center gap-16 px-6 lg:grid-cols-2">
+      <div className="relative mx-auto grid w-full max-w-7xl grid-cols-1 items-center gap-10 px-4 sm:gap-12 sm:px-6 lg:gap-16 lg:grid-cols-2">
         <div>
-          <div className="border-primary/25 bg-primary/10 mb-7 inline-flex items-center gap-2 rounded-full border px-4 py-1.5">
-            <div className="bg-primary size-1.5 rounded-full" />
-            <span className="text-[13px] font-semibold text-primary">{t.badge}</span>
+          <div
+            className="border-primary/25 bg-primary/10 animate-fade-up mb-5 inline-flex items-center gap-2 rounded-full border px-3 py-1 sm:mb-7 sm:px-4 sm:py-1.5"
+            style={{ animationDelay: "0.05s" }}
+          >
+            <div className="bg-primary animate-glow-pulse size-1.5 rounded-full" />
+            <span className="text-[11px] font-semibold text-primary sm:text-[13px]">{t.badge}</span>
           </div>
 
-          <h1 className="font-heading mb-6 text-[clamp(40px,5vw,68px)] leading-[1.1] font-extrabold tracking-tight text-foreground">
+          <h1
+            className="font-heading animate-fade-up mb-4 text-[clamp(32px,5vw,68px)] leading-[1.1] font-extrabold tracking-tight text-foreground sm:mb-6"
+            style={{ animationDelay: "0.15s" }}
+          >
             {t.title1}
             <br />
             <span className="gold-gradient-text">{t.titleHighlight}</span>
           </h1>
 
-          <p className="mb-8 max-w-[480px] text-lg leading-[1.7] text-foreground-muted">{t.desc}</p>
+          <p
+            className="animate-fade-up mb-6 max-w-[480px] text-base leading-[1.7] text-foreground-muted sm:mb-8 sm:text-lg"
+            style={{ animationDelay: "0.25s" }}
+          >
+            {t.desc}
+          </p>
 
-          <div className="mb-8 flex flex-wrap gap-4">
+          <div className="animate-fade-up mb-6 flex flex-col gap-3 sm:mb-8 sm:flex-row sm:flex-wrap sm:gap-4" style={{ animationDelay: "0.35s" }}>
             <Link
               to="/register"
-              className="gold-gradient-bg flex items-center gap-2 rounded-xl px-7 py-3.5 text-[15px] font-bold text-[#0A0E1A] shadow-[0_8px_32px_rgba(212,175,55,0.35)] transition-opacity hover:opacity-90"
+              className="gold-gradient-bg flex items-center justify-center gap-2 rounded-xl px-7 py-3.5 text-[15px] font-bold text-[#0A0E1A] shadow-[0_8px_32px_rgba(212,175,55,0.35)] transition-all duration-200 hover:-translate-y-0.5 hover:opacity-90 hover:shadow-[0_12px_40px_rgba(212,175,55,0.45)] active:scale-[0.97] sm:w-auto"
             >
               {t.ctaPrimary}
               <ArrowRight size={18} />
             </Link>
             <a
               href="#showcase"
-              className="border-card-border flex items-center gap-2 rounded-xl border px-7 py-3.5 text-[15px] font-semibold text-foreground transition-colors hover:bg-accent"
+              className="border-card-border flex items-center justify-center gap-2 rounded-xl border px-7 py-3.5 text-[15px] font-semibold text-foreground transition-all duration-200 hover:-translate-y-0.5 hover:bg-accent active:scale-[0.97] sm:w-auto"
             >
               {t.ctaSecondary}
             </a>
           </div>
 
-          <div className="flex flex-wrap gap-3">
+          <div className="animate-fade-up flex flex-wrap gap-2 sm:gap-3" style={{ animationDelay: "0.45s" }}>
             {channels.map((channel) => (
-              <div key={channel.label} className="flex flex-col items-center gap-1.5">
+              <div key={channel.label} className="flex flex-col items-center gap-1 sm:gap-1.5">
                 <div
-                  className="flex size-9 items-center justify-center rounded-xl border"
+                  className="flex size-8 items-center justify-center rounded-xl border transition-transform duration-300 hover:-translate-y-1 sm:size-9"
                   style={{ background: `${channel.color}15`, borderColor: `${channel.color}30` }}
                 >
-                  <channel.icon size={16} color={channel.color} strokeWidth={1.75} />
+                  <channel.icon size={14} color={channel.color} strokeWidth={1.75} className="sm:hidden" />
+                  <channel.icon size={16} color={channel.color} strokeWidth={1.75} className="hidden sm:block" />
                 </div>
-                <span className="text-[10px] font-medium whitespace-nowrap text-foreground-muted">
+                <span className="text-[9px] font-medium whitespace-nowrap text-foreground-muted sm:text-[10px]">
                   {channel.label}
                 </span>
               </div>
@@ -205,8 +221,13 @@ export function HeroSection() {
           </div>
         </div>
 
-        <div className="hidden justify-center lg:flex">
-          <IntegrationFunnelMockup t={t} />
+        <div
+          className="animate-blur-in hidden justify-center md:flex"
+          style={{ animationDelay: "0.3s" }}
+        >
+          <div className="animate-float">
+            <IntegrationFunnelMockup t={t} />
+          </div>
         </div>
       </div>
     </section>

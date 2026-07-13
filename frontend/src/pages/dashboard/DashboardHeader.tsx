@@ -22,7 +22,7 @@ export function DashboardHeader({ onMenuClick }: { onMenuClick?: () => void }) {
           {onMenuClick && (
             <button
               onClick={onMenuClick}
-              className="border-card-border text-foreground-muted mr-1 flex size-9 items-center justify-center rounded-lg border lg:hidden"
+              className="border-card-border text-foreground-muted mr-1 flex size-9 items-center justify-center rounded-lg border transition-transform duration-150 hover:bg-accent active:scale-90 lg:hidden"
               aria-label="Menu"
             >
               <Menu size={16} />
@@ -40,7 +40,7 @@ export function DashboardHeader({ onMenuClick }: { onMenuClick?: () => void }) {
           <ThemeToggle />
           <button
             onClick={() => logout()}
-            className="border-card-border flex size-9 items-center justify-center rounded-lg border text-foreground-muted transition-colors hover:bg-accent hover:text-destructive"
+            className="border-card-border flex size-9 items-center justify-center rounded-lg border text-foreground-muted transition-all duration-150 hover:bg-accent hover:text-destructive active:scale-90"
             aria-label={t.logout}
             title={t.logout}
           >
