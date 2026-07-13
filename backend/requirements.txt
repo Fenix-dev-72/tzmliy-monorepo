@@ -23,7 +23,7 @@ jmespath==1.1.0
 openpyxl==3.1.5
 pillow==12.3.0
 prometheus-client==0.21.1
-pycparser==2.1
+pycparser==3.0
 pydantic-settings==2.14.2
 pydantic==2.13.4
 pydantic_core==2.46.4
