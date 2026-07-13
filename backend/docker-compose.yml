@@ -7,7 +7,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_OWNER_PASSWORD:-owner_dev_password}
       POSTGRES_DB: ${POSTGRES_DB:-dashboarduz}
     ports:
-      - "5432:5432"
+      # 5432 is taken on this host by an unrelated project's own container.
+      - "5433:5432"
     volumes:
       - dashboarduz_postgres_data:/var/lib/postgresql
     healthcheck:
@@ -33,7 +34,8 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      # 6379 is taken on this host by an unrelated project's own container.
+      - "6380:6379"
     volumes:
       - dashboarduz_redis_data:/data
     command: redis-server --appendonly yes
@@ -62,7 +64,8 @@ services:
     image: grafana/grafana:latest
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      # 3000 is taken on this host by an unrelated project's own container.
+      - "3001:3000"
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
@@ -73,21 +76,42 @@ services:
     depends_on:
       - prometheus
 
-  # The FastAPI app itself -- uncomment when running the full stack locally.
-  # app:
-  #   build: .
-  #   restart: unless-stopped
-  #   ports:
-  #     - "8000:8000"
-  #   env_file:
-  #     - .env
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #     redis:
-  #       condition: service_healthy
-  #     minio:
-  #       condition: service_started
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      # 8000 is taken on this host by an unrelated project's own container.
+      - "8010:8000"
+    env_file:
+      - .env
+    environment:
+      # Inside the compose network services reach each other by service
+      # name, not localhost -- override the host part of the .env DSNs.
+      MIGRATIONS_DATABASE_URL: postgresql://${POSTGRES_OWNER_USER:-dashboarduz_owner}:${POSTGRES_OWNER_PASSWORD:-owner_dev_password}@postgres:5432/${POSTGRES_DB:-dashboarduz}
+      DATABASE_URL: postgresql://app_user:${APP_DB_PASSWORD:-app_user_dev_password}@postgres:5432/${POSTGRES_DB:-dashboarduz}
+      REDIS_URL: redis://redis:6379/1
+      OBJECT_STORAGE_ENDPOINT_URL: http://minio:9000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+
+  frontend:
+    build: ../frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    environment:
+      # Runs in the browser, so it must point at the app's host-published
+      # port, not the in-network service name.
+      VITE_API_BASE_URL: http://localhost:8010
+    volumes:
+      - ../frontend/src:/app/src
+    depends_on:
+      - app
 
 volumes:
   dashboarduz_postgres_data:

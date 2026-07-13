@@ -16,12 +16,22 @@ import asyncio
 import base64
 import hashlib
 import hmac
+import ipaddress
+import socket
 import time
 import urllib.request
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Protocol
+from urllib.parse import urlparse
+
+
+class UnsafeRecordingUrlError(Exception):
+    """Raised when a webhook-supplied recording_url points at a non-public
+    (loopback/link-local/private/reserved) address -- refusing to fetch it
+    stops a valid webhook signer from using recording_url as an SSRF vector
+    against internal services (e.g. a cloud metadata endpoint)."""
 
 
 @dataclass(frozen=True)
@@ -136,12 +146,40 @@ def get_provider(name: str) -> CallProvider:
     return provider
 
 
+def _assert_safe_recording_url(url: str) -> None:
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or not parsed.hostname:
+        raise UnsafeRecordingUrlError
+    try:
+        addrs = socket.getaddrinfo(parsed.hostname, None)
+    except OSError as exc:
+        raise UnsafeRecordingUrlError from exc
+    for family, _, _, _, sockaddr in addrs:
+        ip = ipaddress.ip_address(sockaddr[0])
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_multicast
+            or ip.is_unspecified
+        ):
+            raise UnsafeRecordingUrlError
+
+
 def _download_sync(url: str, timeout: float) -> bytes:
-    with urllib.request.urlopen(url, timeout=timeout) as response:
+    _assert_safe_recording_url(url)
+    with urllib.request.urlopen(url, timeout=timeout) as response:  # noqa: S310 -- scheme/host validated above
         return response.read()
 
 
 async def download_recording(url: str, timeout: float = 10.0) -> bytes:
     """A separate, mockable function so a smoke test (or future unit test)
-    can monkeypatch it instead of needing a real provider to fetch from."""
+    can monkeypatch it instead of needing a real provider to fetch from.
+
+    Validates the URL resolves to a public address before fetching --
+    recording_url comes straight from the inbound (signature-verified but
+    otherwise untrusted) webhook payload, so without this a tenant admin who
+    knows their own webhook secret could point it at an internal service or
+    the cloud metadata endpoint (SSRF)."""
     return await asyncio.to_thread(_download_sync, url, timeout)

@@ -32,11 +32,20 @@ CALLS_COLUMNS = [
 ]
 
 
+_FORMULA_LEAD_CHARS = ("=", "+", "-", "@", "\t", "\r")
+
+
 def _cell_value(value: object) -> object:
     # UUID/datetime/date aren't natively writable by csv/openpyxl -- stringify
     # them, same reasoning as core/database's json.dumps(default=str) for JSONB.
     if isinstance(value, (UUID, datetime, date)):
         return str(value)
+    # Neutralize CSV/XLSX formula injection: free-text fields (e.g. customer
+    # full_name) can originate from inbound CRM webhooks, not just trusted
+    # staff input, so a leading =/+/-/@ could detonate as a formula when the
+    # exported file is opened in Excel/Sheets.
+    if isinstance(value, str) and value.startswith(_FORMULA_LEAD_CHARS):
+        return "'" + value
     return value
 
 
