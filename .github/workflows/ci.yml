@@ -66,6 +66,15 @@ jobs:
           python -m compileall -q app/
 
       - name: Verify main module imports
+        env:
+          DATABASE_URL: postgresql://user:pass@localhost:5432/db
+          MIGRATIONS_DATABASE_URL: postgresql://user:pass@localhost:5432/db
+          APP_DB_PASSWORD: dummy
+          JWT_SECRET: dummy-jwt-secret
+          SECRET_ENCRYPTION_KEY: dummy-fernet-key
+          OBJECT_STORAGE_ACCESS_KEY: dummy
+          OBJECT_STORAGE_SECRET_KEY: dummy
+          OBJECT_STORAGE_BUCKET: dummy-bucket
         run: |
           python -c "from app.main import app; print('Main module imported successfully')"
 
