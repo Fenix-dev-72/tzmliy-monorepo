@@ -55,21 +55,27 @@ class Settings(BaseSettings):
     login_max_failed_attempts: int = 5
     login_lockout_minutes: int = 15
 
-    # Per-IP sliding-window rate limits (core/middleware.py). In-memory and
-    # per-process: good enough for a single app instance; the two-VPS layout
-    # planned in Faza 13 needs a Redis/Valkey-backed limiter instead (the TZ
-    # already earmarks Redis for exactly this).
+    # Per-IP sliding-window rate limits (core/rate_limit.py). Distributed via
+    # Redis when available, otherwise in-memory per-process fallback.
     rate_limit_enabled: bool = True
-    # Credential endpoints (login / OTP / password-reset / 2FA verify).
     rate_limit_auth_requests: int = 10
     rate_limit_auth_window_seconds: int = 60
-    # Signed webhooks (calls/billing/CRM) -- higher, providers burst legitimately.
     rate_limit_webhook_requests: int = 120
     rate_limit_webhook_window_seconds: int = 60
-    # Only honor X-Forwarded-For when the app actually sits behind a trusted
-    # reverse proxy that overwrites it -- otherwise any client can spoof its
-    # IP and dodge the limiter.
+    rate_limit_general_requests: int = 200
+    rate_limit_general_window_seconds: int = 60
     trust_x_forwarded_for: bool = False
+
+    # Redis cache settings (core/cache.py)
+    cache_default_ttl_seconds: int = 300
+    cache_enabled: bool = True
+
+    # Structured logging (core/logging.py)
+    log_json_format: bool = False
+    log_level: str = "INFO"
+
+    # Prometheus metrics (core/metrics.py)
+    metrics_enabled: bool = True
 
     # Comma-separated list of allowed browser origins (e.g. the Next.js
     # frontend's URL). Empty = CORS middleware not installed at all; never

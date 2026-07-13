@@ -16,9 +16,6 @@ services:
       timeout: 5s
       retries: 10
 
-  # S3-compatible object storage for call recordings (see app/core/storage.py).
-  # No healthcheck: the minio/minio image ships neither curl nor mc, so a
-  # reliable CMD-SHELL probe needs a separate image -- not worth it for dev.
   minio:
     image: minio/minio:latest
     restart: unless-stopped
@@ -32,21 +29,69 @@ services:
     volumes:
       - dashboarduz_minio_data:/data
 
-  # Ephemeral OTP/password-reset/registration-code storage (see
-  # app/core/redis_client.py) -- TTL-based expiry, no durability needed, so
-  # no volume mount. DB index 1 (not 0) in case a shared box's default DB is
-  # used by something else -- matches the VPS's own additive-only convention.
   redis:
     image: redis:7-alpine
     restart: unless-stopped
     ports:
       - "6379:6379"
+    volumes:
+      - dashboarduz_redis_data:/data
+    command: redis-server --appendonly yes
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
       retries: 10
 
+  prometheus:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - dashboarduz_prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+    depends_on:
+      - app
+
+  grafana:
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - dashboarduz_grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
+  # The FastAPI app itself -- uncomment when running the full stack locally.
+  # app:
+  #   build: .
+  #   restart: unless-stopped
+  #   ports:
+  #     - "8000:8000"
+  #   env_file:
+  #     - .env
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #     minio:
+  #       condition: service_started
+
 volumes:
   dashboarduz_postgres_data:
   dashboarduz_minio_data:
+  dashboarduz_redis_data:
+  dashboarduz_prometheus_data:
+  dashboarduz_grafana_data:
