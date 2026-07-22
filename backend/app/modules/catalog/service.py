@@ -23,6 +23,10 @@ class CategoryHasChildrenError(Exception):
     pass
 
 
+class CategoryHasProductsError(Exception):
+    pass
+
+
 def _build_tree(rows: list[dict]) -> list[CategoryNode]:
     nodes = {row["id"]: CategoryNode(**row) for row in rows}
     roots: list[CategoryNode] = []
@@ -55,7 +59,7 @@ async def update_category(pool: asyncpg.Pool, tenant_id: UUID, category_id: UUID
         if category is None:
             raise CategoryNotFoundError
         try:
-            await repository.update_category_name(conn, category_id, name)
+            await repository.update_category(conn, category_id, name)
         except asyncpg.UniqueViolationError as exc:
             raise DuplicateNameError from exc
         return {**category, "name": name}
@@ -68,4 +72,7 @@ async def delete_category(pool: asyncpg.Pool, tenant_id: UUID, category_id: UUID
             raise CategoryNotFoundError
         if await repository.count_children(conn, category_id) > 0:
             raise CategoryHasChildrenError
-        await repository.delete_category(conn, category_id)
+        try:
+            await repository.delete_category(conn, category_id)
+        except asyncpg.ForeignKeyViolationError as exc:
+            raise CategoryHasProductsError from exc

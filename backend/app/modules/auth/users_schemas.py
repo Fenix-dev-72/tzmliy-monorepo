@@ -16,6 +16,7 @@ class UserOut(BaseModel):
     tenant_id: UUID
     email: str | None
     phone: str | None
+    full_name: str | None = None
     role_id: UUID
     role_name: str
     is_active: bool
@@ -24,3 +25,8 @@ class UserOut(BaseModel):
 
 class UserRoleUpdate(BaseModel):
     role_id: UUID
+
+
+class UserProfileUpdate(BaseModel):
+    full_name: str | None = None
+    phone: str | None = None

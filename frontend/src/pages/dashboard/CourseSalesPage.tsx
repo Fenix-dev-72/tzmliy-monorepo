@@ -1,11 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AlertCircle, BookOpen, Loader2 } from "lucide-react";
+import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useLang } from "@/lib/i18n/LangContext";
 import { useTenantAuth } from "@/lib/auth/tenantAuthStore";
+import { useThemeContext } from "@/lib/theme/ThemeContext";
 import * as analyticsApi from "@/lib/api/analytics";
 import type { CategorySalesEntry } from "@/lib/api/analytics";
 import { ApiError } from "@/lib/api/client";
 import { formatMoney } from "@/lib/format/money";
+import { categoricalPalette, CHART_AXIS_DARK, CHART_AXIS_LIGHT, CHART_GRID_DARK, CHART_GRID_LIGHT } from "@/lib/format/chartColors";
 import { FormField } from "@/components/auth/FormField";
 
 const content = {
@@ -39,11 +42,39 @@ export function CourseSalesPage() {
   const { lang } = useLang();
   const t = content[lang];
   const { accessToken } = useTenantAuth();
+  const { isDark } = useThemeContext();
 
   const [periodStart, setPeriodStart] = useState(todayIso());
   const [periodEnd, setPeriodEnd] = useState(todayIso());
   const [entries, setEntries] = useState<CategorySalesEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Money is per-currency BIGINT, never mixed (UZS so'm vs USD cents) -- one
+  // axis per currency, so a bar chart mixing them would compare different
+  // units. Small multiples: one chart per currency, per the dataviz skill's
+  // "two measures of different scale -> two charts" rule.
+  const byCurrency = useMemo(() => {
+    const groups = new Map<string, { name: string; amount: number; count: number }[]>();
+    for (const e of entries ?? []) {
+      const list = groups.get(e.currency) ?? [];
+      list.push({ name: e.category_name ?? t.noCategory, amount: e.total_amount, count: e.sales_count });
+      groups.set(e.currency, list);
+    }
+    return [...groups.entries()];
+  }, [entries, t.noCategory]);
+
+  // Color follows the category's identity (stable across re-renders/filters),
+  // never its position in the array.
+  const categoryColor = useMemo(() => {
+    const names = [...new Set((entries ?? []).map((e) => e.category_name ?? t.noCategory))].sort();
+    const palette = categoricalPalette(isDark);
+    const map = new Map<string, string>();
+    names.forEach((name, i) => map.set(name, palette[i % palette.length]));
+    return map;
+  }, [entries, isDark, t.noCategory]);
+
+  const axisColor = isDark ? CHART_AXIS_DARK : CHART_AXIS_LIGHT;
+  const gridColor = isDark ? CHART_GRID_DARK : CHART_GRID_LIGHT;
 
   async function load() {
     if (!accessToken) return;
@@ -91,6 +122,57 @@ export function CourseSalesPage() {
         <div className="glass-card flex flex-col items-center gap-3 p-10 text-center sm:p-14">
           <BookOpen size={32} className="text-foreground-muted" />
           <p className="text-sm text-foreground-muted">{t.empty}</p>
+        </div>
+      )}
+
+      {!error && entries !== null && entries.length > 0 && (
+        <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {byCurrency.map(([currency, rows]) => (
+            <div key={currency} className="glass-card p-5">
+              <h2 className="mb-4 text-sm font-bold text-foreground">
+                {currency} — {t.title}
+              </h2>
+              <ResponsiveContainer width="100%" height={Math.max(160, rows.length * 44)}>
+                <BarChart data={rows} layout="vertical" margin={{ left: 8, right: 16, top: 4, bottom: 4 }}>
+                  <CartesianGrid horizontal={false} stroke={gridColor} />
+                  <XAxis
+                    type="number"
+                    tick={{ fill: axisColor, fontSize: 11 }}
+                    tickFormatter={(v: number) => formatMoney(v, currency)}
+                    axisLine={{ stroke: gridColor }}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    type="category"
+                    dataKey="name"
+                    width={120}
+                    tick={{ fill: axisColor, fontSize: 12 }}
+                    axisLine={{ stroke: gridColor }}
+                    tickLine={false}
+                  />
+                  <Tooltip
+                    cursor={{ fill: "var(--accent)" }}
+                    contentStyle={{
+                      background: "var(--popover)",
+                      border: "1px solid var(--card-border)",
+                      borderRadius: 12,
+                      fontSize: 12,
+                    }}
+                    labelStyle={{ color: "var(--foreground)", fontWeight: 600 }}
+                    formatter={(value, _name, item) => [
+                      formatMoney(Number(value), currency),
+                      `${item.payload.count} ${t.salesCount}`,
+                    ]}
+                  />
+                  <Bar dataKey="amount" radius={[0, 4, 4, 0]} maxBarSize={28}>
+                    {rows.map((row) => (
+                      <Cell key={row.name} fill={categoryColor.get(row.name)} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          ))}
         </div>
       )}
 

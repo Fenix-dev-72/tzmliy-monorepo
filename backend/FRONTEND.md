@@ -184,10 +184,14 @@ Har qanday login (tenant/platform/dashboard) — 5 ketma-ket xato urinishdan key
 ### Katalog (mahsulot/xizmat ierarxiyasi) sahifasi
 | Endpoint | Permission | Vazifasi |
 |---|---|---|
-| `POST /api/v1/catalog/categories` | `catalog.manage` | Yangi turkum (`parent_id` — daraxtda ichma-ich joylashtirish uchun, `null` = root) |
-| `GET /api/v1/catalog/categories` | `catalog.view` | **Butun daraxt** bitta so'rovda, nested (`children[]`) holda |
-| `PATCH /api/v1/catalog/categories/{id}` | `catalog.manage` | Nomini o'zgartirish |
+| `POST /api/v1/catalog/categories` | `catalog.manage` | Yangi turkum (`parent_id` — daraxtda ichma-ich joylashtirish uchun, `null` = root; `fixed_price_amount`/`fixed_price_currency` — ikkalasi ham `null` yoki ikkalasi ham berilgan bo'lishi kerak, aks holda 400) |
+| `GET /api/v1/catalog/categories` | `catalog.view` | **Butun daraxt** bitta so'rovda, nested (`children[]`) holda, har bir tugunda `fixed_price_amount`/`fixed_price_currency` bilan |
+| `PATCH /api/v1/catalog/categories/{id}` | `catalog.manage` | Nomi va narx (fixed/ixtiyoriy) yangilanadi — `PATCH` har doim ikkala narx maydonini ham qayta yuboradi (partial emas) |
 | `DELETE /api/v1/catalog/categories/{id}` | `catalog.manage` | O'chirish — agar bola-turkumlari bo'lsa 409 (avval bolalarini o'chirish kerak) |
+
+**Fixed price (2026-07-12, mijoz talabi)**: Admin bir turkumga aniq narx belgilashi mumkin (`fixed_price_amount`+`fixed_price_currency`) yoki ixtiyoriy/kelishiladigan holda qoldirishi mumkin (ikkalasi ham `null`). Sales sahifasida shu turkum tanlanganda narx maydoni **avtomatik to'ldiriladi va bloklanadi** (sotuvchi o'zgartira olmaydi) — agar turkum ixtiyoriy bo'lsa, narx maydoni bo'sh va tahrirlanadigan bo'lib qoladi. Har bir mahsulot-qatorining valyutasi ham shu turkumning `fixed_price_currency`'siga bog'lanadi (umumiy "Valyuta" tanlovini bekor qiladi fixed-price qatorlar uchun).
+
+**Tannarx / cost price (2026-07-12, mijoz talabi)**: Har bir turkumga alohida, mustaqil ravishda **ixtiyoriy** tannarx (`cost_price_amount`+`cost_price_currency`) kiritish mumkin — fixed-price bilan bog'liq emas (turkum narxi ixtiyoriy bo'lsa ham tannarxi bo'lishi mumkin). Mijozga/sotuvchiga ko'rinmaydi, faqat admin Katalog sahifasida ko'radi va Moliya bo'limidagi "Daromad va foyda" hisobotida ishlatiladi (quyida).
 
 **Bog'liqlik**: Sales sahifasidagi "turkum" tanlash dropdown/tree-select shu `GET /catalog/categories` natijasidan to'ldiriladi.
 
@@ -195,19 +199,19 @@ Har qanday login (tenant/platform/dashboard) — 5 ketma-ket xato urinishdan key
 | Endpoint | Permission | Vazifasi |
 |---|---|---|
 | `POST /api/v1/customers` | `customers.manage` | Yangi mijoz/lead (`phone` tenant ichida unique — dublikat 409/`null` beradi) |
-| `GET /api/v1/customers` | `customers.view` | Ro'yxat |
+| `GET /api/v1/customers` | `customers.view` | Ro'yxat — **sahifalangan** (`limit`, default/max 50/200, `offset`), 2026-07-12'dan |
 | `GET /api/v1/customers/{id}` | `customers.view` | Kartochka |
 | `PATCH /api/v1/customers/{id}` | `customers.manage` | Tahrirlash — `stage` o'zgarsa avtomatik tarixga yoziladi |
 | `POST /api/v1/customers/{id}/activities` | `customers.manage` | Qo'lda eslatma/qo'ng'iroq/email/uchrashuv yozish |
 | `GET /api/v1/customers/{id}/activities` | `customers.view` | CRM tarixi (avtomatik `status_change` yozuvlari bilan birga) |
 
-**Bog'liqlik**: Sale yaratish sahifasidagi "mijoz" tanlash shu `GET /customers` natijasidan.
+**Bog'liqlik**: Sale yaratish sahifasidagi "mijoz" tanlash shu `GET /customers` natijasidan — lekin bu dropdown uchun `SalesPage.tsx` `limit=200`ni aniq ko'rsatib chaqiradi (standart 50 emas), chunki tanlov ro'yxati iloji boricha ko'p mijozni qamrab olishi kerak, sahifalangan ro'yxat kabi emas. 200 dan ortiq mijozli tenant'larda hammasi dropdown'da ko'rinmasligi mumkin — bu bilingan, hozircha qoldirilgan cheklov.
 
 ### Savdo (Sales) sahifasi
 | Endpoint | Permission | Vazifasi |
 |---|---|---|
 | `POST /api/v1/sales` | `sales.manage` | Yangi shartnoma. **`Idempotency-Key` majburiy.** `customer_id` (majburiy, Customers'dan), `catalog_category_id` (ixtiyoriy, Catalog'dan), `responsible_user_id` (Users'dan) |
-| `GET /api/v1/sales` | `sales.view` | Ro'yxat |
+| `GET /api/v1/sales` | `sales.view` | Ro'yxat — **sahifalangan** (`limit`, default/max 50/200, `offset`) |
 | `GET /api/v1/sales/{id}` | `sales.view` | Kartochka (`version` maydoniga e'tibor bering — `PATCH`da kerak) |
 | `PATCH /api/v1/sales/{id}` | `sales.manage` | Narx/muddat/holat/mas'ul o'zgartirish — **`body.version`** joriy `GET`dan olingan qiymat bilan bir xil bo'lishi kerak, aks holda 409 (someone else o'zgartirgan — frontend qayta `GET` qilib, foydalanuvchiga ko'rsatishi kerak) |
 | `GET /api/v1/sales/{id}/changes` | `sales.view` | O'zgarishlar tarixi (kim, qachon, nima o'zgardi) |
@@ -229,10 +233,24 @@ Har qanday login (tenant/platform/dashboard) — 5 ketma-ket xato urinishdan key
 ### Bonus/Payroll sahifasi
 | Endpoint | Permission | Vazifasi |
 |---|---|---|
-| `POST /api/v1/finance/bonus-plans` | `finance.manage` | Komissiya rejasi (`applies_to_role_id` — **rolga**, foydalanuvchiga emas — Rollar sahifasidan). `Idempotency-Key` majburiy |
-| `GET /api/v1/finance/bonus-plans` | `finance.view` | Ro'yxat |
-| `POST /api/v1/finance/payroll/calculate` | `finance.manage` | Davr uchun hisoblash (`period_start`, `period_end`, ixtiyoriy `user_id` filtri) — **on-demand**, background job yo'q, tugma bosilganda ishga tushiriladi |
-| `GET /api/v1/finance/payroll` | `finance.view` | Natijalar ro'yxati |
+| `POST /api/v1/finance/bonus-plans` | `finance.manage` | Bonus rejasi (`applies_to_role_id` — **rolga**, foydalanuvchiga emas — Rollar sahifasidan). `Idempotency-Key` majburiy |
+| `GET /api/v1/finance/bonus-plans` | `finance.view` | Ro'yxat — **sahifalangan** (`limit`, default/max 50/200, `offset`) |
+| `POST /api/v1/finance/payroll/calculate` | `finance.manage` | Davr uchun hisoblashni **navbatga qo'yadi** (`period_start`, `period_end`, ixtiyoriy `user_id` filtri) — `202 Accepted` + `PayrollJobOut` (`status: pending`) qaytaradi, hisoblash o'zi background worker'da (2026-07-12'dan) ishlaydi, sinxron emas |
+| `GET /api/v1/finance/payroll/jobs/{job_id}` | `finance.view` | Job holatini tekshirish (`pending`\|`processing`\|`done`\|`failed` + `error`) — frontend shu endpoint'ni ~1.5s'da bir marta so'raydi, `done`/`failed` bo'lgunicha |
+| `GET /api/v1/finance/payroll` | `finance.view` | Natijalar ro'yxati — job `done` bo'lgach shu endpoint qayta chaqiriladi. **Sahifalangan** (`user_id` filtri bilan bir qatorda `limit`/`offset`) |
+
+**Payroll oqimi (2026-07-12, ishlash tezligi bo'yicha)**: `POST /payroll/calculate` endi natijani to'g'ridan-to'g'ri qaytarmaydi — u faqat job yaratadi. Frontend (`FinancePage.tsx`'s `handleCalculatePayroll`) job yaratilgach `GET /payroll/jobs/{id}`ni davriy so'raydi (`status` `pending`/`processing` bo'lgan ekan), `done` bo'lganda `GET /payroll`ni qayta chaqirib jadvalni yangilaydi, `failed` bo'lsa `error` xabarini toast orqali ko'rsatadi. Sabab: katta tenant'lar uchun hisoblash sinxron HTTP so'rovni (va yagona event loop'ni) uzoq band qilib qo'ymasligi kerak.
+
+**Bonus turlari (2026-07-11, mijoz talabi)**: `BonusPlanCreate.bonus_type` — `"percent"` (eski xatti-harakat: `commission_bps`, foizli komissiya) yoki `"fixed_per_sale"` (har bir savdo uchun qat'iy summa — `fixed_amount`+`fixed_amount_currency`). Ikkalasi ham majburiy juftlik: `percent` bo'lsa fixed maydonlar bo'sh, `fixed_per_sale` bo'lsa ikkalasi ham to'ldirilgan bo'lishi kerak (aks holda 400). `catalog_category_id` — ixtiyoriy: bo'sh bo'lsa reja rol sotgan **barcha** mahsulotlarga taalluqli, tanlansa faqat o'sha turkumdagi savdolarga (har bir mahsulot uchun har xil bonus). Bir xil rol uchun bir nechta reja bo'lishi mumkin (masalan bitta umumiy + bir nechta mahsulot-maxsus) — **ular qo'shilmaydi, mahsulot-maxsus reja ustunlik qiladi** o'sha mahsulotning savdolari uchun, umumiy reja faqat qolgan (maxsus rejasi yo'q) mahsulotlarga qo'llanadi.
+
+**Payroll davri (2026-07-11, mijoz talabi)**: Frontend endi ikki rejim taklif qiladi — **Oylik** (kalendar oyi tanlanadi, `01.05.2026`–`31.05.2026` kabi to'liq oy avtomatik hisoblanadi, standart tanlov) va **Ixtiyoriy davr** (eski `period_start`/`period_end` erkin sana tanlash). Backend API o'zgarmadi — ikkalasi ham xuddi shu `period_start`/`period_end` juftligiga tarjima qilinadi, farq faqat frontend UI'da.
+
+### Daromad va foyda (Profit summary) — Moliya sahifasidagi alohida tab (2026-07-12, mijoz talabi)
+| Endpoint | Permission | Vazifasi |
+|---|---|---|
+| `GET /api/v1/finance/profit-summary?period_start=...&period_end=...` | `finance.view` (2FA shart emas — faqat agregat sonlar) | Berilgan davr uchun har bir valyuta bo'yicha `revenue` (davrda yaratilgan, bekor qilinmagan sale'larning `price_amount` yig'indisi), `cost` (shu sale'lar turkumining `cost_price_amount` yig'indisi — faqat turkum tannarxi shu sale valyutasida bo'lsa hisoblanadi) va `profit` (`revenue - cost`) |
+
+**Eslatma**: Tannarxi kiritilmagan (yoki valyutasi mos kelmaydigan) turkumlar uchun tannarx 0 deb hisoblanadi — bu haqiqiy tannarx emas, balki "noma'lum" degani, frontend buni foydalanuvchiga eslatib turadi.
 
 ### Qo'ng'iroqlar (Calls) sahifasi
 | Endpoint | Permission | Vazifasi |
@@ -240,7 +258,7 @@ Har qanday login (tenant/platform/dashboard) — 5 ketma-ket xato urinishdan key
 | `POST /api/v1/calls/integrations` | `calls.manage` (**2FA**) | UTEL/Мои звонки webhook sirini ulash (Sozlamalar) |
 | `GET /api/v1/calls/integrations` | `calls.manage` | Ulangan integratsiyalar holati |
 | `POST /api/v1/calls/manager-mappings` | `calls.manage` (**2FA**) | Provayder extension/agent ID'ni `user_id`ga bog'lash |
-| `GET /api/v1/calls/calls` | `calls.view` | Qo'ng'iroqlar ro'yxati (ixtiyoriy `responsible_user_id` filtri) |
+| `GET /api/v1/calls/calls` | `calls.view` | Qo'ng'iroqlar ro'yxati (ixtiyoriy `responsible_user_id` filtri). **Sahifalangan** (`limit`/`offset`) — `CallsPage.tsx`ning status-filtri hamon faqat client-side, "Ko'proq yuklash" xom (filtrlanmagan) qatorlarni server'dan oladi |
 | `GET /api/v1/calls/calls/{id}` | `calls.view` | Bitta qo'ng'iroq kartochkasi |
 | `GET /api/v1/calls/calls/{id}/recording` | `calls.view` | Short-lived presigned URL — audio pleer shu URL'ni to'g'ridan-to'g'ri `<audio src>` sifatida ishlatadi |
 
@@ -298,7 +316,10 @@ Barcha endpoint ixtiyoriy `period_start`/`period_end` query parametrlarini qabul
 | Endpoint | Permission | Vazifasi |
 |---|---|---|
 | `GET /api/v1/reports/diagnostics` | `reports.view` | "Muammolar" widgeti — 5 ta tekshiruv natijasi |
-| `GET /api/v1/reports/export/{entity}?format=csv\|xlsx` | `reports.export` (**2FA**) | `entity ∈ {customers,sales,finance,calls}` — javob to'g'ridan-to'g'ri fayl (`Content-Disposition: attachment`), frontend uni yuklab olish sifatida ishlaydi (`<a download>` yoki blob) |
+| `POST /api/v1/reports/export/{entity}?format=csv\|xlsx` | `reports.export` (**2FA**) | `entity ∈ {customers,sales,finance,calls}` — endi background job (2026-07-12'dan): `202 Accepted` + `ExportJobOut` (`status: pending`) qaytaradi, fayl sinxron qaytmaydi |
+| `GET /api/v1/reports/export/jobs/{job_id}` | `reports.export` | Job holatini tekshirish — `done` bo'lganda `download_url` (qisqa muddatli presigned S3 link) qo'shiladi |
+
+**Export oqimi (2026-07-12)**: `reportsApi.exportEntity` (`lib/api/reports.ts`) eski signature/xatti-harakatini saqlab qoldi — ichkarida job yaratadi, `GET /export/jobs/{id}`ni ~1.5s'da bir marta so'rab `done`/`failed` bo'lgunicha kutadi, `done` bo'lganda `download_url`dan brauzer yuklab olishini ishga tushiradi. `ReportsPage.tsx`da o'zgarish shart emas edi.
 
 ### Platform Admin konsoli (`/platform/v1`, alohida ilova/bo'lim — endi Dashboarduz jamoasi uchun ichki vosita, oddiy mijoz frontend'ida ko'rinmaydi)
 

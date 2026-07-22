@@ -4,20 +4,25 @@ import { AlertCircle, ArrowDownLeft, ArrowUpRight, Loader2, Phone, PhoneCall, Se
 import { useLang } from "@/lib/i18n/LangContext";
 import { useTenantAuth } from "@/lib/auth/tenantAuthStore";
 import * as callsApi from "@/lib/api/calls";
+import { CALLS_PAGE_SIZE } from "@/lib/api/calls";
 import type { Call, ManagerMapping } from "@/lib/api/calls";
 import * as usersApi from "@/lib/api/users";
+import { USERS_DROPDOWN_LIMIT } from "@/lib/api/users";
 import type { TenantUserRow } from "@/lib/api/users";
 import { ApiError } from "@/lib/api/client";
 import { FormField } from "@/components/auth/FormField";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { IntegrationCard } from "@/components/shared/IntegrationCard";
+import { CopyBox } from "@/components/shared/CopyBox";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 
 const content = {
   uz: {
     title: "Qo'ng'iroqlar",
     sub: "Barcha kiruvchi/chiquvchi qo'ng'iroqlar jurnali",
     loadError: "Ma'lumotlarni yuklab bo'lmadi",
+    loadMore: "Ko'proq yuklash",
     empty: "Hali qo'ng'iroqlar yo'q",
     emptyDesc: "Integratsiya ulanganda qo'ng'iroqlar shu yerda paydo bo'ladi.",
     all: "Barchasi",
@@ -28,11 +33,27 @@ const content = {
     need2fa: "Integratsiya sozlash uchun 2FA yoqilgan bo'lishi kerak.",
     connect: "Ulash",
     connected: "Ulangan",
+    edit: "Tahrirlash",
+    disconnect: "Uzish",
+    disconnectConfirm: "Bu integratsiyani uzishga ishonchingiz komilmi? Webhook orqali yangi qo'ng'iroqlar kelishi to'xtaydi.",
+    disconnected: "Integratsiya uzildi",
+    cancel: "Bekor qilish",
     webhookSecret: "Webhook maxfiy kaliti",
-    apiKey: "API kalit (ixtiyoriy)",
-    save: "Saqlash",
     integrationSaved: "Integratsiya ulandi",
     genericError: "Xatolik yuz berdi",
+    oneClickConnect: "1 tugma bilan ulash",
+    webhookUrlTitle: "Webhook URL",
+    webhookSecretHint: "Bu URL va maxfiy kalitni provayderning o'z \"webhook\" sozlamalariga joylashtiring.",
+    utelSubdomain: "UTEL kompaniya kodi",
+    utelSubdomainPlaceholder: "masalan: cc341",
+    utelEmail: "UTEL email",
+    utelPassword: "UTEL parol",
+    utelConnectHint: "UTEL kompaniya kodini (boshqaruv paneli manzilidagi https://SHU-KOD.utel.uz/dashboard qismi), hisobingiz email va parolini kiriting -- ulanish va webhook sozlamalari avtomatik amalga oshiriladi, UTEL boshqaruv paneliga kirish shart emas.",
+    moiZvonkiDomain: "Mois Zvonki domeni",
+    moiZvonkiDomainPlaceholder: "masalan: test",
+    moiZvonkiUserName: "Hisob email",
+    moiZvonkiApiKey: "API kalit",
+    moiZvonkiConnectHint: "Domeningizni (masalan: https://SHU-DOMEN.moizvonki.ru manzilidagi qism), hisob emailingizni va API kalitingizni (Sozlamalar -> Integratsiya) kiriting -- webhook avtomatik sozlanadi.",
     mappingTitle: "Menejer bog'lanishlari",
     mappingProvider: "Provayder",
     mappingAgentId: "Tashqi agent ID",
@@ -45,6 +66,7 @@ const content = {
     title: "Звонки",
     sub: "Журнал всех входящих/исходящих звонков",
     loadError: "Не удалось загрузить данные",
+    loadMore: "Загрузить ещё",
     empty: "Звонков пока нет",
     emptyDesc: "Звонки появятся здесь после подключения интеграции.",
     all: "Все",
@@ -55,11 +77,27 @@ const content = {
     need2fa: "Для настройки интеграции требуется включённая 2FA.",
     connect: "Подключить",
     connected: "Подключено",
+    edit: "Редактировать",
+    disconnect: "Отключить",
+    disconnectConfirm: "Точно отключить эту интеграцию? Новые звонки через webhook перестанут поступать.",
+    disconnected: "Интеграция отключена",
+    cancel: "Отмена",
     webhookSecret: "Секрет вебхука",
-    apiKey: "API ключ (необязательно)",
-    save: "Сохранить",
     integrationSaved: "Интеграция подключена",
     genericError: "Произошла ошибка",
+    oneClickConnect: "Подключить в 1 клик",
+    webhookUrlTitle: "Webhook URL",
+    webhookSecretHint: "Вставьте этот URL и секретный ключ в настройку \"webhook\" самого провайдера.",
+    utelSubdomain: "Код компании UTEL",
+    utelSubdomainPlaceholder: "например: cc341",
+    utelEmail: "Email от UTEL",
+    utelPassword: "Пароль от UTEL",
+    utelConnectHint: "Введите код компании UTEL (часть https://ЭТОТ-КОД.utel.uz/dashboard в адресе панели), email и пароль от аккаунта -- подключение и настройка webhook произойдут автоматически, заходить в панель UTEL не нужно.",
+    moiZvonkiDomain: "Домен Мои звонки",
+    moiZvonkiDomainPlaceholder: "например: test",
+    moiZvonkiUserName: "Email аккаунта",
+    moiZvonkiApiKey: "API ключ",
+    moiZvonkiConnectHint: "Введите ваш домен (часть в адресе https://ЭТОТ-ДОМЕН.moizvonki.ru), email аккаунта и API ключ (Настройки -> Интеграция) -- webhook настроится автоматически.",
     mappingTitle: "Привязка менеджеров",
     mappingProvider: "Провайдер",
     mappingAgentId: "Внешний ID агента",
@@ -84,6 +122,8 @@ export function CallsPage() {
   const canManage = (user?.permissions ?? []).includes("calls.manage");
 
   const [calls, setCalls] = useState<Call[] | null>(null);
+  const [hasMoreCalls, setHasMoreCalls] = useState(false);
+  const [loadingMoreCalls, setLoadingMoreCalls] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -96,12 +136,15 @@ export function CallsPage() {
   const [mappingAgentId, setMappingAgentId] = useState("");
   const [mappingUserId, setMappingUserId] = useState("");
   const [mappingSaving, setMappingSaving] = useState(false);
+  const [webhookInfo, setWebhookInfo] = useState<Record<string, { webhook_url: string; webhook_secret: string } | null>>({});
 
   async function load() {
     if (!accessToken) return;
     setError(null);
     try {
-      setCalls(await callsApi.listCalls(accessToken));
+      const page = await callsApi.listCalls(accessToken);
+      setCalls(page);
+      setHasMoreCalls(page.length === CALLS_PAGE_SIZE);
     } catch (err) {
       setError(err instanceof ApiError ? err.detail : t.loadError);
       return;
@@ -111,7 +154,7 @@ export function CallsPage() {
         const [integrationsData, mappingsData, usersData] = await Promise.all([
           callsApi.listIntegrations(accessToken),
           callsApi.listManagerMappings(accessToken),
-          usersApi.listUsers(accessToken),
+          usersApi.listUsers(accessToken, USERS_DROPDOWN_LIMIT),
         ]);
         setIntegrations(integrationsData);
         setMappings(mappingsData);
@@ -126,6 +169,20 @@ export function CallsPage() {
     if (accessToken) load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken]);
+
+  async function loadMoreCalls() {
+    if (!accessToken || !calls) return;
+    setLoadingMoreCalls(true);
+    try {
+      const page = await callsApi.listCalls(accessToken, undefined, CALLS_PAGE_SIZE, calls.length);
+      setCalls([...calls, ...page]);
+      setHasMoreCalls(page.length === CALLS_PAGE_SIZE);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.detail : t.loadError);
+    } finally {
+      setLoadingMoreCalls(false);
+    }
+  }
 
   async function handleExpand(call: Call) {
     if (expandedId === call.id) {
@@ -146,20 +203,95 @@ export function CallsPage() {
     }
   }
 
-  async function handleConnectIntegration(provider: "utel" | "moi_zvonki", values: Record<string, string>) {
+  // Real UTEL connect (2026-07-17) -- logs into UTEL with the tenant's own
+  // credentials and lets the backend register our webhook URL through
+  // UTEL's own API (calls/utel_client.py), so there's no manual dashboard
+  // step and no webhook_secret to invent.
+  async function handleConnectUtel(values: Record<string, string>) {
     if (!accessToken) return;
     try {
-      await callsApi.createIntegration(accessToken, {
-        provider,
-        webhook_secret: values.webhook_secret,
-        api_key: values.api_key || undefined,
+      await callsApi.connectUtel(accessToken, {
+        subdomain: values.subdomain,
+        email: values.email,
+        password: values.password,
       });
       toast.success(t.integrationSaved);
       await load();
     } catch (err) {
-      toast.error(err instanceof ApiError && err.status === 403 ? t.need2fa : t.genericError);
+      if (err instanceof ApiError && err.status === 403) {
+        toast.error(t.need2fa);
+      } else if (err instanceof ApiError && err.status === 400) {
+        toast.error(err.detail);
+      } else {
+        toast.error(t.genericError);
+      }
     }
   }
+
+  // Real "Мои звонки" connect (2026-07-17) -- no login step needed (unlike
+  // UTEL): registers our webhook URL via its webhook.subscribe API using the
+  // tenant's own account email + a pre-existing api_key they copy from their
+  // account settings (calls/moi_zvonki_client.py).
+  async function handleConnectMoiZvonki(values: Record<string, string>) {
+    if (!accessToken) return;
+    try {
+      await callsApi.connectMoiZvonki(accessToken, {
+        domain: values.domain,
+        user_name: values.user_name,
+        api_key: values.api_key,
+      });
+      toast.success(t.integrationSaved);
+      await load();
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 403) {
+        toast.error(t.need2fa);
+      } else if (err instanceof ApiError && err.status === 400) {
+        toast.error(err.detail);
+      } else {
+        toast.error(t.genericError);
+      }
+    }
+  }
+
+  // Disconnect (2026-07-17) -- IntegrationCard's onDisconnect prop calls
+  // straight through with no confirmation, so this just opens a shared
+  // ConfirmDialog; the real API call happens in handleConfirmDisconnect,
+  // mirroring IntegrationsPage.tsx's identical pattern.
+  const [disconnectTarget, setDisconnectTarget] = useState<"utel" | "moi_zvonki" | null>(null);
+  const [disconnecting, setDisconnecting] = useState(false);
+
+  async function handleConfirmDisconnect() {
+    if (!accessToken || !disconnectTarget) return;
+    setDisconnecting(true);
+    try {
+      await callsApi.disconnectIntegration(accessToken, disconnectTarget);
+      toast.success(t.disconnected);
+      setDisconnectTarget(null);
+      await load();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.detail : t.genericError);
+    } finally {
+      setDisconnecting(false);
+    }
+  }
+
+  // Once connected (by either method), fetch the tenant's own webhook
+  // URL+secret to show instead of the connect form -- mirrors
+  // IntegrationsPage.tsx's amocrmWebhookUrl/bitrix24Info effects exactly.
+  useEffect(() => {
+    if (!accessToken) return;
+    for (const provider of ["utel", "moi_zvonki"] as const) {
+      const connected = integrations.some((i) => i.provider === provider && i.is_active);
+      if (!connected) {
+        setWebhookInfo((prev) => ({ ...prev, [provider]: null }));
+        continue;
+      }
+      callsApi
+        .getWebhookInfo(accessToken, provider)
+        .then((info) => setWebhookInfo((prev) => ({ ...prev, [provider]: info })))
+        .catch(() => setWebhookInfo((prev) => ({ ...prev, [provider]: null })));
+    }
+  }, [accessToken, integrations]);
 
   async function handleCreateMapping() {
     if (!accessToken || !mappingAgentId.trim() || !mappingUserId) return;
@@ -295,6 +427,15 @@ export function CallsPage() {
               );
             })}
           </div>
+
+          {hasMoreCalls && (
+            <div className="mt-4 flex justify-center">
+              <Button variant="outline" disabled={loadingMoreCalls} onClick={loadMoreCalls}>
+                {loadingMoreCalls && <Loader2 size={16} className="animate-spin" />}
+                {t.loadMore}
+              </Button>
+            </div>
+          )}
         </>
       )}
 
@@ -319,12 +460,29 @@ export function CallsPage() {
               connected={integrations.some((i) => i.provider === "utel" && i.is_active)}
               connectLabel={t.connect}
               connectedLabel={t.connected}
-              submitLabel={t.save}
+              editLabel={t.edit}
+              submitLabel={t.oneClickConnect}
+              hint={t.utelConnectHint}
               fields={[
-                { key: "webhook_secret", label: t.webhookSecret, secret: true },
-                { key: "api_key", label: t.apiKey, secret: true, optional: true },
+                { key: "subdomain", label: t.utelSubdomain, placeholder: t.utelSubdomainPlaceholder },
+                { key: "email", label: t.utelEmail },
+                { key: "password", label: t.utelPassword, secret: true },
               ]}
-              onSubmit={(values) => handleConnectIntegration("utel", values)}
+              onSubmit={handleConnectUtel}
+              connectedInfo={
+                webhookInfo.utel && (
+                  <>
+                    <CopyBox hint={t.webhookSecretHint} label={t.webhookUrlTitle} value={webhookInfo.utel.webhook_url} secret />
+                    <CopyBox label={t.webhookSecret} value={webhookInfo.utel.webhook_secret} secret />
+                  </>
+                )
+              }
+              onDisconnect={
+                integrations.some((i) => i.provider === "utel" && i.is_active)
+                  ? () => Promise.resolve(setDisconnectTarget("utel"))
+                  : undefined
+              }
+              disconnectLabel={t.disconnect}
             />
             <IntegrationCard
               icon={PhoneCall}
@@ -333,14 +491,48 @@ export function CallsPage() {
               connected={integrations.some((i) => i.provider === "moi_zvonki" && i.is_active)}
               connectLabel={t.connect}
               connectedLabel={t.connected}
-              submitLabel={t.save}
+              editLabel={t.edit}
+              submitLabel={t.oneClickConnect}
+              hint={t.moiZvonkiConnectHint}
               fields={[
-                { key: "webhook_secret", label: t.webhookSecret, secret: true },
-                { key: "api_key", label: t.apiKey, secret: true, optional: true },
+                { key: "domain", label: t.moiZvonkiDomain, placeholder: t.moiZvonkiDomainPlaceholder },
+                { key: "user_name", label: t.moiZvonkiUserName },
+                { key: "api_key", label: t.moiZvonkiApiKey, secret: true },
               ]}
-              onSubmit={(values) => handleConnectIntegration("moi_zvonki", values)}
+              onSubmit={handleConnectMoiZvonki}
+              connectedInfo={
+                webhookInfo.moi_zvonki && (
+                  <>
+                    <CopyBox
+                      hint={t.webhookSecretHint}
+                      label={t.webhookUrlTitle}
+                      value={webhookInfo.moi_zvonki.webhook_url}
+                      secret
+                    />
+                    <CopyBox label={t.webhookSecret} value={webhookInfo.moi_zvonki.webhook_secret} secret />
+                  </>
+                )
+              }
+              onDisconnect={
+                integrations.some((i) => i.provider === "moi_zvonki" && i.is_active)
+                  ? () => Promise.resolve(setDisconnectTarget("moi_zvonki"))
+                  : undefined
+              }
+              disconnectLabel={t.disconnect}
             />
           </div>
+
+          <ConfirmDialog
+            open={disconnectTarget !== null}
+            title={t.disconnect}
+            description={t.disconnectConfirm}
+            confirmLabel={t.disconnect}
+            cancelLabel={t.cancel}
+            destructive
+            loading={disconnecting}
+            onConfirm={handleConfirmDisconnect}
+            onCancel={() => setDisconnectTarget(null)}
+          />
 
           <div className="glass-card p-5 sm:p-6">
             <h3 className="mb-4 text-sm font-bold text-foreground">{t.mappingTitle}</h3>

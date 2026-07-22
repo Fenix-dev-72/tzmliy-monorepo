@@ -19,10 +19,18 @@ export interface CustomerCreateInput {
   stage?: CustomerStage;
 }
 
-export function listCustomers(accessToken: string) {
-  return apiFetch<Customer[]>("/api/v1/customers", { accessToken });
+export const CUSTOMERS_PAGE_SIZE = 50;
+
+export function listCustomers(accessToken: string, limit = CUSTOMERS_PAGE_SIZE, offset = 0) {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  return apiFetch<Customer[]>(`/api/v1/customers?${params.toString()}`, { accessToken });
 }
 
 export function createCustomer(accessToken: string, body: CustomerCreateInput) {
   return apiFetch<Customer>("/api/v1/customers", { method: "POST", accessToken, body });
+}
+
+export function getCustomerByPhone(accessToken: string, phone: string) {
+  const params = new URLSearchParams({ phone });
+  return apiFetch<Customer>(`/api/v1/customers/by-phone?${params.toString()}`, { accessToken });
 }

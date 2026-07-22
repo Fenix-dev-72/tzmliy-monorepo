@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -47,3 +48,19 @@ class DiagnosticsOut(BaseModel):
     negative_balance_sales: list[NegativeBalanceSaleOut]
     webhook_events_backlog: list[WebhookEventsBacklogEntryOut]
     notification_outbox_backlog: list[NotificationOutboxBacklogEntryOut]
+
+
+ExportJobStatus = Literal["pending", "processing", "done", "failed"]
+
+
+class ExportJobOut(BaseModel):
+    id: UUID
+    tenant_id: UUID
+    entity: str
+    format: str
+    status: ExportJobStatus
+    error: str | None
+    download_url: str | None = None
+    created_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None

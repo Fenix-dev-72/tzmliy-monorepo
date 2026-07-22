@@ -48,7 +48,7 @@ export function PlatformTwoFaSetupView() {
       return;
     }
     if (totpEnabled) {
-      navigate("/platform/welcome", { replace: true });
+      navigate("/platform/dashboard", { replace: true });
       return;
     }
     // Guard against React 18 StrictMode's double effect-invocation in dev —
@@ -74,7 +74,7 @@ export function PlatformTwoFaSetupView() {
     setError(null);
     try {
       await confirm2fa(submittedCode);
-      navigate("/platform/welcome");
+      navigate("/platform/dashboard");
     } catch {
       setError(t.error);
     } finally {

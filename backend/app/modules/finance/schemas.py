@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 Currency = Literal["UZS", "USD"]
 PaymentMethod = Literal["cash", "card", "click", "payme", "manual"]
 AdjustmentType = Literal["refund", "tariff_change"]
+BonusType = Literal["percent", "fixed_per_sale"]
 
 
 class PaymentCreate(BaseModel):
@@ -27,6 +28,7 @@ class PaymentOut(BaseModel):
     method: str
     idempotency_key: str
     recorded_by_user_id: UUID
+    reversed_at: datetime | None
     created_at: datetime
 
 
@@ -48,6 +50,24 @@ class LedgerEntryOut(BaseModel):
 class SaleLedgerOut(BaseModel):
     entries: list[LedgerEntryOut]
     balance: int
+
+
+class CustomerOutstandingSaleOut(BaseModel):
+    sale_id: UUID
+    catalog_category_id: UUID | None
+    category_name: str | None
+    price_amount: int
+    currency: str
+    deadline: datetime
+    status: str
+    balance: int
+
+
+class ProfitSummaryEntryOut(BaseModel):
+    currency: str
+    revenue: int
+    cost: int
+    profit: int
 
 
 class AdjustmentRequestCreate(BaseModel):
@@ -92,7 +112,17 @@ class RefundOut(BaseModel):
 class BonusPlanCreate(BaseModel):
     name: str
     applies_to_role_id: UUID
-    commission_bps: int = Field(ge=0)
+    bonus_type: BonusType = "percent"
+    # percent: commission_bps required (basis points, e.g. 300 = 3%), fixed
+    # fields left empty. fixed_per_sale: fixed_amount + fixed_amount_currency
+    # required (flat bonus per sale, e.g. 100000 UZS), commission_bps unused.
+    commission_bps: int = Field(default=0, ge=0)
+    fixed_amount: int | None = Field(default=None, ge=0)
+    fixed_amount_currency: Currency | None = None
+    # None = applies to every product/category the role sells; set = this
+    # plan only applies to sales under that one catalog category (client
+    # requirement: different bonus per product).
+    catalog_category_id: UUID | None = None
     effective_from: datetime
     effective_to: datetime | None = None
 
@@ -102,7 +132,11 @@ class BonusPlanOut(BaseModel):
     tenant_id: UUID
     name: str
     applies_to_role_id: UUID
+    bonus_type: str
     commission_bps: int
+    fixed_amount: int | None
+    fixed_amount_currency: str | None
+    catalog_category_id: UUID | None
     effective_from: datetime
     effective_to: datetime | None
     idempotency_key: str
@@ -121,9 +155,26 @@ class PayrollEntryOut(BaseModel):
     user_id: UUID
     period_start: datetime
     period_end: datetime
-    bonus_plan_id: UUID
+    bonus_plan_id: UUID | None
     base_amount: int
     bonus_amount: int
     currency: str
     computed_at: datetime
     computed_by_user_id: UUID
+
+
+PayrollJobStatus = Literal["pending", "processing", "done", "failed"]
+
+
+class PayrollJobOut(BaseModel):
+    id: UUID
+    tenant_id: UUID
+    period_start: datetime
+    period_end: datetime
+    user_id: UUID | None
+    status: PayrollJobStatus
+    error: str | None
+    requested_by_user_id: UUID
+    created_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None

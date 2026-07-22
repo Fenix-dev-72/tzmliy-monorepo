@@ -24,7 +24,11 @@ async def insert_sale(
     currency: str,
     price_amount: int,
     deadline: datetime,
+    delivery_mode: str | None,
     idempotency_key: str,
+    source: str | None = None,
+    product_id: UUID | None = None,
+    quantity: int = 1,
 ) -> dict | None:
     row = await _queries.insert_sale(
         conn,
@@ -35,7 +39,11 @@ async def insert_sale(
         currency=currency,
         price_amount=price_amount,
         deadline=deadline,
+        delivery_mode=delivery_mode,
         idempotency_key=idempotency_key,
+        source=source,
+        product_id=product_id,
+        quantity=quantity,
     )
     return _row(row)
 
@@ -50,8 +58,15 @@ async def get_sale_by_id(conn: asyncpg.Connection, sale_id: UUID) -> dict | None
     return _row(row)
 
 
-async def list_sales(conn: asyncpg.Connection) -> list[dict]:
-    rows = [row async for row in _queries.list_sales(conn)]
+async def list_sales(
+    conn: asyncpg.Connection, limit: int, offset: int, caller_id: UUID, can_view_all: bool
+) -> list[dict]:
+    rows = [
+        row
+        async for row in _queries.list_sales(
+            conn, limit=limit, offset=offset, caller_id=caller_id, can_view_all=can_view_all
+        )
+    ]
     return [dict(r) for r in rows]
 
 
@@ -88,6 +103,16 @@ async def update_sale_tariff(
     row = await _queries.update_sale_tariff(
         conn, sale_id=sale_id, price_amount=price_amount, deadline=deadline, expected_version=expected_version
     )
+    return _row(row)
+
+
+async def update_sale_status_from_crm(
+    conn: asyncpg.Connection,
+    sale_id: UUID,
+    status: str,
+    expected_version: int,
+) -> dict | None:
+    row = await _queries.update_sale_status_from_crm(conn, sale_id=sale_id, status=status, expected_version=expected_version)
     return _row(row)
 
 
@@ -137,3 +162,17 @@ async def catalog_category_exists(conn: asyncpg.Connection, catalog_category_id:
 async def user_exists(conn: asyncpg.Connection, user_id: UUID) -> bool:
     row = await _queries.user_exists(conn, user_id=user_id)
     return row["exists"]
+
+
+async def get_product_for_sale(conn: asyncpg.Connection, product_id: UUID) -> dict | None:
+    row = await _queries.get_product_for_sale(conn, product_id=product_id)
+    return _row(row)
+
+
+async def decrement_product_stock(conn: asyncpg.Connection, product_id: UUID, quantity: int) -> dict | None:
+    row = await _queries.decrement_product_stock(conn, product_id=product_id, quantity=quantity)
+    return _row(row)
+
+
+async def increment_product_stock(conn: asyncpg.Connection, product_id: UUID, quantity: int) -> None:
+    await _queries.increment_product_stock(conn, product_id=product_id, quantity=quantity)

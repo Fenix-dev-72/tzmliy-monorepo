@@ -55,7 +55,7 @@ export function ForgotPasswordView() {
         <div className="border-success/25 bg-success/12 mx-auto mb-6 flex size-16 items-center justify-center rounded-2xl border">
           <MailCheck size={28} className="text-success" />
         </div>
-        <h2 className="font-heading mb-2 text-2xl font-extrabold text-foreground">{t.sentTitle}</h2>
+        <h2 className="font-display mb-2 text-[26px] font-bold text-foreground">{t.sentTitle}</h2>
         <p className="mb-8 text-sm leading-relaxed text-foreground-muted">{t.sentDesc}</p>
         <button
           onClick={() => navigate("/login")}
@@ -75,7 +75,7 @@ export function ForgotPasswordView() {
       >
         <ArrowLeft size={14} /> {t.back}
       </button>
-      <h2 className="font-heading mb-2 text-2xl font-extrabold text-foreground">{t.title}</h2>
+      <h2 className="font-display mb-2 text-[26px] font-bold text-foreground">{t.title}</h2>
       <p className="mb-7 text-sm text-foreground-muted">{t.sub}</p>
 
       <FormField

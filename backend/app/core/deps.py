@@ -38,6 +38,10 @@ def get_pool(request: Request) -> asyncpg.Pool:
     return request.app.state.pool
 
 
+def get_replica_pool(request: Request) -> asyncpg.Pool:
+    return request.app.state.replica_pool
+
+
 def get_redis(request: Request) -> redis.Redis:
     return request.app.state.redis
 

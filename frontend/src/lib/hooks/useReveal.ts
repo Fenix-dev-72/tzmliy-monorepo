@@ -1,12 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 
-export function useReveal<T extends HTMLElement = HTMLDivElement>(threshold = 0.2) {
-  const ref = useRef<T>(null);
+// Lightweight scroll-reveal primitive -- plain IntersectionObserver + CSS
+// transition (see `.reveal-on-scroll` in theme.css), no animation library.
+// Fires once per element (disconnects after the first intersection).
+export function useReveal<T extends HTMLElement>(threshold = 0.2) {
+  const ref = useRef<T | null>(null);
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setVisible(true);
+      return;
+    }
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
@@ -14,30 +21,11 @@ export function useReveal<T extends HTMLElement = HTMLDivElement>(threshold = 0.
           observer.disconnect();
         }
       },
-      { threshold },
+      { threshold, rootMargin: "0px 0px -60px 0px" },
     );
     observer.observe(el);
     return () => observer.disconnect();
   }, [threshold]);
 
   return { ref, visible };
-}
-
-export function revealClass(visible: boolean, extra = "") {
-  return `transition-all duration-700 ease-out ${visible ? "translate-y-0 opacity-100" : "translate-y-8 opacity-0"} ${extra}`;
-}
-
-type Direction = "up" | "left" | "right" | "scale" | "blur";
-
-const directionMap: Record<Direction, { hidden: string; visible: string }> = {
-  up: { hidden: "translate-y-8 opacity-0", visible: "translate-y-0 opacity-100" },
-  left: { hidden: "-translate-x-8 opacity-0", visible: "translate-x-0 opacity-100" },
-  right: { hidden: "translate-x-8 opacity-0", visible: "translate-x-0 opacity-100" },
-  scale: { hidden: "scale-92 opacity-0", visible: "scale-100 opacity-100" },
-  blur: { hidden: "opacity-0 blur-sm scale-95", visible: "opacity-100 blur-0 scale-100" },
-};
-
-export function revealDirClass(visible: boolean, direction: Direction = "up", extra = "") {
-  const d = directionMap[direction];
-  return `transition-all duration-700 ease-out ${visible ? d.visible : d.hidden} ${extra}`;
 }

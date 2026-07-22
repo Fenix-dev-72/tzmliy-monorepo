@@ -50,6 +50,55 @@ async def get_active_integration_credential_with_account(conn: asyncpg.Connectio
     return _row(row)
 
 
+async def list_integration_credentials(conn: asyncpg.Connection) -> list[dict]:
+    return _rows([row async for row in _queries.list_integration_credentials(conn)])
+
+
+async def deactivate_integration_credential(conn: asyncpg.Connection, provider: str) -> None:
+    await _queries.deactivate_integration_credential(conn, provider=provider)
+
+
+async def upsert_oauth_integration_credential(
+    conn: asyncpg.Connection,
+    tenant_id: UUID,
+    provider: str,
+    api_key_encrypted: str,
+    external_account_id: str | None,
+    refresh_token_encrypted: str | None,
+    token_expires_at,
+    webhook_secret_encrypted: str | None = None,
+) -> dict:
+    row = await _queries.upsert_oauth_integration_credential(
+        conn,
+        tenant_id=tenant_id,
+        provider=provider,
+        api_key_encrypted=api_key_encrypted,
+        external_account_id=external_account_id,
+        refresh_token_encrypted=refresh_token_encrypted,
+        token_expires_at=token_expires_at,
+        webhook_secret_encrypted=webhook_secret_encrypted,
+    )
+    return _row(row)
+
+
+async def update_integration_credential_tokens(
+    conn: asyncpg.Connection,
+    tenant_id: UUID,
+    provider: str,
+    api_key_encrypted: str,
+    refresh_token_encrypted: str | None,
+    token_expires_at,
+) -> None:
+    await _queries.update_integration_credential_tokens(
+        conn,
+        tenant_id=tenant_id,
+        provider=provider,
+        api_key_encrypted=api_key_encrypted,
+        refresh_token_encrypted=refresh_token_encrypted,
+        token_expires_at=token_expires_at,
+    )
+
+
 async def insert_crm_lead_sync(
     conn: asyncpg.Connection,
     tenant_id: UUID,
@@ -74,6 +123,44 @@ async def insert_crm_lead_sync(
 async def list_crm_lead_syncs(conn: asyncpg.Connection) -> list[dict]:
     rows = [row async for row in _queries.list_crm_lead_syncs(conn)]
     return [_with_payload(r) for r in rows]
+
+
+async def insert_crm_manager_mapping(
+    conn: asyncpg.Connection, tenant_id: UUID, provider: str, external_manager_id: str, user_id: UUID
+) -> dict | None:
+    row = await _queries.insert_crm_manager_mapping(
+        conn, tenant_id=tenant_id, provider=provider, external_manager_id=external_manager_id, user_id=user_id
+    )
+    return _row(row)
+
+
+async def get_crm_manager_mapping_by_external_id(
+    conn: asyncpg.Connection, provider: str, external_manager_id: str
+) -> dict | None:
+    row = await _queries.get_crm_manager_mapping_by_external_id(
+        conn, provider=provider, external_manager_id=external_manager_id
+    )
+    return _row(row)
+
+
+async def list_crm_manager_mappings(conn: asyncpg.Connection) -> list[dict]:
+    rows = [row async for row in _queries.list_crm_manager_mappings(conn)]
+    return _rows(rows)
+
+
+async def user_has_crm_manager_mapping(conn: asyncpg.Connection, user_id: UUID) -> bool:
+    row = await _queries.user_has_crm_manager_mapping(conn, user_id=user_id)
+    return row["exists"]
+
+
+async def get_crm_manager_mapping_by_user(conn: asyncpg.Connection, user_id: UUID) -> dict | None:
+    row = await _queries.get_crm_manager_mapping_by_user(conn, user_id=user_id)
+    return _row(row)
+
+
+async def user_exists(conn: asyncpg.Connection, user_id: UUID) -> bool:
+    row = await _queries.user_exists(conn, user_id=user_id)
+    return row["exists"]
 
 
 async def upsert_ad_campaign(

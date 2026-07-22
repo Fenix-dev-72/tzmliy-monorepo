@@ -6,7 +6,7 @@ import { decodeJwtPayload } from "@/lib/auth/jwt";
 import { formatMoney } from "@/lib/format/money";
 import { FormField } from "@/components/auth/FormField";
 import { Button } from "@/components/ui/button";
-import { TzmliyLogo, TzmliyWordmark } from "@/components/layout/TzmliyLogo";
+import { TizimlyLogo, TizimlyWordmark } from "@/components/layout/TizimlyLogo";
 import type { LeaderboardEntry } from "@/lib/api/analytics";
 
 const STORAGE_KEY = "tzmliy_dashboard_session";
@@ -69,8 +69,8 @@ function KioskLogin({ onSuccess }: { onSuccess: (token: string) => void }) {
     <div className="bg-background flex min-h-screen items-center justify-center p-4">
       <div className="glass-card auth-card-enter w-full max-w-sm p-8">
         <div className="mb-6 flex flex-col items-center gap-2">
-          <TzmliyLogo size={32} />
-          <TzmliyWordmark className="text-lg" />
+          <TizimlyLogo size={32} />
+          <TizimlyWordmark className="text-lg" />
         </div>
         <h1 className="font-heading mb-1 text-center text-lg font-bold text-foreground">{content.title}</h1>
         <p className="mb-6 text-center text-sm text-foreground-muted">{content.sub}</p>
@@ -125,8 +125,8 @@ function KioskBoard({ token, onLogout }: { token: string; onLogout: () => void }
     <div className="bg-background min-h-screen p-6 sm:p-10">
       <div className="mb-8 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <TzmliyLogo size={30} />
-          <TzmliyWordmark className="text-xl" />
+          <TizimlyLogo size={30} />
+          <TizimlyWordmark className="text-xl" />
         </div>
         <div className="flex items-center gap-4">
           {live && (

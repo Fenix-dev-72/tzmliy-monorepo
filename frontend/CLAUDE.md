@@ -135,8 +135,11 @@ codebase doesn't end up with two parallel styling systems once dashboard pages a
 - `/` landing page
 - `/login/*` tenant auth (identifier + password, phone/OTP, forgot/reset), `/register/*` self-service tenant
   registration (identifier → code → company+password → trial-or-pay), `/dashboard` (tenant post-login page —
-  `GET /api/v1/analytics/summary` only, today's period, no date-range picker; shows an explicit empty state
-  for a tenant with no sales yet)
+  `GET /api/v1/analytics/summary` (today's totals) plus `GET /api/v1/analytics/revenue-timeseries`
+  (Kunlik/Haftalik/Oylik toggle — last 24h hourly / 7d daily / 30d daily, bucketed in Python against a fixed
+  Asia/Tashkent offset, not SQL `date_trunc`, to avoid a session-timezone mismatch — see
+  `analytics/service.py`'s `_bucket_boundaries`) and `GET /api/v1/analytics/debt-summary` (outstanding +
+  overdue customer debt per currency); shows an explicit empty state for a tenant with no sales yet)
 - `/platform/*` platform admin auth, `/platform/tenants/new` (secondary tenant-onboarding path, two-step
   wizard: `POST /platform/v1/tenants` then `POST /platform/v1/tenants/{id}/admin-user`)
 - `src/lib/api/billing.ts` — scoped narrowly to what `/register/plan` needs (`GET /plans`,

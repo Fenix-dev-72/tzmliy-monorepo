@@ -1,3 +1,4 @@
+import asyncio
 import base64
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
@@ -339,56 +340,74 @@ async def get_usage(pool: asyncpg.Pool, tenant_id: UUID) -> dict:
     return snapshot
 
 
-async def recalculate_storage(pool: asyncpg.Pool, admin_id: UUID, tenant_id: UUID, reason: str) -> dict:
+async def recalculate_storage(
+    pool: asyncpg.Pool, admin_id: UUID, tenant_id: UUID, reason: str, settings: Settings, force: bool = False
+) -> dict:
+    """optimize.md #9: compute_tenant_db_bytes scans every tenant-scoped table
+    (pg_column_size over ~24 tables) -- skip redoing that if the latest
+    snapshot is still fresh (billing_storage_recalc_cache_minutes), unless the
+    caller explicitly asks for force=True. Storage doesn't change fast enough
+    to need a fresh scan on every manual click."""
     await _require_admin_2fa(pool, admin_id)
+    cached_snapshot: dict | None = None
     async with tenant_connection(pool, tenant_id) as conn:
-        sub = await repository.get_tenant_subscription(conn, tenant_id)
-        if sub is None:
-            raise SubscriptionNotFoundError
-        plan = await repository.get_billing_plan_by_id(conn, sub["billing_plan_id"])
+        if not force:
+            latest = await repository.get_latest_storage_usage_snapshot(conn)
+            if latest is not None:
+                age = datetime.now(timezone.utc) - latest["computed_at"]
+                if age < timedelta(minutes=settings.billing_storage_recalc_cache_minutes):
+                    cached_snapshot = latest
 
-        db_bytes = await repository.compute_tenant_db_bytes(conn)
-        object_bytes = await storage.get_prefix_total_bytes(f"recordings/{tenant_id}/")
-        total_bytes = db_bytes + object_bytes
-        limit = plan["max_billable_storage_bytes"]
-        usage_ratio_bps = (total_bytes * 10000) // limit
+        if cached_snapshot is None:
+            sub = await repository.get_tenant_subscription(conn, tenant_id)
+            if sub is None:
+                raise SubscriptionNotFoundError
+            plan = await repository.get_billing_plan_by_id(conn, sub["billing_plan_id"])
 
-        snapshot = await repository.upsert_storage_usage_snapshot(
-            conn, tenant_id, db_bytes, object_bytes, total_bytes, limit, usage_ratio_bps
-        )
+            db_bytes = await repository.compute_tenant_db_bytes(conn)
+            object_bytes = await storage.get_prefix_total_bytes(f"recordings/{tenant_id}/")
+            total_bytes = db_bytes + object_bytes
+            limit = plan["max_billable_storage_bytes"]
+            usage_ratio_bps = (total_bytes * 10000) // limit
 
-        warning_80 = sub["warning_80_sent_at"]
-        warning_100 = sub["warning_100_sent_at"]
-        new_warning_80, new_warning_100 = warning_80, warning_100
-        now = datetime.now(timezone.utc)
+            snapshot = await repository.upsert_storage_usage_snapshot(
+                conn, tenant_id, db_bytes, object_bytes, total_bytes, limit, usage_ratio_bps
+            )
 
-        if usage_ratio_bps >= 10000:
-            if warning_100 is None:
-                notify.send_alert(
-                    channel="system",
-                    destination=str(tenant_id),
-                    message=f"Storage usage at {usage_ratio_bps / 100:.0f}% of plan limit",
-                )
-                new_warning_100 = now
-        else:
-            new_warning_100 = None
+            warning_80 = sub["warning_80_sent_at"]
+            warning_100 = sub["warning_100_sent_at"]
+            new_warning_80, new_warning_100 = warning_80, warning_100
+            now = datetime.now(timezone.utc)
 
-        if usage_ratio_bps >= 8000:
-            if warning_80 is None:
-                notify.send_alert(
-                    channel="system",
-                    destination=str(tenant_id),
-                    message=f"Storage usage at {usage_ratio_bps / 100:.0f}% of plan limit",
-                )
-                new_warning_80 = now
-        else:
-            new_warning_80 = None
+            if usage_ratio_bps >= 10000:
+                if warning_100 is None:
+                    notify.send_alert(
+                        channel="system",
+                        destination=str(tenant_id),
+                        message=f"Storage usage at {usage_ratio_bps / 100:.0f}% of plan limit",
+                    )
+                    new_warning_100 = now
+            else:
+                new_warning_100 = None
 
-        if new_warning_80 != warning_80 or new_warning_100 != warning_100:
-            await repository.set_storage_warning_flags(conn, tenant_id, new_warning_80, new_warning_100)
+            if usage_ratio_bps >= 8000:
+                if warning_80 is None:
+                    notify.send_alert(
+                        channel="system",
+                        destination=str(tenant_id),
+                        message=f"Storage usage at {usage_ratio_bps / 100:.0f}% of plan limit",
+                    )
+                    new_warning_80 = now
+            else:
+                new_warning_80 = None
 
-    await _audit(pool, admin_id, tenant_id, "recalculate_storage", reason)
-    return snapshot
+            if new_warning_80 != warning_80 or new_warning_100 != warning_100:
+                await repository.set_storage_warning_flags(conn, tenant_id, new_warning_80, new_warning_100)
+
+    result = cached_snapshot if cached_snapshot is not None else snapshot
+    action = "recalculate_storage_cached" if cached_snapshot is not None else "recalculate_storage"
+    await _audit(pool, admin_id, tenant_id, action, reason)
+    return result
 
 
 # --- Dunning ----------------------------------------------------------------
@@ -400,50 +419,58 @@ async def run_dunning(pool: asyncpg.Pool, admin_id: UUID, settings: Settings, re
         all_tenants = await tenants_repository.list_tenants(conn)
 
     now = datetime.now(timezone.utc)
-    results = []
-    for tenant in all_tenants:
-        old_status = tenant["status"]
+    # optimize.md #24 (2026-07-18): was a sequential `for tenant in
+    # all_tenants` loop -- one slow tenant connection delayed every other
+    # tenant's status advance on this run. Each tenant gets its own
+    # tenant_connection, so running them concurrently is safe; bounded by a
+    # semaphore, same shape as crm/worker.py's sync_meta_ads.
+    semaphore = asyncio.Semaphore(settings.tenant_loop_max_concurrency)
 
-        if old_status == "trial":
-            # Self-registered (or Platform-Admin-provisioned) tenants that
-            # never paid: trial_ends_at is set at tenant creation (DB column
-            # default, 0020_self_registration.sql). NULL means "no automatic
-            # expiry" -- an escape hatch for tenants that predate this
-            # feature or were deliberately exempted, never auto-suspended.
-            if tenant["trial_ends_at"] is not None and tenant["trial_ends_at"] < now:
-                async with tenant_connection(pool, tenant["id"]) as conn:
-                    await tenants_repository.update_tenant_status(conn, tenant["id"], "suspended")
-                await _audit(pool, admin_id, tenant["id"], "dunning_advance:trial->suspended", reason)
-                results.append({"tenant_id": tenant["id"], "old_status": "trial", "new_status": "suspended"})
-            continue
+    async def _advance_tenant(tenant: dict) -> dict | None:
+        async with semaphore:
+            old_status = tenant["status"]
 
-        if old_status not in ("active", "past_due", "grace"):
-            continue
+            if old_status == "trial":
+                # Self-registered (or Platform-Admin-provisioned) tenants that
+                # never paid: trial_ends_at is set at tenant creation (DB column
+                # default, 0020_self_registration.sql). NULL means "no automatic
+                # expiry" -- an escape hatch for tenants that predate this
+                # feature or were deliberately exempted, never auto-suspended.
+                if tenant["trial_ends_at"] is not None and tenant["trial_ends_at"] < now:
+                    async with tenant_connection(pool, tenant["id"]) as conn:
+                        await tenants_repository.update_tenant_status(conn, tenant["id"], "suspended")
+                    await _audit(pool, admin_id, tenant["id"], "dunning_advance:trial->suspended", reason)
+                    return {"tenant_id": tenant["id"], "old_status": "trial", "new_status": "suspended"}
+                return None
 
-        async with tenant_connection(pool, tenant["id"]) as conn:
-            sub = await repository.get_tenant_subscription(conn, tenant["id"])
-            if sub is None or sub["current_period_end"] >= now:
-                continue
+            if old_status not in ("active", "past_due", "grace"):
+                return None
 
-            overdue_for = now - sub["current_period_end"]
-            new_status = old_status
-            if old_status == "active":
-                new_status = "past_due"
-            elif old_status == "past_due" and overdue_for >= timedelta(days=settings.billing_past_due_grace_days):
-                new_status = "grace"
-            elif old_status == "grace" and overdue_for >= timedelta(
-                days=settings.billing_past_due_grace_days + settings.billing_grace_suspend_days
-            ):
-                new_status = "suspended"
+            async with tenant_connection(pool, tenant["id"]) as conn:
+                sub = await repository.get_tenant_subscription(conn, tenant["id"])
+                if sub is None or sub["current_period_end"] >= now:
+                    return None
 
-            if new_status == old_status:
-                continue
-            await tenants_repository.update_tenant_status(conn, tenant["id"], new_status)
+                overdue_for = now - sub["current_period_end"]
+                new_status = old_status
+                if old_status == "active":
+                    new_status = "past_due"
+                elif old_status == "past_due" and overdue_for >= timedelta(days=settings.billing_past_due_grace_days):
+                    new_status = "grace"
+                elif old_status == "grace" and overdue_for >= timedelta(
+                    days=settings.billing_past_due_grace_days + settings.billing_grace_suspend_days
+                ):
+                    new_status = "suspended"
 
-        await _audit(pool, admin_id, tenant["id"], f"dunning_advance:{old_status}->{new_status}", reason)
-        results.append({"tenant_id": tenant["id"], "old_status": old_status, "new_status": new_status})
+                if new_status == old_status:
+                    return None
+                await tenants_repository.update_tenant_status(conn, tenant["id"], new_status)
 
-    return results
+            await _audit(pool, admin_id, tenant["id"], f"dunning_advance:{old_status}->{new_status}", reason)
+            return {"tenant_id": tenant["id"], "old_status": old_status, "new_status": new_status}
+
+    advanced = await asyncio.gather(*(_advance_tenant(tenant) for tenant in all_tenants))
+    return [result for result in advanced if result is not None]
 
 
 # --- Payme JSON-RPC ---------------------------------------------------------

@@ -1,83 +1,110 @@
 import { createBrowserRouter } from "react-router";
 import { LandingPage } from "@/pages/landing/LandingPage";
 import { TenantAuthLayout } from "@/pages/tenant-auth/TenantAuthLayout";
-import { LoginView } from "@/pages/tenant-auth/LoginView";
-import { OtpVerifyView } from "@/pages/tenant-auth/OtpVerifyView";
-import { TwoFaVerifyView } from "@/pages/tenant-auth/TwoFaVerifyView";
-import { ForgotPasswordView } from "@/pages/tenant-auth/ForgotPasswordView";
-import { NewPasswordView } from "@/pages/tenant-auth/NewPasswordView";
-import { RegisterView } from "@/pages/tenant-auth/RegisterView";
-import { RegisterVerifyView } from "@/pages/tenant-auth/RegisterVerifyView";
-import { RegisterCompleteView } from "@/pages/tenant-auth/RegisterCompleteView";
-import { RegisterPlanView } from "@/pages/tenant-auth/RegisterPlanView";
 import { DashboardLayout } from "@/pages/dashboard/DashboardLayout";
-import { DashboardPage } from "@/pages/dashboard/DashboardPage";
-import { SalesPage } from "@/pages/dashboard/SalesPage";
-import { CustomersPage } from "@/pages/dashboard/CustomersPage";
-import { FinancePage } from "@/pages/dashboard/FinancePage";
-import { UsersPage } from "@/pages/dashboard/UsersPage";
-import { RolesPage } from "@/pages/dashboard/RolesPage";
-import { SellersPage } from "@/pages/dashboard/SellersPage";
-import { CallsPage } from "@/pages/dashboard/CallsPage";
-import { AttendancePage } from "@/pages/dashboard/AttendancePage";
-import { IntegrationsPage } from "@/pages/dashboard/IntegrationsPage";
-import { NotificationsPage } from "@/pages/dashboard/NotificationsPage";
-import { CatalogPage } from "@/pages/dashboard/CatalogPage";
-import { CourseSalesPage } from "@/pages/dashboard/CourseSalesPage";
-import { ReportsPage } from "@/pages/dashboard/ReportsPage";
-import { TwoFactorSettingsPage } from "@/pages/dashboard/TwoFactorSettingsPage";
-import { DashboardKioskPage } from "@/pages/kiosk/DashboardKioskPage";
 import { PlatformAuthLayout } from "@/pages/platform-auth/PlatformAuthLayout";
-import { PlatformLoginView } from "@/pages/platform-auth/PlatformLoginView";
-import { PlatformTwoFaVerifyView } from "@/pages/platform-auth/PlatformTwoFaVerifyView";
-import { PlatformTwoFaSetupView } from "@/pages/platform-auth/PlatformTwoFaSetupView";
-import { PlatformWelcomeView } from "@/pages/platform-auth/PlatformWelcomeView";
-import { PlatformCreateTenantView } from "@/pages/platform-auth/PlatformCreateTenantView";
+import { PlatformDashboardLayout } from "@/pages/platform-auth/PlatformDashboardLayout";
 import { NotFound } from "@/pages/NotFound";
+
+// Route-level code splitting (2026-07-17) -- every dashboard/auth/platform
+// page used to be imported eagerly at the top of this file, so the very
+// first page load shipped one ~1.15MB JS bundle containing Sales, Finance,
+// Reports, the whole Platform Admin console, etc. even though a given
+// session only ever touches a handful of those routes. react-router 7's
+// native `lazy` route field splits each page into its own chunk, fetched
+// only the first time its route is actually visited -- no manual
+// React.lazy/Suspense wrapper needed, the router handles the pending
+// navigation itself. Only the shells that render on (almost) every request
+// (LandingPage as the site's first paint, the three layout wrappers, and
+// NotFound) stay eager -- splitting those further would just add a network
+// round trip to the pages guaranteed to be needed immediately.
 
 export const router = createBrowserRouter([
   { path: "/", element: <LandingPage /> },
-  { path: "/tv", element: <DashboardKioskPage /> },
+  {
+    path: "/tv",
+    lazy: () => import("@/pages/kiosk/DashboardKioskPage").then((m) => ({ Component: m.DashboardKioskPage })),
+  },
   {
     path: "/dashboard",
     element: <DashboardLayout />,
     children: [
-      { index: true, element: <DashboardPage /> },
-      { path: "sales", element: <SalesPage /> },
-      { path: "customers", element: <CustomersPage /> },
-      { path: "finance", element: <FinancePage /> },
-      { path: "sellers", element: <SellersPage /> },
-      { path: "users", element: <UsersPage /> },
-      { path: "roles", element: <RolesPage /> },
-      { path: "calls", element: <CallsPage /> },
-      { path: "attendance", element: <AttendancePage /> },
-      { path: "integrations", element: <IntegrationsPage /> },
-      { path: "notifications", element: <NotificationsPage /> },
-      { path: "catalog", element: <CatalogPage /> },
-      { path: "course-sales", element: <CourseSalesPage /> },
-      { path: "reports", element: <ReportsPage /> },
-      { path: "settings/2fa", element: <TwoFactorSettingsPage /> },
+      { index: true, lazy: () => import("@/pages/dashboard/DashboardPage").then((m) => ({ Component: m.DashboardPage })) },
+      { path: "sales", lazy: () => import("@/pages/dashboard/SalesPage").then((m) => ({ Component: m.SalesPage })) },
+      {
+        path: "customers",
+        lazy: () => import("@/pages/dashboard/CustomersPage").then((m) => ({ Component: m.CustomersPage })),
+      },
+      { path: "finance", lazy: () => import("@/pages/dashboard/FinancePage").then((m) => ({ Component: m.FinancePage })) },
+      { path: "sellers", lazy: () => import("@/pages/dashboard/SellersPage").then((m) => ({ Component: m.SellersPage })) },
+      {
+        path: "sellers/:userId",
+        lazy: () => import("@/pages/dashboard/SellerDetailPage").then((m) => ({ Component: m.SellerDetailPage })),
+      },
+      { path: "users", lazy: () => import("@/pages/dashboard/UsersPage").then((m) => ({ Component: m.UsersPage })) },
+      { path: "roles", lazy: () => import("@/pages/dashboard/RolesPage").then((m) => ({ Component: m.RolesPage })) },
+      { path: "calls", lazy: () => import("@/pages/dashboard/CallsPage").then((m) => ({ Component: m.CallsPage })) },
+      {
+        path: "attendance",
+        lazy: () => import("@/pages/dashboard/AttendancePage").then((m) => ({ Component: m.AttendancePage })),
+      },
+      {
+        path: "integrations",
+        lazy: () => import("@/pages/dashboard/IntegrationsPage").then((m) => ({ Component: m.IntegrationsPage })),
+      },
+      {
+        path: "notifications",
+        lazy: () => import("@/pages/dashboard/NotificationsPage").then((m) => ({ Component: m.NotificationsPage })),
+      },
+      { path: "products", lazy: () => import("@/pages/dashboard/ProductsPage").then((m) => ({ Component: m.ProductsPage })) },
+      {
+        path: "warehouse",
+        lazy: () => import("@/pages/dashboard/WarehousePage").then((m) => ({ Component: m.WarehousePage })),
+      },
+      {
+        path: "course-sales",
+        lazy: () => import("@/pages/dashboard/CourseSalesPage").then((m) => ({ Component: m.CourseSalesPage })),
+      },
+      { path: "reports", lazy: () => import("@/pages/dashboard/ReportsPage").then((m) => ({ Component: m.ReportsPage })) },
+      { path: "support", lazy: () => import("@/pages/dashboard/SupportPage").then((m) => ({ Component: m.SupportPage })) },
+      {
+        path: "settings/2fa",
+        lazy: () => import("@/pages/dashboard/TwoFactorSettingsPage").then((m) => ({ Component: m.TwoFactorSettingsPage })),
+      },
+      {
+        path: "complete-setup",
+        lazy: () => import("@/pages/dashboard/CompleteSetupPage").then((m) => ({ Component: m.CompleteSetupPage })),
+      },
     ],
   },
   {
     path: "/login",
     element: <TenantAuthLayout />,
     children: [
-      { index: true, element: <LoginView /> },
-      { path: "otp", element: <OtpVerifyView /> },
-      { path: "2fa", element: <TwoFaVerifyView /> },
-      { path: "forgot", element: <ForgotPasswordView /> },
-      { path: "reset", element: <NewPasswordView /> },
+      { index: true, lazy: () => import("@/pages/tenant-auth/LoginView").then((m) => ({ Component: m.LoginView })) },
+      { path: "otp", lazy: () => import("@/pages/tenant-auth/OtpVerifyView").then((m) => ({ Component: m.OtpVerifyView })) },
+      { path: "2fa", lazy: () => import("@/pages/tenant-auth/TwoFaVerifyView").then((m) => ({ Component: m.TwoFaVerifyView })) },
+      {
+        path: "forgot",
+        lazy: () => import("@/pages/tenant-auth/ForgotPasswordView").then((m) => ({ Component: m.ForgotPasswordView })),
+      },
+      { path: "reset", lazy: () => import("@/pages/tenant-auth/NewPasswordView").then((m) => ({ Component: m.NewPasswordView })) },
     ],
   },
   {
     path: "/register",
     element: <TenantAuthLayout />,
     children: [
-      { index: true, element: <RegisterView /> },
-      { path: "verify", element: <RegisterVerifyView /> },
-      { path: "complete", element: <RegisterCompleteView /> },
-      { path: "plan", element: <RegisterPlanView /> },
+      { index: true, lazy: () => import("@/pages/tenant-auth/RegisterView").then((m) => ({ Component: m.RegisterView })) },
+      {
+        path: "verify",
+        lazy: () => import("@/pages/tenant-auth/RegisterVerifyView").then((m) => ({ Component: m.RegisterVerifyView })),
+      },
+      {
+        path: "complete",
+        lazy: () => import("@/pages/tenant-auth/RegisterCompleteView").then((m) => ({ Component: m.RegisterCompleteView })),
+      },
+      { path: "plan", lazy: () => import("@/pages/tenant-auth/RegisterPlanView").then((m) => ({ Component: m.RegisterPlanView })) },
     ],
   },
   {
@@ -87,16 +114,45 @@ export const router = createBrowserRouter([
         path: "login",
         element: <PlatformAuthLayout />,
         children: [
-          { index: true, element: <PlatformLoginView /> },
-          { path: "2fa", element: <PlatformTwoFaVerifyView /> },
+          {
+            index: true,
+            lazy: () => import("@/pages/platform-auth/PlatformLoginView").then((m) => ({ Component: m.PlatformLoginView })),
+          },
+          {
+            path: "2fa",
+            lazy: () =>
+              import("@/pages/platform-auth/PlatformTwoFaVerifyView").then((m) => ({ Component: m.PlatformTwoFaVerifyView })),
+          },
         ],
       },
       {
         element: <PlatformAuthLayout />,
         children: [
-          { path: "2fa-setup", element: <PlatformTwoFaSetupView /> },
-          { path: "welcome", element: <PlatformWelcomeView /> },
-          { path: "tenants/new", element: <PlatformCreateTenantView /> },
+          {
+            path: "2fa-setup",
+            lazy: () =>
+              import("@/pages/platform-auth/PlatformTwoFaSetupView").then((m) => ({ Component: m.PlatformTwoFaSetupView })),
+          },
+        ],
+      },
+      {
+        element: <PlatformDashboardLayout />,
+        children: [
+          {
+            path: "dashboard",
+            lazy: () =>
+              import("@/pages/platform-auth/PlatformDashboardPage").then((m) => ({ Component: m.PlatformDashboardPage })),
+          },
+          {
+            path: "complaints",
+            lazy: () =>
+              import("@/pages/platform-auth/PlatformComplaintsPage").then((m) => ({ Component: m.PlatformComplaintsPage })),
+          },
+          {
+            path: "tenants/new",
+            lazy: () =>
+              import("@/pages/platform-auth/PlatformCreateTenantView").then((m) => ({ Component: m.PlatformCreateTenantView })),
+          },
         ],
       },
     ],

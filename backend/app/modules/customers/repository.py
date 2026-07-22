@@ -17,9 +17,11 @@ async def insert_customer(
     conn: asyncpg.Connection,
     tenant_id: UUID,
     full_name: str,
-    phone: str,
+    phone: str | None,
     responsible_user_id: UUID | None,
     stage: str,
+    source: str | None = None,
+    created_by_user_id: UUID | None = None,
 ) -> dict | None:
     row = await _queries.insert_customer(
         conn,
@@ -28,6 +30,8 @@ async def insert_customer(
         phone=phone,
         responsible_user_id=responsible_user_id,
         stage=stage,
+        source=source,
+        created_by_user_id=created_by_user_id,
     )
     return _row(row)
 
@@ -42,8 +46,15 @@ async def get_customer_by_phone(conn: asyncpg.Connection, phone: str) -> dict | 
     return _row(row)
 
 
-async def list_customers(conn: asyncpg.Connection) -> list[dict]:
-    rows = [row async for row in _queries.list_customers(conn)]
+async def list_customers(
+    conn: asyncpg.Connection, limit: int, offset: int, caller_id: UUID, can_view_all: bool
+) -> list[dict]:
+    rows = [
+        row
+        async for row in _queries.list_customers(
+            conn, limit=limit, offset=offset, caller_id=caller_id, can_view_all=can_view_all
+        )
+    ]
     return [dict(r) for r in rows]
 
 
@@ -64,6 +75,12 @@ async def update_customer(
         stage=stage,
     )
     return _row(row)
+
+
+async def update_customer_crm_outcome(
+    conn: asyncpg.Connection, customer_id: UUID, stage: str, quality: str, lost_reason: str | None
+) -> None:
+    await _queries.update_customer_crm_outcome(conn, customer_id=customer_id, stage=stage, quality=quality, lost_reason=lost_reason)
 
 
 async def user_exists(conn: asyncpg.Connection, user_id: UUID) -> bool:

@@ -11,7 +11,7 @@ export function AuthCard({
   className?: string;
 }) {
   return (
-    <div className={cn("glass-card auth-card-enter w-full p-6 sm:p-10", className)} style={{ maxWidth }}>
+    <div className={cn("glass-card gold-hairline w-full p-6 sm:p-10", className)} style={{ maxWidth }}>
       {children}
     </div>
   );

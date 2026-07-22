@@ -33,8 +33,8 @@ async def count_children(conn: asyncpg.Connection, category_id: UUID) -> int:
     return row["n"]
 
 
-async def update_category_name(conn: asyncpg.Connection, category_id: UUID, name: str) -> None:
-    await _queries.update_category_name(conn, category_id=category_id, name=name)
+async def update_category(conn: asyncpg.Connection, category_id: UUID, name: str) -> None:
+    await _queries.update_category(conn, category_id=category_id, name=name)
 
 
 async def delete_category(conn: asyncpg.Connection, category_id: UUID) -> None:

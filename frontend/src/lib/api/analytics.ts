@@ -49,6 +49,103 @@ export function getCourseSales(accessToken: string, periodStart?: string, period
   return apiFetch<CategorySalesEntry[]>(`/api/v1/analytics/course-sales${query}`, { accessToken });
 }
 
+export interface SellerSalesByMode {
+  mode: "online" | "offline" | "intensive" | null;
+  currency: string;
+  sales_count: number;
+  agreed_amount: number;
+  collected_amount: number;
+}
+
+export interface SellerKpis {
+  period_start: string;
+  period_end: string;
+  leads_count: number;
+  sales_count: number;
+  conversion_pct: number | null;
+  sales_total_uzs: number;
+  sales_total_usd: number;
+  debt_collection_pct: number | null;
+  refund_pct: number | null;
+  // null when the seller hasn't linked their CRM identity yet, or the live
+  // AmoCRM/Bitrix24 call failed -- render as a placeholder, not an error.
+  followup_pct: number | null;
+  followup_total: number | null;
+  followup_linked: boolean;
+  sales_by_mode: SellerSalesByMode[];
+  calls_total: number;
+  calls_outbound: number;
+  calls_inbound: number;
+  calls_missed_pct: number | null;
+  calls_avg_duration_seconds: number | null;
+  calls_daily_talk_seconds: number | null;
+  crm_notes_count: number;
+  crm_stage_changes_count: number;
+  leads_active_count: number;
+  leads_won_count: number;
+  leads_lost_count: number;
+  // 2026-07-15 (seller/lead analytics): only ever set once a lead reaches a
+  // terminal CRM outcome.
+  leads_quality_count: number;
+  leads_low_quality_count: number;
+  lead_response_median_seconds: number | null;
+}
+
+// One combined request per period change -- backend runs 9 internal
+// aggregate queries (in parallel) + one external CRM call server-side, so
+// the frontend never needs more than this single call per tile refresh.
+export function getSellerKpis(accessToken: string, userId: string, periodStart: string, periodEnd: string) {
+  const params = new URLSearchParams({ period_start: periodStart, period_end: periodEnd });
+  return apiFetch<SellerKpis>(`/api/v1/analytics/sellers/${userId}/kpis?${params.toString()}`, { accessToken });
+}
+
+export type RevenuePeriod = "day" | "week" | "month";
+
+export interface RevenueBucket {
+  bucket_start: string;
+  currency: string;
+  sales_amount: number;
+  collected_amount: number;
+}
+
+export function getRevenueTimeseries(accessToken: string, period: RevenuePeriod) {
+  return apiFetch<RevenueBucket[]>(`/api/v1/analytics/revenue-timeseries?period=${period}`, { accessToken });
+}
+
+export interface DebtSummaryEntry {
+  currency: string;
+  total_outstanding: number;
+  overdue_amount: number;
+  overdue_count: number;
+}
+
+export function getDebtSummary(accessToken: string) {
+  return apiFetch<DebtSummaryEntry[]>("/api/v1/analytics/debt-summary", { accessToken });
+}
+
+// Tenant-wide counterpart to SellerKpis' lead-funnel section (2026-07-15,
+// "umumiy ishlarni adminga ko'rsatish kerak") -- summed across every
+// seller, shown on the main dashboard rather than the per-seller KPI modal.
+export interface LeadQualitySummary {
+  period_start: string;
+  period_end: string;
+  received_count: number;
+  active_count: number;
+  won_count: number;
+  lost_count: number;
+  quality_count: number;
+  low_quality_count: number;
+  conversion_pct: number | null;
+}
+
+export function getLeadQualitySummary(accessToken: string, periodStart?: string, periodEnd?: string) {
+  const params = new URLSearchParams();
+  if (periodStart) params.set("period_start", periodStart);
+  if (periodEnd) params.set("period_end", periodEnd);
+  const query = params.toString();
+  return apiFetch<LeadQualitySummary>(`/api/v1/analytics/lead-quality-summary${query ? `?${query}` : ""}`, { accessToken });
+}
+
 export interface KioskDashboard {
   id: string;
   tenant_id: string;

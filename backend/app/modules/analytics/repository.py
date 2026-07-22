@@ -53,39 +53,160 @@ async def delete_dashboard(conn: asyncpg.Connection, dashboard_id: UUID) -> None
     await _queries.delete_dashboard(conn, dashboard_id=dashboard_id)
 
 
-async def get_leaderboard(conn: asyncpg.Connection, period_start: datetime, period_end: datetime) -> list[dict]:
-    rows = [row async for row in _queries.get_leaderboard(conn, period_start=period_start, period_end=period_end)]
-    return _rows(rows)
-
-
-async def get_category_sales_summary(conn: asyncpg.Connection, period_start: datetime, period_end: datetime) -> list[dict]:
-    rows = [
-        row
-        async for row in _queries.get_category_sales_summary(conn, period_start=period_start, period_end=period_end)
-    ]
-    return _rows(rows)
-
-
-async def get_sales_totals_by_currency(conn: asyncpg.Connection, period_start: datetime, period_end: datetime) -> list[dict]:
-    rows = [
-        row
-        async for row in _queries.get_sales_totals_by_currency(conn, period_start=period_start, period_end=period_end)
-    ]
-    return _rows(rows)
-
-
-async def get_collected_totals_by_currency(
-    conn: asyncpg.Connection, period_start: datetime, period_end: datetime
+async def get_leaderboard(
+    conn: asyncpg.Connection, period_start: datetime, period_end: datetime, caller_id: UUID, can_view_all: bool
 ) -> list[dict]:
     rows = [
         row
-        async for row in _queries.get_collected_totals_by_currency(
-            conn, period_start=period_start, period_end=period_end
+        async for row in _queries.get_leaderboard(
+            conn, period_start=period_start, period_end=period_end, caller_id=caller_id, can_view_all=can_view_all
         )
     ]
     return _rows(rows)
 
 
-async def count_active_customers(conn: asyncpg.Connection) -> int:
-    row = await _queries.count_active_customers(conn)
+async def get_category_sales_summary(
+    conn: asyncpg.Connection, period_start: datetime, period_end: datetime, caller_id: UUID, can_view_all: bool
+) -> list[dict]:
+    rows = [
+        row
+        async for row in _queries.get_category_sales_summary(
+            conn, period_start=period_start, period_end=period_end, caller_id=caller_id, can_view_all=can_view_all
+        )
+    ]
+    return _rows(rows)
+
+
+async def get_sales_totals_by_currency(
+    conn: asyncpg.Connection, period_start: datetime, period_end: datetime, caller_id: UUID, can_view_all: bool
+) -> list[dict]:
+    rows = [
+        row
+        async for row in _queries.get_sales_totals_by_currency(
+            conn, period_start=period_start, period_end=period_end, caller_id=caller_id, can_view_all=can_view_all
+        )
+    ]
+    return _rows(rows)
+
+
+async def get_collected_totals_by_currency(
+    conn: asyncpg.Connection, period_start: datetime, period_end: datetime, caller_id: UUID, can_view_all: bool
+) -> list[dict]:
+    rows = [
+        row
+        async for row in _queries.get_collected_totals_by_currency(
+            conn, period_start=period_start, period_end=period_end, caller_id=caller_id, can_view_all=can_view_all
+        )
+    ]
+    return _rows(rows)
+
+
+async def count_active_customers(conn: asyncpg.Connection, caller_id: UUID, can_view_all: bool) -> int:
+    row = await _queries.count_active_customers(conn, caller_id=caller_id, can_view_all=can_view_all)
     return row["count"]
+
+
+async def get_sales_timeseries_buckets(
+    conn: asyncpg.Connection,
+    period_start: datetime,
+    period_end: datetime,
+    unit: str,
+    caller_id: UUID,
+    can_view_all: bool,
+) -> list[dict]:
+    rows = [
+        row
+        async for row in _queries.get_sales_timeseries_buckets(
+            conn,
+            period_start=period_start,
+            period_end=period_end,
+            unit=unit,
+            caller_id=caller_id,
+            can_view_all=can_view_all,
+        )
+    ]
+    return _rows(rows)
+
+
+async def get_collected_timeseries_buckets(
+    conn: asyncpg.Connection,
+    period_start: datetime,
+    period_end: datetime,
+    unit: str,
+    caller_id: UUID,
+    can_view_all: bool,
+) -> list[dict]:
+    rows = [
+        row
+        async for row in _queries.get_collected_timeseries_buckets(
+            conn,
+            period_start=period_start,
+            period_end=period_end,
+            unit=unit,
+            caller_id=caller_id,
+            can_view_all=can_view_all,
+        )
+    ]
+    return _rows(rows)
+
+
+async def get_outstanding_debt_by_currency(conn: asyncpg.Connection, caller_id: UUID, can_view_all: bool) -> list[dict]:
+    rows = [row async for row in _queries.get_outstanding_debt_by_currency(conn, caller_id=caller_id, can_view_all=can_view_all)]
+    return _rows(rows)
+
+
+async def get_seller_sales_by_mode(conn: asyncpg.Connection, user_id: UUID, period_start: datetime, period_end: datetime) -> list[dict]:
+    rows = [
+        row
+        async for row in _queries.get_seller_sales_by_mode(conn, user_id=user_id, period_start=period_start, period_end=period_end)
+    ]
+    return _rows(rows)
+
+
+async def get_seller_call_stats(conn: asyncpg.Connection, user_id: UUID, period_start: datetime, period_end: datetime) -> dict:
+    row = await _queries.get_seller_call_stats(conn, user_id=user_id, period_start=period_start, period_end=period_end)
+    return _row(row)
+
+
+async def get_seller_crm_activity_stats(conn: asyncpg.Connection, user_id: UUID, period_start: datetime, period_end: datetime) -> dict:
+    row = await _queries.get_seller_crm_activity_stats(conn, user_id=user_id, period_start=period_start, period_end=period_end)
+    return _row(row)
+
+
+async def get_seller_lead_funnel(conn: asyncpg.Connection, user_id: UUID, period_start: datetime, period_end: datetime) -> dict:
+    row = await _queries.get_seller_lead_funnel(conn, user_id=user_id, period_start=period_start, period_end=period_end)
+    return _row(row)
+
+
+async def get_tenant_lead_quality_summary(
+    conn: asyncpg.Connection, period_start: datetime, period_end: datetime, caller_id: UUID, can_view_all: bool
+) -> dict:
+    row = await _queries.get_tenant_lead_quality_summary(
+        conn, period_start=period_start, period_end=period_end, caller_id=caller_id, can_view_all=can_view_all
+    )
+    return _row(row)
+
+
+async def get_seller_lead_response_time(conn: asyncpg.Connection, user_id: UUID, period_start: datetime, period_end: datetime) -> dict:
+    row = await _queries.get_seller_lead_response_time(conn, user_id=user_id, period_start=period_start, period_end=period_end)
+    return _row(row)
+
+
+async def get_seller_leads_count(conn: asyncpg.Connection, user_id: UUID, period_start: datetime, period_end: datetime) -> int:
+    row = await _queries.get_seller_leads_count(conn, user_id=user_id, period_start=period_start, period_end=period_end)
+    return row["count"]
+
+
+async def get_seller_sales_count(conn: asyncpg.Connection, user_id: UUID, period_start: datetime, period_end: datetime) -> dict:
+    row = await _queries.get_seller_sales_count(conn, user_id=user_id, period_start=period_start, period_end=period_end)
+    return _row(row)
+
+
+async def get_seller_debt_collection(conn: asyncpg.Connection, user_id: UUID, period_start: datetime, period_end: datetime) -> dict:
+    row = await _queries.get_seller_debt_collection(conn, user_id=user_id, period_start=period_start, period_end=period_end)
+    return _row(row)
+
+
+async def get_seller_refund_rate(conn: asyncpg.Connection, user_id: UUID, period_start: datetime, period_end: datetime) -> dict:
+    row = await _queries.get_seller_refund_rate(conn, user_id=user_id, period_start=period_start, period_end=period_end)
+    return _row(row)

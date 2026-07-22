@@ -91,7 +91,7 @@ export function RegisterPlanView() {
       <div className="border-primary/25 bg-primary/12 mx-auto mb-6 flex size-14 items-center justify-center rounded-2xl border">
         <Sparkles size={24} className="text-primary" />
       </div>
-      <h2 className="font-heading mb-1 text-center text-2xl font-extrabold text-foreground">{t.title}</h2>
+      <h2 className="font-display mb-1 text-center text-[28px] font-bold text-foreground">{t.title}</h2>
       <p className="mb-7 text-center text-sm text-foreground-muted">{t.sub}</p>
 
       <div className="bg-background/60 border-card-border mb-7 rounded-2xl border p-6 text-center">

@@ -1,42 +1,49 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* Light mode — muted bronze-gold accent (bright gold on white reads "cheap") */
-  --background: #f7f8fa;
+  /* Light mode — premium enterprise blue/orange (2026-07-16 reskin) */
+  --background: #f8fafc;
   --background-alt: #ffffff;
-  --foreground: #0f1420;
-  --foreground-muted: #5c6478;
+  --foreground: #0f172a;
+  --foreground-muted: #64748b;
   --card: #ffffff;
-  --card-foreground: #0f1420;
-  --card-border: #e4e7ec;
+  --card-foreground: #0f172a;
+  --card-border: #e5e7eb;
   --popover: #ffffff;
-  --popover-foreground: #0f1420;
-  --primary: #a9791e;
+  --popover-foreground: #0f172a;
+  --primary: #2563eb;
   --primary-foreground: #ffffff;
-  --gold-solid: #a9791e;
-  --gold-grad-from: #d4af37;
-  --gold-grad-via: #e8c874;
-  --gold-grad-to: #c9a250;
+  --accent-orange: #f97316;
+  --accent-orange-foreground: #ffffff;
+  /* Legacy gold-named tokens kept for the classes below (auth/landing still
+     use .gold-gradient-bg/.gold-hairline) -- repointed to the new primary
+     blue rather than renamed, so those out-of-scope pages stay coherent
+     without a repo-wide rename. */
+  --gold-solid: #2563eb;
+  --gold-grad-from: #2563eb;
+  --gold-grad-via: #3b82f6;
+  --gold-grad-to: #1d4ed8;
   --secondary: #1e3a8a;
   --secondary-foreground: #ffffff;
-  --muted: #f0f2f5;
-  --muted-foreground: #5c6478;
-  --accent: #eef0f4;
-  --accent-foreground: #0f1420;
-  --destructive: #e5484d;
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
+  --accent: #eef2f6;
+  --accent-foreground: #0f172a;
+  --destructive: #ef4444;
   --destructive-foreground: #ffffff;
-  --success: #2fbf71;
-  --danger: #e5484d;
-  --warning: #f5a623;
-  --border: #e4e7ec;
-  --input-bg: #f7f8fa;
-  --switch-background: #e4e7ec;
-  --ring: #d4af37;
+  --success: #10b981;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  --border: #e5e7eb;
+  --input-bg: #f8fafc;
+  --switch-background: #e5e7eb;
+  --ring: #2563eb;
   --radius: 1.125rem;
 }
 
 .dark {
-  /* Dark mode — default, primary "hero" mode */
+  /* Dark mode — same blue/orange brand, navy-black base kept as a legitimate
+     second theme (2026-07-16 reskin) */
   --background: #0a0e1a;
   --background-alt: #0d1530;
   --foreground: #f5f6fa;
@@ -46,27 +53,29 @@
   --card-border: #2a3348;
   --popover: #111828;
   --popover-foreground: #f5f6fa;
-  --primary: #d4af37;
-  --primary-foreground: #0a0e1a;
-  --gold-solid: #d4af37;
-  --gold-grad-from: #d4af37;
-  --gold-grad-via: #e8c874;
-  --gold-grad-to: #c9a250;
+  --primary: #3b82f6;
+  --primary-foreground: #ffffff;
+  --accent-orange: #fb923c;
+  --accent-orange-foreground: #0a0e1a;
+  --gold-solid: #3b82f6;
+  --gold-grad-from: #3b82f6;
+  --gold-grad-via: #60a5fa;
+  --gold-grad-to: #2563eb;
   --secondary: #4c6fff;
   --secondary-foreground: #f5f6fa;
   --muted: rgba(42, 51, 72, 0.5);
   --muted-foreground: #8a93a8;
   --accent: rgba(42, 51, 72, 0.4);
   --accent-foreground: #f5f6fa;
-  --destructive: #e5484d;
+  --destructive: #ef4444;
   --destructive-foreground: #f5f6fa;
-  --success: #2fbf71;
-  --danger: #e5484d;
-  --warning: #f5a623;
+  --success: #10b981;
+  --danger: #ef4444;
+  --warning: #f59e0b;
   --border: #2a3348;
   --input-bg: #111828;
   --switch-background: #2a3348;
-  --ring: #d4af37;
+  --ring: #3b82f6;
 }
 
 @theme inline {
@@ -81,6 +90,8 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-accent-orange: var(--accent-orange);
+  --color-accent-orange-foreground: var(--accent-orange-foreground);
   --color-gold-solid: var(--gold-solid);
   --color-gold-grad-from: var(--gold-grad-from);
   --color-gold-grad-via: var(--gold-grad-via);
@@ -110,6 +121,11 @@
   --font-heading: "Manrope", "Inter", sans-serif;
   --font-body: "Inter", sans-serif;
   --font-mono: "JetBrains Mono", monospace;
+  /* Reserved for hero moments only (landing headline, auth card titles,
+     dashboard greeting) -- never the everyday page-title font. A serif
+     display face reads as considered/premium precisely because it's used
+     sparingly against the geometric sans everywhere else. */
+  --font-display: "Playfair Display", "Georgia", serif;
 }
 
 @layer base {
@@ -126,21 +142,66 @@
     transition:
       background-color 0.3s ease,
       color 0.3s ease;
+    position: relative;
+  }
+
+  /* A near-invisible grain over the flat dark field -- the difference
+     between "flat SaaS gradient" and a surface that feels made of
+     something. Fixed so it doesn't scroll/tile-shift, low opacity so it
+     never reads as noise or a loading artifact. */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0.035;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  :not(.dark) body::before {
+    opacity: 0.02;
+  }
+
+  #root {
+    position: relative;
+    z-index: 1;
   }
 }
 
 @layer components {
+  /* Softened 2026-07-16 for the enterprise-SaaS reskin -- was a heavy
+     shadow-2xl/backdrop-blur-xl "glass" look; the new mockup calls for
+     "soft shadows, subtle glassmorphism, high whitespace" instead. */
   .glass-card {
-    @apply bg-card/75 border-card-border rounded-2xl border shadow-2xl backdrop-blur-xl;
-    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+    @apply bg-card/95 border-card-border rounded-2xl border shadow-sm backdrop-blur-md;
   }
 
   .dark .glass-card {
-    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
   }
 
   :not(.dark) .glass-card {
-    box-shadow: 0 24px 64px rgba(10, 14, 26, 0.1);
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 8px 20px rgba(15, 23, 42, 0.04);
+  }
+
+  /* KPI/table cards that should lift subtly on hover (mockup: "hover lift,
+     soft shadows" on every card) -- CSS transition, no animation library. */
+  .card-hover-lift {
+    @apply transition-all duration-200 ease-out;
+  }
+
+  .card-hover-lift:hover {
+    transform: translateY(-2px);
+  }
+
+  .dark .card-hover-lift:hover {
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.32);
+  }
+
+  :not(.dark) .card-hover-lift:hover {
+    box-shadow: 0 4px 6px rgba(15, 23, 42, 0.05), 0 12px 24px rgba(15, 23, 42, 0.08);
   }
 
   .gold-gradient-text {
@@ -154,109 +215,156 @@
     background: linear-gradient(135deg, var(--gold-grad-from) 0%, var(--gold-grad-via) 60%, var(--gold-grad-to) 100%);
   }
 
+  /* Signature device: a foil-edge hairline, the one recurring flourish that
+     marks a moment as a "moment" (auth cards, hero panels) -- never used on
+     ordinary list rows, or it stops meaning anything. */
+  .gold-hairline {
+    position: relative;
+  }
+
+  .gold-hairline::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 1px;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      var(--gold-grad-from) 20%,
+      var(--gold-grad-via) 50%,
+      var(--gold-grad-from) 80%,
+      transparent 100%
+    );
+    opacity: 0.7;
+  }
+
+  /* Light entrance fade-up, used by dashboard cards/modals (KpiCard,
+     LeadFunnel, ConfirmDialog, dialog.tsx, etc.) -- NOT auth-specific despite
+     the name; kept here even though AuthCard.tsx itself no longer uses it
+     (2026-07-21 login/register cleanup dropped it from the auth card
+     specifically, per explicit "remove all animation from login/register"
+     feedback, but this class is still load-bearing across the dashboard). */
   .auth-card-enter {
     animation: auth-card-enter 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 
-  /* Cheap, GPU-only entrance used for above-the-fold content on mount
-     (hero copy, CTAs) -- opacity+transform only, no layout impact. */
-  .animate-fade-up {
-    animation: fade-up-in 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
-  }
-
-  .animate-float {
-    animation: float-slow 6s ease-in-out infinite;
-  }
-
-  /* glass-card is the shared surface for every dashboard stat/list card
-     and the auth card -- one hover treatment here cascades everywhere. */
-  .glass-card {
+  /* Landing "wow pass" (2026-07-20): scroll-reveal fade-up, used by every
+     <Reveal> instance. Desktop rises further and eases slower for a more
+     dramatic entrance; mobile (below lg) gets a shorter rise + snappier
+     duration per the explicit "mobilida yengil animatsiya" requirement --
+     this is a deliberate design choice, not the separate
+     prefers-reduced-motion override below (that one still applies on top). */
+  .reveal-on-scroll {
+    opacity: 0;
+    transform: translateY(28px);
     transition:
-      transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-      box-shadow 0.35s ease;
+      opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1),
+      transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+    will-change: opacity, transform;
   }
 
-  .glass-card:hover {
-    transform: translateY(-2px);
+  .reveal-on-scroll.is-visible {
+    opacity: 1;
+    transform: translateY(0);
   }
 
-  .animate-shimmer {
-    position: relative;
-    overflow: hidden;
+  /* Hero dashboard mockup: revealed on scroll tilted back in 3D (perspective
+     rotateX), straightening flat as it comes into view -- instead of the
+     plain fade/slide every other section uses. Kept as its own class so the
+     heavier `perspective`/`transform-style` cost only applies to this one
+     element. */
+  .mockup-tilt-reveal {
+    opacity: 0;
+    transform: perspective(1400px) rotateX(22deg) scale(0.92) translateY(40px);
+    transform-origin: center top;
+    transition:
+      opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1),
+      transform 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+    will-change: opacity, transform;
   }
 
-  .animate-shimmer::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      rgba(212, 175, 55, 0.08) 50%,
-      transparent 100%
-    );
-    animation: shimmer 2.5s ease-in-out infinite;
-    pointer-events: none;
+  .mockup-tilt-reveal.is-visible {
+    opacity: 1;
+    transform: perspective(1400px) rotateX(0deg) scale(1) translateY(0);
   }
 
-  .animate-gradient-border {
-    position: relative;
-    isolation: isolate;
+  @media (max-width: 1023px) {
+    .mockup-tilt-reveal {
+      transform: perspective(1000px) rotateX(14deg) scale(0.95) translateY(20px);
+      transition-duration: 0.6s;
+    }
   }
 
-  .animate-gradient-border::before {
-    content: "";
-    position: absolute;
-    inset: -2px;
-    border-radius: inherit;
-    background: conic-gradient(
-      from var(--gradient-angle),
-      transparent 0%,
-      var(--gold-grad-from) 10%,
-      var(--gold-grad-via) 20%,
-      var(--gold-grad-to) 30%,
-      transparent 40%,
-      transparent 60%,
-      var(--gold-grad-from) 70%,
-      var(--gold-grad-via) 80%,
-      transparent 90%
-    );
-    animation: gradient-border-spin 4s linear infinite;
-    z-index: -1;
-    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    mask-composite: exclude;
-    padding: 2px;
+  @media (max-width: 1023px) {
+    .reveal-on-scroll {
+      transform: translateY(12px);
+      transition-duration: 0.5s;
+    }
   }
 
-  .animate-glow-pulse {
-    animation: glow-pulse 3s ease-in-out infinite;
+  /* Integrations section: all icon nodes sit on a fixed semicircle arc
+     ("yarim oy") and stay fully visible at all times (explicit feedback:
+     "hamasi to'liq korinishi kerak" -- an earlier pass clipped/cycled icons
+     through a peek-window, which hid pieces of them). Continuous motion
+     ("aylanib turishi kerak") instead comes from the whole arc gently
+     swaying/rotating back and forth -- .orbit-ring sways the group,
+     .orbit-counter sways each icon bubble the exact opposite amount (same
+     duration/timing, reverse direction) so the bubble itself stays upright
+     while the group sways. Two separate elements, not one, because a CSS
+     animation on `transform` fully overrides any static inline `transform`
+     on that same element -- the per-node static rotate+translate
+     (positioning) has to live one level up from the animated counter-sway
+     (orientation). */
+  .orbit-ring {
+    animation: orbit-sway 7s ease-in-out infinite;
   }
 
-  .animate-mesh-drift {
-    animation: mesh-drift 20s ease-in-out infinite;
+  .orbit-counter {
+    animation: orbit-counter-sway 7s ease-in-out infinite;
   }
 
-  .animate-scale-in {
-    animation: scale-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+  @keyframes orbit-sway {
+    0%,
+    100% {
+      transform: rotate(-8deg);
+    }
+    50% {
+      transform: rotate(8deg);
+    }
   }
 
-  .animate-blur-in {
-    animation: blur-in 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+  @keyframes orbit-counter-sway {
+    0%,
+    100% {
+      transform: rotate(8deg);
+    }
+    50% {
+      transform: rotate(-8deg);
+    }
   }
 
-  .animate-icon-pulse {
-    animation: icon-pulse 2s ease-in-out infinite;
+  /* Slow ambient drift for the big decorative blur blobs already present in
+     several sections -- desktop only (mobile gets the "simple, light"
+     treatment: no drift, just the reveal fade above). */
+  .landing-glow-drift {
+    animation: landing-drift 16s ease-in-out infinite;
   }
 
-  .tilt-card {
-    transition: transform 0.15s ease-out;
-    transform-style: preserve-3d;
-    will-change: transform;
+  @media (max-width: 1023px) {
+    .landing-glow-drift {
+      animation: none;
+    }
   }
+}
 
-  .scroll-progress-bar {
-    transform-origin: left;
-    will-change: transform;
+@keyframes landing-drift {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(30px, -22px) scale(1.08);
   }
 }
 
@@ -268,38 +376,6 @@
   to {
     opacity: 1;
     transform: translateY(0);
-  }
-}
-
-@keyframes fade-up-in {
-  from {
-    opacity: 0;
-    transform: translateY(22px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes drawer-slide-in {
-  from {
-    opacity: 0;
-    transform: translateX(-16px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-@keyframes float-slow {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-14px);
   }
 }
 
@@ -333,115 +409,6 @@
     transform: translateY(-36px) scale(1);
     opacity: 0;
   }
-}
-
-@keyframes shimmer {
-  0% {
-    transform: translateX(-100%);
-  }
-  100% {
-    transform: translateX(100%);
-  }
-}
-
-@keyframes gradient-border-spin {
-  0% {
-    --gradient-angle: 0deg;
-  }
-  100% {
-    --gradient-angle: 360deg;
-  }
-}
-
-@keyframes glow-pulse {
-  0%,
-  100% {
-    opacity: 0.5;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.05);
-  }
-}
-
-@keyframes mesh-drift {
-  0%,
-  100% {
-    transform: translate(0, 0) scale(1);
-  }
-  25% {
-    transform: translate(30px, -20px) scale(1.05);
-  }
-  50% {
-    transform: translate(-20px, 20px) scale(0.95);
-  }
-  75% {
-    transform: translate(15px, 10px) scale(1.02);
-  }
-}
-
-@keyframes scale-in {
-  from {
-    opacity: 0;
-    transform: scale(0.92);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes slide-in-left {
-  from {
-    opacity: 0;
-    transform: translateX(-30px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-@keyframes slide-in-right {
-  from {
-    opacity: 0;
-    transform: translateX(30px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-@keyframes blur-in {
-  from {
-    opacity: 0;
-    filter: blur(12px);
-    transform: scale(0.95);
-  }
-  to {
-    opacity: 1;
-    filter: blur(0);
-    transform: scale(1);
-  }
-}
-
-@keyframes icon-pulse {
-  0%,
-  100% {
-    transform: scale(1);
-    box-shadow: 0 0 0 0 currentColor;
-  }
-  50% {
-    transform: scale(1.08);
-  }
-}
-
-@property --gradient-angle {
-  syntax: "<angle>";
-  initial-value: 0deg;
-  inherits: false;
 }
 
 @media (prefers-reduced-motion: reduce) {

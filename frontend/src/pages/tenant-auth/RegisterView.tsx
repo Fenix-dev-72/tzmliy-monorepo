@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router";
-import { Loader2, Mail } from "lucide-react";
+import { ArrowRight, Loader2, Mail } from "lucide-react";
 import { useLang } from "@/lib/i18n/LangContext";
 import { ApiError } from "@/lib/api/client";
 import * as tenantAuthApi from "@/lib/api/tenantAuth";
@@ -13,6 +13,7 @@ const content = {
     title: "Kompaniyangizni ro'yxatdan o'tkazing",
     sub: "Email yoki telefon raqamingizni kiriting — tasdiqlash kodi yuboramiz",
     identifier: "Email yoki telefon raqami",
+    identifierPlaceholder: "Email yoki telefon raqamingizni kiriting",
     btn: "Kod yuborish",
     taken: "Bu email/telefon allaqachon ro'yxatdan o'tgan",
     genericError: "Xatolik yuz berdi, qayta urinib ko'ring",
@@ -23,6 +24,7 @@ const content = {
     title: "Зарегистрируйте свою компанию",
     sub: "Введите email или номер телефона — мы отправим код подтверждения",
     identifier: "Email или номер телефона",
+    identifierPlaceholder: "Введите email или номер телефона",
     btn: "Отправить код",
     taken: "Этот email/телефон уже зарегистрирован",
     genericError: "Произошла ошибка, попробуйте снова",
@@ -60,32 +62,30 @@ export function RegisterView() {
 
   return (
     <AuthCard>
-      <div className="border-primary/25 bg-primary/12 mx-auto mb-6 flex size-14 items-center justify-center rounded-2xl border">
-        <Mail size={24} className="text-primary" />
-      </div>
-      <h2 className="font-heading mb-1 text-center text-2xl font-extrabold text-foreground">{t.title}</h2>
-      <p className="mb-7 text-center text-sm text-foreground-muted">{t.sub}</p>
+      <h2 className="font-display mb-1 text-center text-[22px] font-bold text-foreground sm:text-left">{t.title}</h2>
+      <p className="mb-7 text-center text-sm text-foreground-muted sm:text-left">{t.sub}</p>
 
       <FormField
         label={t.identifier}
         type="text"
-        placeholder="name@company.com / +998 90 123 45 67"
+        placeholder={t.identifierPlaceholder}
         value={identifier}
         onChange={(e) => setIdentifier(e.target.value)}
         autoComplete="username"
+        leftEl={<Mail size={16} className="text-foreground-muted" />}
       />
 
       {error && <p className="text-destructive mb-4 text-[13px] font-medium">{error}</p>}
 
       <Button variant="gold" size="lg" className="w-full" disabled={!canSubmit || loading} onClick={handleSubmit}>
-        {loading && <Loader2 size={16} className="animate-spin" />}
-        {t.btn}
+        {loading ? <Loader2 size={16} className="animate-spin" /> : t.btn}
+        {!loading && <ArrowRight size={16} />}
       </Button>
 
       <p className="mt-7 text-center text-[13px] text-foreground-muted">
         {t.hasAccount}{" "}
-        <Link to="/login" className="text-primary font-semibold">
-          {t.login}
+        <Link to="/login" className="text-primary inline-flex items-center gap-1 font-semibold">
+          {t.login} <ArrowRight size={13} />
         </Link>
       </p>
     </AuthCard>

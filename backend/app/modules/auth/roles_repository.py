@@ -44,3 +44,11 @@ async def delete_role_permissions(conn: asyncpg.Connection, role_id: UUID) -> No
 async def list_role_permission_keys(conn: asyncpg.Connection, role_id: UUID) -> list[str]:
     rows = [row async for row in _queries.list_role_permission_keys(conn, role_id=role_id)]
     return [row["permission_key"] for row in rows]
+
+
+async def list_role_permission_keys_bulk(conn: asyncpg.Connection, role_ids: list[UUID]) -> dict[UUID, list[str]]:
+    rows = [row async for row in _queries.list_role_permission_keys_bulk(conn, role_ids=role_ids)]
+    result: dict[UUID, list[str]] = {role_id: [] for role_id in role_ids}
+    for row in rows:
+        result[row["role_id"]].append(row["permission_key"])
+    return result

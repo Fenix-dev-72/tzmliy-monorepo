@@ -87,11 +87,27 @@ FROM subscription_payments
 WHERE provider = :provider AND provider_transaction_id = :provider_transaction_id;
 
 -- name: list_subscription_payments
+-- Capped at 200 most-recent rows (optimize.md #19, 2026-07-17) -- same
+-- "unbounded history list with no LIMIT" class of issue fixed elsewhere
+-- this session (crm_lead_syncs, notification_outbox, attendance).
 SELECT id, tenant_id, tenant_subscription_id, billing_plan_id, provider, amount, currency, status,
     period_start, period_end, idempotency_key, review_idempotency_key, provider_transaction_id,
     provider_state, cancel_reason, created_by_user_id, created_by_admin_id, created_at, performed_at, cancelled_at
 FROM subscription_payments
-ORDER BY created_at DESC;
+ORDER BY created_at DESC
+LIMIT 200;
+
+-- name: get_payment_totals_by_status
+-- Platform Admin dashboard (2026-07-22): per-tenant totals for a period,
+-- grouped by status+currency -- called once per tenant inside a
+-- tenant_connection loop (subscription_payments carries RLS, so a single
+-- cross-tenant query isn't possible; see platform_dashboard/service.py's
+-- get_payments_summary, same tenant-loop shape as billing/service.py's
+-- run_dunning).
+SELECT status, currency, COUNT(*) AS count, COALESCE(SUM(amount), 0)::bigint AS total_amount
+FROM subscription_payments
+WHERE created_at >= :period_start AND created_at < :period_end
+GROUP BY status, currency;
 
 -- name: set_subscription_payment_provider_transaction^
 UPDATE subscription_payments
@@ -159,11 +175,13 @@ LIMIT 1;
 -- multi-tenant schema. Run only inside tenant_connection so RLS scopes every
 -- inner SELECT to the one tenant already set via app.tenant_id. Whenever a
 -- future migration adds a new tenant-scoped table, add it here too.
+-- otp_codes/password_reset_tokens/registration_verifications are deliberately
+-- absent -- 0022_otp_tables_to_redis.sql dropped them (moved to Redis TTL
+-- storage), so they no longer exist as Postgres tables at all; referencing
+-- them here used to make this query fail outright with UndefinedTableError.
 SELECT (
     COALESCE((SELECT SUM(pg_column_size(t.*)) FROM users t), 0) +
     COALESCE((SELECT SUM(pg_column_size(t.*)) FROM refresh_sessions t), 0) +
-    COALESCE((SELECT SUM(pg_column_size(t.*)) FROM password_reset_tokens t), 0) +
-    COALESCE((SELECT SUM(pg_column_size(t.*)) FROM otp_codes t), 0) +
     COALESCE((SELECT SUM(pg_column_size(t.*)) FROM roles t), 0) +
     COALESCE((SELECT SUM(pg_column_size(t.*)) FROM role_permissions t), 0) +
     COALESCE((SELECT SUM(pg_column_size(t.*)) FROM catalog_categories t), 0) +

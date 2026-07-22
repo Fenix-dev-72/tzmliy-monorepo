@@ -61,7 +61,7 @@ export function NewPasswordView() {
   if (success) {
     return (
       <AuthCard className="text-center">
-        <h2 className="font-heading mb-3 text-2xl font-extrabold text-foreground">{t.title}</h2>
+        <h2 className="font-display mb-3 text-[26px] font-bold text-foreground">{t.title}</h2>
         <p className="mb-8 text-sm text-foreground-muted">{t.success}</p>
         <Button variant="gold" size="lg" className="w-full" onClick={() => navigate("/login")}>
           {t.toLogin}
@@ -89,7 +89,7 @@ export function NewPasswordView() {
 
   return (
     <AuthCard>
-      <h2 className="font-heading mb-2 text-2xl font-extrabold text-foreground">{t.title}</h2>
+      <h2 className="font-display mb-2 text-[26px] font-bold text-foreground">{t.title}</h2>
       <p className="mb-7 text-sm text-foreground-muted">{t.sub}</p>
 
       <FormField

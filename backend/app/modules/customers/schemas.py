@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 CustomerStage = Literal["lead", "qualified", "customer", "lost"]
 ActivityType = Literal["note", "call", "email", "meeting", "status_change"]
+CustomerQuality = Literal["quality", "low_quality", "unrated"]
 
 
 class CustomerCreate(BaseModel):
@@ -28,9 +29,17 @@ class CustomerOut(BaseModel):
     id: UUID
     tenant_id: UUID
     full_name: str
-    phone: str
+    # Nullable (2026-07-15): a CRM-synced lead that never left a phone
+    # number still gets a row here (flagged low-quality), instead of being
+    # dropped -- manual creation (CustomerCreate) still requires one.
+    phone: str | None
     responsible_user_id: UUID | None
     stage: str
+    # NULL = created manually in Tizimly; otherwise which integration this
+    # lead was synced from (2026-07-15, seller/lead analytics).
+    source: str | None
+    quality: str
+    lost_reason: str | None
     created_at: datetime
     updated_at: datetime
 

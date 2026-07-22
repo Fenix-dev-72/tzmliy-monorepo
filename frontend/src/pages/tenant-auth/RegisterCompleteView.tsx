@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
-import { Building2, Eye, EyeOff, Loader2 } from "lucide-react";
+import { ArrowRight, Building2, Eye, EyeOff, Hash, Loader2, Lock } from "lucide-react";
 import { useLang } from "@/lib/i18n/LangContext";
 import { useTenantAuth } from "@/lib/auth/tenantAuthStore";
 import { ApiError } from "@/lib/api/client";
@@ -107,11 +107,8 @@ export function RegisterCompleteView() {
 
   return (
     <AuthCard maxWidth="480px">
-      <div className="border-primary/25 bg-primary/12 mx-auto mb-6 flex size-14 items-center justify-center rounded-2xl border">
-        <Building2 size={24} className="text-primary" />
-      </div>
-      <h2 className="font-heading mb-1 text-center text-2xl font-extrabold text-foreground">{t.title}</h2>
-      <p className="mb-7 text-center text-sm text-foreground-muted">{t.sub}</p>
+      <h2 className="font-display mb-1 text-center text-[22px] font-bold text-foreground sm:text-left">{t.title}</h2>
+      <p className="mb-7 text-center text-sm text-foreground-muted sm:text-left">{t.sub}</p>
 
       <FormField
         label={t.name}
@@ -121,6 +118,7 @@ export function RegisterCompleteView() {
           setName(e.target.value);
           if (!slugTouched) setSlug(slugify(e.target.value));
         }}
+        leftEl={<Building2 size={16} className="text-foreground-muted" />}
       />
       <FormField
         label={t.slug}
@@ -132,6 +130,7 @@ export function RegisterCompleteView() {
         }}
         hint={t.slugHint}
         error={slug.length > 0 && !slugValid ? t.slugError : undefined}
+        leftEl={<Hash size={16} className="text-foreground-muted" />}
       />
       <FormField
         label={t.password}
@@ -140,6 +139,7 @@ export function RegisterCompleteView() {
         value={password}
         onChange={(e) => setPassword(e.target.value)}
         autoComplete="new-password"
+        leftEl={<Lock size={16} className="text-foreground-muted" />}
         rightEl={
           <button type="button" onClick={() => setShowPass((s) => !s)} className="text-foreground-muted">
             {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -156,14 +156,15 @@ export function RegisterCompleteView() {
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
           autoComplete="new-password"
+          leftEl={<Lock size={16} className="text-foreground-muted" />}
         />
       </div>
 
       {error && <p className="text-destructive mb-4 text-[13px] font-medium">{error}</p>}
 
       <Button variant="gold" size="lg" className="mt-2 w-full" disabled={!canSubmit || loading} onClick={handleSubmit}>
-        {loading && <Loader2 size={16} className="animate-spin" />}
-        {t.btn}
+        {loading ? <Loader2 size={16} className="animate-spin" /> : t.btn}
+        {!loading && <ArrowRight size={16} />}
       </Button>
     </AuthCard>
   );

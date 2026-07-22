@@ -4,6 +4,7 @@ import { AlertCircle, Loader2, Plus, Users, X } from "lucide-react";
 import { useLang } from "@/lib/i18n/LangContext";
 import { useTenantAuth } from "@/lib/auth/tenantAuthStore";
 import * as customersApi from "@/lib/api/customers";
+import { CUSTOMERS_PAGE_SIZE } from "@/lib/api/customers";
 import type { Customer, CustomerStage } from "@/lib/api/customers";
 import { ApiError } from "@/lib/api/client";
 import { FormField } from "@/components/auth/FormField";
@@ -25,6 +26,7 @@ const content = {
     duplicatePhone: "Bu telefon raqami bilan mijoz allaqachon mavjud",
     genericError: "Xatolik yuz berdi",
     created: "Mijoz qo'shildi",
+    loadMore: "Ko'proq yuklash",
     stages: { lead: "Lid", qualified: "Malakali", customer: "Mijoz", lost: "Yo'qotilgan" } as Record<CustomerStage, string>,
   },
   ru: {
@@ -42,6 +44,7 @@ const content = {
     duplicatePhone: "Клиент с этим номером уже существует",
     genericError: "Произошла ошибка",
     created: "Клиент добавлен",
+    loadMore: "Загрузить ещё",
     stages: { lead: "Лид", qualified: "Квалифицирован", customer: "Клиент", lost: "Потерян" } as Record<CustomerStage, string>,
   },
 };
@@ -59,6 +62,8 @@ export function CustomersPage() {
   const { accessToken } = useTenantAuth();
 
   const [customers, setCustomers] = useState<Customer[] | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
 
@@ -71,9 +76,25 @@ export function CustomersPage() {
     if (!accessToken) return;
     setError(null);
     try {
-      setCustomers(await customersApi.listCustomers(accessToken));
+      const page = await customersApi.listCustomers(accessToken);
+      setCustomers(page);
+      setHasMore(page.length === CUSTOMERS_PAGE_SIZE);
     } catch (err) {
       setError(err instanceof ApiError ? err.detail : t.loadError);
+    }
+  }
+
+  async function loadMore() {
+    if (!accessToken || !customers) return;
+    setLoadingMore(true);
+    try {
+      const page = await customersApi.listCustomers(accessToken, CUSTOMERS_PAGE_SIZE, customers.length);
+      setCustomers([...customers, ...page]);
+      setHasMore(page.length === CUSTOMERS_PAGE_SIZE);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.detail : t.loadError);
+    } finally {
+      setLoadingMore(false);
     }
   }
 
@@ -206,6 +227,15 @@ export function CustomersPage() {
               </span>
             </div>
           ))}
+        </div>
+      )}
+
+      {!error && customers !== null && customers.length > 0 && hasMore && (
+        <div className="mt-4 flex justify-center">
+          <Button variant="outline" disabled={loadingMore} onClick={loadMore}>
+            {loadingMore && <Loader2 size={16} className="animate-spin" />}
+            {t.loadMore}
+          </Button>
         </div>
       )}
     </main>

@@ -7,6 +7,7 @@ import * as tenantAuthApi from "@/lib/api/tenantAuth";
 import { OtpCodeInput } from "@/components/auth/OtpCodeInput";
 import { Button } from "@/components/ui/button";
 import { PasswordChangeCard } from "./PasswordChangeCard";
+import { ProfileSettingsCard } from "./ProfileSettingsCard";
 import { KioskDashboardsCard } from "./KioskDashboardsCard";
 
 const content = {
@@ -57,7 +58,15 @@ export function TwoFactorSettingsPage() {
   const canManageDashboards = (user?.permissions ?? []).includes("analytics.manage");
 
   useEffect(() => {
-    if (!accessToken || alreadyEnabled || setupRequested.current) return;
+    // Must wait for `user` to actually load, not just `accessToken` -- the
+    // auth store sets accessToken synchronously but fetches /auth/me
+    // asynchronously, so there's a render where accessToken is truthy and
+    // user is still null. Without this guard, alreadyEnabled reads false for
+    // an already-2FA-enabled account during that window and this effect
+    // fires /2fa/setup prematurely -- previously a real bug, since the
+    // backend used to reset totp_enabled to false as a side effect of that
+    // call, silently disabling 2FA every time this page was hit early.
+    if (!accessToken || !user || alreadyEnabled || setupRequested.current) return;
     setupRequested.current = true;
     tenantAuthApi
       .setup2fa(accessToken)
@@ -67,7 +76,7 @@ export function TwoFactorSettingsPage() {
       })
       .catch(() => setError(t.loadError));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accessToken, alreadyEnabled]);
+  }, [accessToken, user, alreadyEnabled]);
 
   async function handleConfirm(submittedCode: string) {
     if (!accessToken) return;
@@ -87,6 +96,10 @@ export function TwoFactorSettingsPage() {
   return (
     <main className="mx-auto max-w-lg px-4 py-8 sm:px-6 sm:py-10">
       <h1 className="font-heading mb-6 text-xl font-extrabold text-foreground sm:mb-8 sm:text-2xl">{t.pageTitle}</h1>
+
+      <div className="mb-8">
+        <ProfileSettingsCard />
+      </div>
 
       <div className="mb-8">
         <PasswordChangeCard />

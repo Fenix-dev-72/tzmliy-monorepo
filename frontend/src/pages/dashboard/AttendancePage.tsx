@@ -6,6 +6,7 @@ import { useTenantAuth } from "@/lib/auth/tenantAuthStore";
 import * as attendanceApi from "@/lib/api/attendance";
 import type { AttendanceRecord } from "@/lib/api/attendance";
 import * as usersApi from "@/lib/api/users";
+import { USERS_DROPDOWN_LIMIT } from "@/lib/api/users";
 import type { TenantUserRow } from "@/lib/api/users";
 import { ApiError } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
@@ -87,7 +88,7 @@ export function AttendancePage() {
         try {
           const [teamData, usersData] = await Promise.all([
             attendanceApi.listAttendance(accessToken),
-            usersApi.listUsers(accessToken),
+            usersApi.listUsers(accessToken, USERS_DROPDOWN_LIMIT),
           ]);
           setTeam(teamData);
           setUsers(usersData);
@@ -191,7 +192,10 @@ export function AttendancePage() {
                     }`}
                   >
                     <span className="text-sm font-semibold text-foreground">
-                      {usersById.get(r.user_id)?.email ?? usersById.get(r.user_id)?.phone ?? r.user_id.slice(0, 8)}
+                      {usersById.get(r.user_id)?.full_name ??
+                        usersById.get(r.user_id)?.email ??
+                        usersById.get(r.user_id)?.phone ??
+                        r.user_id.slice(0, 8)}
                     </span>
                     <div className="flex items-center gap-4 text-xs text-foreground-muted">
                       <span>

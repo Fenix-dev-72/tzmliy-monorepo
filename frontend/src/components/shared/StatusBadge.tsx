@@ -1,11 +1,11 @@
-const GOLD = "#D4AF37";
-const GREEN = "#2FBF71";
-const RED = "#E5484D";
+const AMBER = "#F59E0B";
+const GREEN = "#10B981";
+const RED = "#EF4444";
 const GRAY = "#8B93A7";
 
 const STATUS_COLOR: Record<string, string> = {
-  active: GOLD,
-  pending: GOLD,
+  active: AMBER,
+  pending: AMBER,
   answered: GREEN,
   completed: GREEN,
   approved: GREEN,

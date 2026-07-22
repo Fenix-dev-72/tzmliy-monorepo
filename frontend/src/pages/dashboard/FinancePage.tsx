@@ -5,7 +5,10 @@ import { AlertCircle, ArrowRight, Award, Check, Loader2, Plus, ShieldAlert, Wall
 import { useLang } from "@/lib/i18n/LangContext";
 import { useTenantAuth } from "@/lib/auth/tenantAuthStore";
 import * as financeApi from "@/lib/api/finance";
-import type { AdjustmentRequest, BonusPlan, PayrollEntry } from "@/lib/api/finance";
+import { PAYROLL_ENTRIES_PAGE_SIZE } from "@/lib/api/finance";
+import type { AdjustmentRequest, BonusPlan, PayrollEntry, ProfitSummaryEntry } from "@/lib/api/finance";
+import * as catalogApi from "@/lib/api/catalog";
+import { flattenCategories } from "@/lib/api/catalog";
 import { ApiError } from "@/lib/api/client";
 import { formatMoney } from "@/lib/format/money";
 import { FormField } from "@/components/auth/FormField";
@@ -22,17 +25,38 @@ const content = {
     tabBonus: "Bonus rejalar",
     tabPayroll: "Payroll",
     tabAdjustments: "Tuzatish so'rovlari",
+    tabProfit: "Daromad va foyda",
+    profitPeriodStart: "Davr boshi",
+    profitPeriodEnd: "Davr oxiri",
+    profitCalculate: "Hisoblash",
+    profitRevenue: "Umumiy daromad",
+    profitCost: "Tannarx",
+    profitProfit: "Foyda",
+    profitEmpty: "Tanlangan davrda savdo yo'q",
+    profitNote: "Tannarxi kiritilmagan turkumlar uchun foyda hisobida tannarx 0 deb olinadi.",
     addPlan: "Yangi reja",
     planName: "Reja nomi",
     role: "Rol",
+    bonusType: "Bonus turi",
+    bonusTypePercent: "Foizli (%)",
+    bonusTypeFixed: "Summali (har bir sotuvga)",
     commission: "Komissiya (%)",
+    fixedAmount: "Summasi",
+    fixedAmountCurrency: "Valyuta",
+    planCategory: "Mahsulot/turkum",
+    allCategories: "Barcha mahsulotlar",
     effectiveFrom: "Boshlanish sanasi",
     create: "Yaratish",
     cancel: "Bekor qilish",
     noPlans: "Hali bonus reja yo'q",
+    perSaleSuffix: "/ sotuv",
     periodStart: "Davr boshi",
     periodEnd: "Davr oxiri",
     calculate: "Hisoblash",
+    periodMode: "Davr turi",
+    periodModeMonth: "Oylik",
+    periodModeRange: "Ixtiyoriy davr",
+    month: "Oy",
     noPayroll: "Hisoblangan payroll yo'q",
     employee: "Xodim",
     base: "Asosiy",
@@ -51,6 +75,7 @@ const content = {
     created: "Yaratildi",
     updated: "Yangilandi",
     loadError: "Ma'lumotlarni yuklab bo'lmadi",
+    loadMore: "Ko'proq yuklash",
   },
   ru: {
     title: "Финансы",
@@ -60,17 +85,38 @@ const content = {
     tabBonus: "Бонусные планы",
     tabPayroll: "Payroll",
     tabAdjustments: "Заявки на корректировку",
+    tabProfit: "Доход и прибыль",
+    profitPeriodStart: "Начало периода",
+    profitPeriodEnd: "Конец периода",
+    profitCalculate: "Рассчитать",
+    profitRevenue: "Общий доход",
+    profitCost: "Себестоимость",
+    profitProfit: "Прибыль",
+    profitEmpty: "За выбранный период продаж нет",
+    profitNote: "Для разделов без указанной себестоимости она принимается равной 0 при расчёте прибыли.",
     addPlan: "Новый план",
     planName: "Название плана",
     role: "Роль",
+    bonusType: "Тип бонуса",
+    bonusTypePercent: "Процентный (%)",
+    bonusTypeFixed: "Фиксированный (за продажу)",
     commission: "Комиссия (%)",
+    fixedAmount: "Сумма",
+    fixedAmountCurrency: "Валюта",
+    planCategory: "Товар/раздел",
+    allCategories: "Все товары",
     effectiveFrom: "Дата начала",
     create: "Создать",
     cancel: "Отмена",
     noPlans: "Бонусных планов пока нет",
+    perSaleSuffix: "/ продажа",
     periodStart: "Начало периода",
     periodEnd: "Конец периода",
     calculate: "Рассчитать",
+    periodMode: "Тип периода",
+    periodModeMonth: "Помесячно",
+    periodModeRange: "Произвольный период",
+    month: "Месяц",
     noPayroll: "Рассчитанного payroll нет",
     employee: "Сотрудник",
     base: "База",
@@ -89,13 +135,26 @@ const content = {
     created: "Создано",
     updated: "Обновлено",
     loadError: "Не удалось загрузить данные",
+    loadMore: "Загрузить ещё",
   },
 };
 
-const STATUS_COLOR = { pending: "#D4AF37", approved: "#2FBF71", rejected: "#E5484D" };
+const STATUS_COLOR = { pending: "#F59E0B", approved: "#10B981", rejected: "#EF4444" };
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function currentMonthIso() {
+  return new Date().toISOString().slice(0, 7);
+}
+
+function monthRange(monthIso: string): { start: string; end: string } {
+  const [y, m] = monthIso.split("-").map(Number);
+  const start = `${monthIso}-01`;
+  const lastDay = new Date(y, m, 0).getDate();
+  const end = `${monthIso}-${String(lastDay).padStart(2, "0")}`;
+  return { start, end };
 }
 
 export function FinancePage() {
@@ -105,18 +164,27 @@ export function FinancePage() {
   const has2fa = Boolean(user?.totp_enabled);
 
   const [roles, setRoles] = useState<{ id: string; name: string }[]>([]);
+  const [categories, setCategories] = useState<{ id: string; label: string }[]>([]);
   const [plans, setPlans] = useState<BonusPlan[] | null>(null);
   const [payroll, setPayroll] = useState<PayrollEntry[] | null>(null);
+  const [hasMorePayroll, setHasMorePayroll] = useState(false);
+  const [loadingMorePayroll, setLoadingMorePayroll] = useState(false);
   const [adjustments, setAdjustments] = useState<AdjustmentRequest[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [planFormOpen, setPlanFormOpen] = useState(false);
   const [planName, setPlanName] = useState("");
   const [planRoleId, setPlanRoleId] = useState("");
+  const [planBonusType, setPlanBonusType] = useState<"percent" | "fixed_per_sale">("percent");
   const [planCommission, setPlanCommission] = useState("");
+  const [planFixedAmount, setPlanFixedAmount] = useState("");
+  const [planFixedCurrency, setPlanFixedCurrency] = useState("UZS");
+  const [planCategoryId, setPlanCategoryId] = useState("");
   const [planEffectiveFrom, setPlanEffectiveFrom] = useState(todayIso());
   const [savingPlan, setSavingPlan] = useState(false);
 
+  const [periodMode, setPeriodMode] = useState<"month" | "range">("month");
+  const [payrollMonth, setPayrollMonth] = useState(currentMonthIso());
   const [periodStart, setPeriodStart] = useState(todayIso());
   const [periodEnd, setPeriodEnd] = useState(todayIso());
   const [calculating, setCalculating] = useState(false);
@@ -125,20 +193,28 @@ export function FinancePage() {
   const [reviewReason, setReviewReason] = useState("");
   const [reviewing, setReviewing] = useState(false);
 
+  const [profitPeriodStart, setProfitPeriodStart] = useState(todayIso());
+  const [profitPeriodEnd, setProfitPeriodEnd] = useState(todayIso());
+  const [profitSummary, setProfitSummary] = useState<ProfitSummaryEntry[] | null>(null);
+  const [calculatingProfit, setCalculatingProfit] = useState(false);
+
   async function load() {
     if (!accessToken) return;
     setError(null);
     try {
-      const [plansData, adjustmentsData, rolesData, payrollData] = await Promise.all([
+      const [plansData, adjustmentsData, rolesData, payrollData, categoriesTree] = await Promise.all([
         financeApi.listBonusPlans(accessToken),
         financeApi.listAdjustmentRequests(accessToken),
         financeApi.listRolesForSelect(accessToken),
         financeApi.listPayrollEntries(accessToken),
+        catalogApi.listCategories(accessToken),
       ]);
       setPlans(plansData);
       setAdjustments(adjustmentsData);
       setRoles(rolesData);
       setPayroll(payrollData);
+      setHasMorePayroll(payrollData.length === PAYROLL_ENTRIES_PAGE_SIZE);
+      setCategories(flattenCategories(categoriesTree));
     } catch (err) {
       setError(err instanceof ApiError ? err.detail : t.loadError);
     }
@@ -156,13 +232,25 @@ export function FinancePage() {
       await financeApi.createBonusPlan(accessToken, {
         name: planName.trim(),
         applies_to_role_id: planRoleId,
-        commission_bps: Math.round(Number(planCommission) * 100),
+        bonus_type: planBonusType,
+        commission_bps: planBonusType === "percent" ? Math.round(Number(planCommission) * 100) : undefined,
+        fixed_amount:
+          planBonusType === "fixed_per_sale"
+            ? planFixedCurrency === "USD"
+              ? Math.round(Number(planFixedAmount) * 100)
+              : Math.round(Number(planFixedAmount))
+            : undefined,
+        fixed_amount_currency: planBonusType === "fixed_per_sale" ? planFixedCurrency : undefined,
+        catalog_category_id: planCategoryId || undefined,
         effective_from: `${planEffectiveFrom}T00:00:00`,
       });
       toast.success(t.created);
       setPlanName("");
       setPlanRoleId("");
+      setPlanBonusType("percent");
       setPlanCommission("");
+      setPlanFixedAmount("");
+      setPlanCategoryId("");
       setPlanFormOpen(false);
       await load();
     } catch (err) {
@@ -176,16 +264,47 @@ export function FinancePage() {
     if (!accessToken) return;
     setCalculating(true);
     try {
-      const entries = await financeApi.calculatePayroll(accessToken, {
-        period_start: `${periodStart}T00:00:00`,
-        period_end: `${periodEnd}T23:59:59`,
+      const { start, end } = periodMode === "month" ? monthRange(payrollMonth) : { start: periodStart, end: periodEnd };
+      const job = await financeApi.calculatePayroll(accessToken, {
+        period_start: `${start}T00:00:00`,
+        period_end: `${end}T23:59:59`,
       });
+      // Backend computes in the background (payroll_worker.py) -- poll the
+      // job until it resolves instead of getting entries back directly.
+      let status = job.status;
+      let jobError: string | null = null;
+      while (status === "pending" || status === "processing") {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        const polled = await financeApi.getPayrollJobStatus(accessToken, job.id);
+        status = polled.status;
+        jobError = polled.error;
+      }
+      if (status === "failed") {
+        toast.error(jobError || t.genericError);
+        return;
+      }
+      const entries = await financeApi.listPayrollEntries(accessToken);
       setPayroll(entries);
+      setHasMorePayroll(entries.length === PAYROLL_ENTRIES_PAGE_SIZE);
       toast.success(t.updated);
     } catch (err) {
       toast.error(err instanceof ApiError && err.status === 403 ? t.need2fa : t.genericError);
     } finally {
       setCalculating(false);
+    }
+  }
+
+  async function loadMorePayroll() {
+    if (!accessToken || !payroll) return;
+    setLoadingMorePayroll(true);
+    try {
+      const page = await financeApi.listPayrollEntries(accessToken, undefined, PAYROLL_ENTRIES_PAGE_SIZE, payroll.length);
+      setPayroll([...payroll, ...page]);
+      setHasMorePayroll(page.length === PAYROLL_ENTRIES_PAGE_SIZE);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.detail : t.loadError);
+    } finally {
+      setLoadingMorePayroll(false);
     }
   }
 
@@ -210,7 +329,27 @@ export function FinancePage() {
     }
   }
 
-  const canSubmitPlan = planName.trim().length > 0 && planRoleId.length > 0 && planCommission.trim().length > 0;
+  async function handleCalculateProfit() {
+    if (!accessToken) return;
+    setCalculatingProfit(true);
+    try {
+      const summary = await financeApi.getProfitSummary(
+        accessToken,
+        `${profitPeriodStart}T00:00:00`,
+        `${profitPeriodEnd}T23:59:59`,
+      );
+      setProfitSummary(summary);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.detail : t.genericError);
+    } finally {
+      setCalculatingProfit(false);
+    }
+  }
+
+  const canSubmitPlan =
+    planName.trim().length > 0 &&
+    planRoleId.length > 0 &&
+    (planBonusType === "percent" ? planCommission.trim().length > 0 : planFixedAmount.trim().length > 0);
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10">
@@ -249,6 +388,7 @@ export function FinancePage() {
               {t.tabPayroll}
             </TabsTrigger>
             <TabsTrigger value="adjustments">{t.tabAdjustments}</TabsTrigger>
+            <TabsTrigger value="profit">{t.tabProfit}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="bonus" className="mt-5">
@@ -278,16 +418,66 @@ export function FinancePage() {
                       ))}
                     </select>
                   </div>
-                  <FormField
-                    label={t.commission}
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.1"
-                    value={planCommission}
-                    onChange={(e) => setPlanCommission(e.target.value)}
-                    placeholder="5"
-                  />
+                  <div>
+                    <label className="text-foreground mb-1.5 block text-sm font-medium">{t.bonusType}</label>
+                    <select
+                      value={planBonusType}
+                      onChange={(e) => setPlanBonusType(e.target.value as "percent" | "fixed_per_sale")}
+                      className="border-card-border bg-input-background text-foreground focus-visible:border-ring focus-visible:ring-ring/15 h-11 w-full rounded-xl border px-3.5 text-sm outline-none focus-visible:ring-[3px]"
+                    >
+                      <option value="percent">{t.bonusTypePercent}</option>
+                      <option value="fixed_per_sale">{t.bonusTypeFixed}</option>
+                    </select>
+                  </div>
+                  {planBonusType === "percent" ? (
+                    <FormField
+                      label={t.commission}
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.1"
+                      value={planCommission}
+                      onChange={(e) => setPlanCommission(e.target.value)}
+                      placeholder="5"
+                    />
+                  ) : (
+                    <div>
+                      <label className="text-foreground mb-1.5 block text-sm font-medium">{t.fixedAmount}</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min="0"
+                          value={planFixedAmount}
+                          onChange={(e) => setPlanFixedAmount(e.target.value)}
+                          placeholder="100000"
+                          className="border-card-border bg-input-background text-foreground focus-visible:border-ring focus-visible:ring-ring/15 h-11 flex-1 rounded-xl border px-3.5 text-sm outline-none focus-visible:ring-[3px]"
+                        />
+                        <select
+                          value={planFixedCurrency}
+                          onChange={(e) => setPlanFixedCurrency(e.target.value)}
+                          className="border-card-border bg-input-background text-foreground h-11 rounded-xl border px-3 text-sm outline-none"
+                        >
+                          <option value="UZS">UZS</option>
+                          <option value="USD">USD</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                  <div>
+                    <label className="text-foreground mb-1.5 block text-sm font-medium">{t.planCategory}</label>
+                    <select
+                      value={planCategoryId}
+                      onChange={(e) => setPlanCategoryId(e.target.value)}
+                      className="border-card-border bg-input-background text-foreground focus-visible:border-ring focus-visible:ring-ring/15 h-11 w-full rounded-xl border px-3.5 text-sm outline-none focus-visible:ring-[3px]"
+                    >
+                      <option value="">{t.allCategories}</option>
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                   <FormField
                     label={t.effectiveFrom}
                     type="date"
@@ -319,7 +509,16 @@ export function FinancePage() {
                   <div key={plan.id} className="glass-card p-5 transition-all hover:-translate-y-1">
                     <div className="mb-1 flex items-center justify-between">
                       <span className="text-sm font-bold text-foreground">{plan.name}</span>
-                      <span className="text-primary font-mono text-lg font-extrabold">{(plan.commission_bps / 100).toFixed(1)}%</span>
+                      <span className="text-primary font-mono text-lg font-extrabold">
+                        {plan.bonus_type === "fixed_per_sale"
+                          ? `${formatMoney(plan.fixed_amount ?? 0, plan.fixed_amount_currency ?? "UZS")} ${t.perSaleSuffix}`
+                          : `${(plan.commission_bps / 100).toFixed(1)}%`}
+                      </span>
+                    </div>
+                    <div className="text-xs text-foreground-muted">
+                      {plan.catalog_category_id
+                        ? categories.find((c) => c.id === plan.catalog_category_id)?.label ?? plan.catalog_category_id
+                        : t.allCategories}
                     </div>
                     <span className="text-xs text-foreground-muted">
                       {new Date(plan.effective_from).toLocaleDateString()}
@@ -333,8 +532,25 @@ export function FinancePage() {
 
           <TabsContent value="payroll" className="mt-5">
             <div className="glass-card mb-5 flex flex-wrap items-end gap-4 p-5">
-              <FormField label={t.periodStart} type="date" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} className="mb-0" />
-              <FormField label={t.periodEnd} type="date" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} className="mb-0" />
+              <div>
+                <label className="text-foreground mb-1.5 block text-sm font-medium">{t.periodMode}</label>
+                <select
+                  value={periodMode}
+                  onChange={(e) => setPeriodMode(e.target.value as "month" | "range")}
+                  className="border-card-border bg-input-background text-foreground focus-visible:border-ring focus-visible:ring-ring/15 h-11 rounded-xl border px-3.5 text-sm outline-none focus-visible:ring-[3px]"
+                >
+                  <option value="month">{t.periodModeMonth}</option>
+                  <option value="range">{t.periodModeRange}</option>
+                </select>
+              </div>
+              {periodMode === "month" ? (
+                <FormField label={t.month} type="month" value={payrollMonth} onChange={(e) => setPayrollMonth(e.target.value)} className="mb-0" />
+              ) : (
+                <>
+                  <FormField label={t.periodStart} type="date" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} className="mb-0" />
+                  <FormField label={t.periodEnd} type="date" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} className="mb-0" />
+                </>
+              )}
               <Button variant="gold" disabled={calculating} onClick={handleCalculatePayroll}>
                 {calculating && <Loader2 size={16} className="animate-spin" />}
                 {t.calculate}
@@ -368,6 +584,15 @@ export function FinancePage() {
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {payroll !== null && payroll.length > 0 && hasMorePayroll && (
+              <div className="mt-4 flex justify-center">
+                <Button variant="outline" disabled={loadingMorePayroll} onClick={loadMorePayroll}>
+                  {loadingMorePayroll && <Loader2 size={16} className="animate-spin" />}
+                  {t.loadMore}
+                </Button>
               </div>
             )}
           </TabsContent>
@@ -425,6 +650,60 @@ export function FinancePage() {
                   </div>
                 ))}
               </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="profit" className="mt-5">
+            <div className="glass-card mb-5 flex flex-wrap items-end gap-4 p-5">
+              <FormField
+                label={t.profitPeriodStart}
+                type="date"
+                value={profitPeriodStart}
+                onChange={(e) => setProfitPeriodStart(e.target.value)}
+                className="mb-0"
+              />
+              <FormField
+                label={t.profitPeriodEnd}
+                type="date"
+                value={profitPeriodEnd}
+                onChange={(e) => setProfitPeriodEnd(e.target.value)}
+                className="mb-0"
+              />
+              <Button variant="gold" disabled={calculatingProfit} onClick={handleCalculateProfit}>
+                {calculatingProfit && <Loader2 size={16} className="animate-spin" />}
+                {t.profitCalculate}
+              </Button>
+            </div>
+
+            {profitSummary !== null && (
+              <>
+                {profitSummary.length === 0 ? (
+                  <p className="glass-card py-10 text-center text-sm text-foreground-muted">{t.profitEmpty}</p>
+                ) : (
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    {profitSummary.map((entry) => (
+                      <div key={entry.currency} className="glass-card p-5">
+                        <div className="mb-3 text-sm font-bold text-foreground">{entry.currency}</div>
+                        <div className="flex flex-col gap-1.5 text-sm">
+                          <span className="text-foreground-muted">
+                            {t.profitRevenue}: <span className="font-mono text-foreground">{formatMoney(entry.revenue, entry.currency)}</span>
+                          </span>
+                          <span className="text-foreground-muted">
+                            {t.profitCost}: <span className="font-mono text-foreground">{formatMoney(entry.cost, entry.currency)}</span>
+                          </span>
+                          <span className="text-foreground-muted">
+                            {t.profitProfit}:{" "}
+                            <span className={`font-mono font-bold ${entry.profit >= 0 ? "text-success" : "text-destructive"}`}>
+                              {formatMoney(entry.profit, entry.currency)}
+                            </span>
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <p className="text-foreground-muted mt-4 text-xs">{t.profitNote}</p>
+              </>
             )}
           </TabsContent>
         </Tabs>

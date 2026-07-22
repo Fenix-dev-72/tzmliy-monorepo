@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { AlertCircle, Loader2, Plus, UserX, Users, X } from "lucide-react";
+import { AlertCircle, Loader2, Pencil, Plus, UserX, Users, X } from "lucide-react";
 import { useLang } from "@/lib/i18n/LangContext";
 import { useTenantAuth } from "@/lib/auth/tenantAuthStore";
 import * as usersApi from "@/lib/api/users";
+import { USERS_PAGE_SIZE } from "@/lib/api/users";
 import type { TenantUserRow } from "@/lib/api/users";
 import * as rolesApi from "@/lib/api/roles";
 import type { Role } from "@/lib/api/roles";
@@ -26,9 +27,11 @@ const content = {
     cancel: "Bekor qilish",
     empty: "Hali xodimlar yo'q",
     emptyDesc: "Birinchi xodimingizni qo'shing.",
+    loadMore: "Ko'proq yuklash",
     loadError: "Ma'lumotlarni yuklab bo'lmadi",
     emailTaken: "Bu email allaqachon band",
     phoneTaken: "Bu telefon raqami allaqachon band",
+    adminRoleNotAllowed: "Xodimga \"admin\" rolini berib bo'lmaydi",
     genericError: "Xatolik yuz berdi",
     need2fa: "Xodimlar bilan ishlash uchun 2FA yoqilgan bo'lishi kerak.",
     created: "Xodim qo'shildi",
@@ -38,6 +41,10 @@ const content = {
     confirmDeactivateTitle: "Xodimni faolsizlantirasizmi?",
     confirmDeactivateDesc: "Bu amalni qaytarib bo'lmaydi — xodim tizimga kira olmay qoladi.",
     deactivated: "Faolsizlantirildi",
+    editProfile: "Profilni tahrirlash",
+    name: "Ism",
+    save: "Saqlash",
+    profileUpdated: "Profil yangilandi",
   },
   ru: {
     title: "Пользователи",
@@ -51,9 +58,11 @@ const content = {
     cancel: "Отмена",
     empty: "Сотрудников пока нет",
     emptyDesc: "Добавьте своего первого сотрудника.",
+    loadMore: "Загрузить ещё",
     loadError: "Не удалось загрузить данные",
     emailTaken: "Этот email уже занят",
     phoneTaken: "Этот номер телефона уже занят",
+    adminRoleNotAllowed: "Сотруднику нельзя назначить роль \"admin\"",
     genericError: "Произошла ошибка",
     need2fa: "Для работы с сотрудниками требуется включённая 2FA.",
     created: "Сотрудник добавлен",
@@ -63,10 +72,14 @@ const content = {
     confirmDeactivateTitle: "Деактивировать сотрудника?",
     confirmDeactivateDesc: "Это действие необратимо — сотрудник больше не сможет войти в систему.",
     deactivated: "Деактивирован",
+    editProfile: "Редактировать профиль",
+    name: "Имя",
+    save: "Сохранить",
+    profileUpdated: "Профиль обновлён",
   },
 };
 
-const ROLE_COLORS = ["#D4AF37", "#4C6FFF", "#2FBF71", "#9B5DE5", "#F5A623", "#00B4D8"];
+const ROLE_COLORS = ["#2563EB", "#4C6FFF", "#2FBF71", "#9B5DE5", "#F5A623", "#00B4D8"];
 function colorForRole(name: string) {
   let hash = 0;
   for (const ch of name) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
@@ -80,6 +93,8 @@ export function UsersPage() {
   const has2fa = Boolean(user?.totp_enabled);
 
   const [users, setUsers] = useState<TenantUserRow[] | null>(null);
+  const [hasMoreUsers, setHasMoreUsers] = useState(false);
+  const [loadingMoreUsers, setLoadingMoreUsers] = useState(false);
   const [roles, setRoles] = useState<Role[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -94,11 +109,18 @@ export function UsersPage() {
   const [deactivateTarget, setDeactivateTarget] = useState<TenantUserRow | null>(null);
   const [deactivating, setDeactivating] = useState(false);
 
+  const [profileEditTarget, setProfileEditTarget] = useState<TenantUserRow | null>(null);
+  const [editFullName, setEditFullName] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [savingProfile, setSavingProfile] = useState(false);
+
   async function load() {
     if (!accessToken) return;
     setError(null);
     try {
-      setUsers(await usersApi.listUsers(accessToken));
+      const page = await usersApi.listUsers(accessToken);
+      setUsers(page);
+      setHasMoreUsers(page.length === USERS_PAGE_SIZE);
     } catch (err) {
       setError(err instanceof ApiError ? err.detail : t.loadError);
       return;
@@ -107,6 +129,20 @@ export function UsersPage() {
       setRoles(await rolesApi.listRoles(accessToken));
     } catch {
       // roles list is only needed for the role picker -- users still render without it
+    }
+  }
+
+  async function loadMoreUsers() {
+    if (!accessToken || !users) return;
+    setLoadingMoreUsers(true);
+    try {
+      const page = await usersApi.listUsers(accessToken, USERS_PAGE_SIZE, users.length);
+      setUsers([...users, ...page]);
+      setHasMoreUsers(page.length === USERS_PAGE_SIZE);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.detail : t.loadError);
+    } finally {
+      setLoadingMoreUsers(false);
     }
   }
 
@@ -139,6 +175,8 @@ export function UsersPage() {
         toast.error(t.emailTaken);
       } else if (err instanceof ApiError && err.status === 409) {
         toast.error(t.phoneTaken);
+      } else if (err instanceof ApiError && err.status === 400) {
+        toast.error(t.adminRoleNotAllowed);
       } else {
         toast.error(t.genericError);
       }
@@ -155,7 +193,13 @@ export function UsersPage() {
       setRoleEditFor(null);
       await load();
     } catch (err) {
-      toast.error(err instanceof ApiError && err.status === 403 ? t.need2fa : t.genericError);
+      if (err instanceof ApiError && err.status === 403) {
+        toast.error(t.need2fa);
+      } else if (err instanceof ApiError && err.status === 400) {
+        toast.error(t.adminRoleNotAllowed);
+      } else {
+        toast.error(t.genericError);
+      }
     }
   }
 
@@ -173,6 +217,37 @@ export function UsersPage() {
       setDeactivating(false);
     }
   }
+
+  function openProfileEdit(u: TenantUserRow) {
+    setProfileEditTarget(u);
+    setEditFullName(u.full_name ?? "");
+    setEditPhone(u.phone ?? "");
+  }
+
+  async function handleProfileSave() {
+    if (!accessToken || !profileEditTarget) return;
+    setSavingProfile(true);
+    try {
+      await usersApi.updateUserProfile(accessToken, profileEditTarget.id, {
+        full_name: editFullName.trim() || null,
+        phone: editPhone.trim() || null,
+      });
+      toast.success(t.profileUpdated);
+      setProfileEditTarget(null);
+      await load();
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 403) toast.error(t.need2fa);
+      else if (err instanceof ApiError && err.status === 409) toast.error(t.phoneTaken);
+      else toast.error(t.genericError);
+    } finally {
+      setSavingProfile(false);
+    }
+  }
+
+  // A tenant has exactly one owner-admin (created at registration/tenant
+  // setup) -- employees added/promoted from this page must never be given
+  // that role, so the system "admin" role is hidden from both role pickers.
+  const assignableRoles = useMemo(() => roles.filter((r) => !(r.is_system && r.name === "admin")), [roles]);
 
   const canSubmit = email.trim().length > 0 && password.length >= 8 && roleId.length > 0;
   const sortedUsers = useMemo(() => {
@@ -215,7 +290,7 @@ export function UsersPage() {
                 className="border-card-border bg-input-background text-foreground focus-visible:border-ring focus-visible:ring-ring/15 h-11 w-full rounded-xl border px-3.5 text-sm outline-none focus-visible:ring-[3px]"
               >
                 <option value="">—</option>
-                {roles.map((r) => (
+                {assignableRoles.map((r) => (
                   <option key={r.id} value={r.id}>
                     {r.name}
                   </option>
@@ -260,7 +335,8 @@ export function UsersPage() {
       {!error && sortedUsers !== null && sortedUsers.length > 0 && (
         <div className="glass-card overflow-hidden p-0">
           {sortedUsers.map((u, i) => {
-            const label = (u.email ?? u.phone ?? "?")[0]?.toUpperCase() ?? "?";
+            const primaryLabel = u.full_name ?? u.email ?? u.phone ?? "?";
+            const label = primaryLabel[0]?.toUpperCase() ?? "?";
             const color = colorForRole(u.role_name);
             return (
               <div
@@ -274,11 +350,23 @@ export function UsersPage() {
                     {label}
                   </div>
                   <div className="min-w-0">
-                    <div className="truncate text-sm font-semibold text-foreground">{u.email ?? u.phone}</div>
-                    {u.email && u.phone && <div className="font-mono truncate text-xs text-foreground-muted">{u.phone}</div>}
+                    <div className="truncate text-sm font-semibold text-foreground">{primaryLabel}</div>
+                    {u.full_name && (u.email || u.phone) && (
+                      <div className="font-mono truncate text-xs text-foreground-muted">{u.email ?? u.phone}</div>
+                    )}
+                    {!u.full_name && u.email && u.phone && (
+                      <div className="font-mono truncate text-xs text-foreground-muted">{u.phone}</div>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => openProfileEdit(u)}
+                    className="text-foreground-muted border-card-border bg-background/60 flex size-8 items-center justify-center rounded-lg border"
+                    aria-label={t.editProfile}
+                  >
+                    <Pencil size={14} />
+                  </button>
                   {!u.is_active && (
                     <span className="border-destructive/25 bg-destructive/10 text-destructive rounded-full border px-2.5 py-1 text-[11px] font-semibold">
                       {t.inactive}
@@ -294,7 +382,7 @@ export function UsersPage() {
                     </button>
                     {roleEditFor === u.id && (
                       <div className="glass-card absolute right-0 top-full z-10 mt-1 w-44 p-1.5">
-                        {roles.map((r) => (
+                        {assignableRoles.map((r) => (
                           <button
                             key={r.id}
                             onClick={() => handleRoleChange(u.id, r.id)}
@@ -322,6 +410,15 @@ export function UsersPage() {
         </div>
       )}
 
+      {!error && sortedUsers !== null && sortedUsers.length > 0 && hasMoreUsers && (
+        <div className="mt-4 flex justify-center">
+          <Button variant="outline" disabled={loadingMoreUsers} onClick={loadMoreUsers}>
+            {loadingMoreUsers && <Loader2 size={16} className="animate-spin" />}
+            {t.loadMore}
+          </Button>
+        </div>
+      )}
+
       <ConfirmDialog
         open={deactivateTarget !== null}
         title={t.confirmDeactivateTitle}
@@ -333,6 +430,21 @@ export function UsersPage() {
         onConfirm={handleDeactivate}
         onCancel={() => setDeactivateTarget(null)}
       />
+
+      <ConfirmDialog
+        open={profileEditTarget !== null}
+        title={t.editProfile}
+        confirmLabel={t.save}
+        cancelLabel={t.cancel}
+        loading={savingProfile}
+        onConfirm={handleProfileSave}
+        onCancel={() => setProfileEditTarget(null)}
+      >
+        <div className="mb-2">
+          <FormField label={t.name} value={editFullName} onChange={(e) => setEditFullName(e.target.value)} />
+          <FormField label={t.phone} type="tel" value={editPhone} onChange={(e) => setEditPhone(e.target.value)} placeholder="+998 90 123 45 67" />
+        </div>
+      </ConfirmDialog>
 
       {!has2fa && (
         <p className="mt-6 text-center text-xs text-foreground-muted">{t.need2fa}</p>

@@ -21,7 +21,10 @@ from app.core.security import (
     verify_password,
 )
 from app.modules.auth import otp_store, repository, roles_service
+from app.modules.auth.permissions import CALLS_VIEW, CRM_VIEW, CUSTOMERS_MANAGE
 from app.modules.auth.schemas import LoginResponse, TwoFactorSetupOut
+from app.modules.calls import service as calls_service
+from app.modules.crm import service as crm_service
 from app.modules.tenants import repository as tenants_repository
 from app.modules.tenants.schemas import TokenPair
 
@@ -258,7 +261,38 @@ async def logout(pool: asyncpg.Pool, settings: Settings, refresh_token: str) -> 
 
 async def get_user(pool: asyncpg.Pool, tenant_id: UUID, user_id: UUID):
     async with tenant_connection(pool, tenant_id) as conn:
-        return await repository.get_user_by_id(conn, user_id)
+        user = await repository.get_user_by_id(conn, user_id)
+        if user is None:
+            return None
+        permissions = frozenset(await roles_service.get_role_permission_keys(conn, user["role_id"]))
+        has_telegram = await repository.user_has_telegram_chat_id(conn, user_id)
+
+    pending_links = []
+    if not has_telegram:
+        pending_links.append("telegram")
+    # "utel"/"crm" only count as pending if the tenant has actually
+    # configured that integration -- otherwise there's nothing real for this
+    # user to self-link to yet (found 2026-07-15: a brand-new tenant's own
+    # admin, who hasn't configured any integration, was permanently forced
+    # through this gate with no real UTEL/CRM account to enter an ID for,
+    # and self-linking against nothing just created an orphan mapping row).
+    # Whoever configures the integration should do that first -- this list
+    # only nags the *other* users once there's something real to link.
+    if (
+        CALLS_VIEW in permissions
+        and await calls_service.list_integrations(pool, tenant_id)
+        and not await calls_service.user_has_manager_mapping(pool, tenant_id, user_id)
+    ):
+        pending_links.append("utel")
+    if (
+        (CRM_VIEW in permissions or CUSTOMERS_MANAGE in permissions)
+        and await crm_service.list_integrations(pool, tenant_id)
+        and not await crm_service.user_has_manager_mapping(pool, tenant_id, user_id)
+    ):
+        pending_links.append("crm")
+
+    user["pending_links"] = pending_links
+    return user
 
 
 async def request_password_reset(

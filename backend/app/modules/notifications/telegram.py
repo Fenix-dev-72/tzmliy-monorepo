@@ -1,14 +1,22 @@
-"""Telegram Bot API client — plain `urllib.request` + `asyncio.to_thread`,
-matching `calls/providers.py`'s `download_recording` (no async HTTP client
-dependency exists in this repo)."""
+"""Telegram Bot API client -- backed by `aiogram`'s `Bot` class (migrated
+2026-07-13 from a hand-rolled `urllib` + `asyncio.to_thread` client, for real
+async I/O instead of tying up a thread-pool slot per call). Every public
+function here keeps its original signature/return shape and raises the same
+`TelegramApiError`, so `notifications/tasks.py`/`service.py`
+needed zero changes -- this module is purely an HTTP-layer swap, not an
+architecture change. A short-lived `Bot` instance is created per call (this
+app polls/sends across many tenants' own bot tokens, never one fixed bot), so
+its aiohttp session is closed again immediately after -- no shared session to
+leak across tenants."""
 
-import json
-import urllib.error
-import urllib.request
-import uuid
-from asyncio import to_thread
+from collections.abc import Awaitable, Callable
+from typing import TypeVar
 
-_API_BASE = "https://api.telegram.org"
+from aiogram import Bot
+from aiogram.exceptions import TelegramAPIError
+from aiogram.types import BufferedInputFile
+
+_T = TypeVar("_T")
 
 
 class TelegramApiError(Exception):
@@ -18,65 +26,72 @@ class TelegramApiError(Exception):
         super().__init__(f"Telegram API error {error_code}: {description}")
 
 
-def _parse_response(raw: bytes) -> dict:
-    body = json.loads(raw)
-    if not body.get("ok"):
-        raise TelegramApiError(body.get("error_code"), body.get("description", "Unknown error"))
-    return body["result"]
-
-
-def _post_json(url: str, payload: dict) -> dict:
-    data = json.dumps(payload).encode()
-    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"}, method="POST")
+async def _with_bot(bot_token: str, fn: Callable[[Bot], Awaitable[_T]]) -> _T:
+    bot = Bot(token=bot_token)
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            return _parse_response(resp.read())
-    except urllib.error.HTTPError as exc:
-        return _parse_response(exc.read())
+        return await fn(bot)
+    except TelegramAPIError as exc:
+        # aiogram doesn't surface Telegram's raw numeric error_code on its
+        # exception types (it maps description/status into typed subclasses
+        # instead) -- nothing in this repo reads .error_code besides this
+        # module itself, so None is a safe, harmless placeholder here.
+        raise TelegramApiError(None, str(exc)) from exc
+    finally:
+        await bot.session.close()
 
 
-def _encode_multipart(fields: dict[str, str], file_field: str, filename: str, file_bytes: bytes, content_type: str) -> tuple[bytes, str]:
-    boundary = uuid.uuid4().hex
-    parts: list[bytes] = []
-    for name, value in fields.items():
-        parts.append(f"--{boundary}\r\n".encode())
-        parts.append(f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode())
-        parts.append(f"{value}\r\n".encode())
-    parts.append(f"--{boundary}\r\n".encode())
-    parts.append(f'Content-Disposition: form-data; name="{file_field}"; filename="{filename}"\r\n'.encode())
-    parts.append(f"Content-Type: {content_type}\r\n\r\n".encode())
-    parts.append(file_bytes)
-    parts.append(b"\r\n")
-    parts.append(f"--{boundary}--\r\n".encode())
-    return b"".join(parts), f"multipart/form-data; boundary={boundary}"
+async def get_me(bot_token: str) -> dict:
+    """Fetches the bot's own username (`getMe`) -- captured once at
+    configure_telegram_bot time so the personal-link deep link
+    (t.me/<username>?start=<token>) doesn't need a separate manual field."""
+
+    async def _call(bot: Bot) -> dict:
+        user = await bot.get_me()
+        return {"id": user.id, "username": user.username}
+
+    return await _with_bot(bot_token, _call)
 
 
-def _post_multipart(url: str, fields: dict[str, str], file_field: str, filename: str, file_bytes: bytes, content_type: str) -> dict:
-    body, content_type_header = _encode_multipart(fields, file_field, filename, file_bytes, content_type)
-    req = urllib.request.Request(url, data=body, headers={"Content-Type": content_type_header}, method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            return _parse_response(resp.read())
-    except urllib.error.HTTPError as exc:
-        return _parse_response(exc.read())
+async def get_updates(bot_token: str, offset: int | None) -> list[dict]:
+    """Long-poll alternative to a webhook -- Telegram's `setWebhook` requires
+    a public HTTPS URL, which this deployment doesn't have yet (see
+    CLAUDE.md's Deployment section: no TLS/domain). `timeout=0` here means a
+    plain non-blocking poll (the calling worker controls its own poll
+    interval) rather than Telegram's own long-poll wait. Returns plain dicts
+    (not aiogram's typed Update objects) via model_dump(), matching the exact
+    shape notifications/tasks.py already parses (update_id, message.chat.id,
+    message.chat.type, message.text) -- that caller needed no changes."""
+
+    async def _call(bot: Bot) -> list[dict]:
+        updates = await bot.get_updates(offset=offset, timeout=0)
+        return [u.model_dump(mode="json") for u in updates]
+
+    return await _with_bot(bot_token, _call)
 
 
-def _send_message_sync(bot_token: str, chat_id: int, text: str) -> dict:
-    return _post_json(f"{_API_BASE}/bot{bot_token}/sendMessage", {"chat_id": chat_id, "text": text})
+async def get_chat(bot_token: str, chat_id: int) -> dict:
+    """Live lookup of a group's display title -- used to enrich the group
+    list in the UI beyond the raw numeric chat_id/manually-set label."""
 
+    async def _call(bot: Bot) -> dict:
+        chat = await bot.get_chat(chat_id)
+        return {"title": chat.title}
 
-def _send_document_sync(bot_token: str, chat_id: int, filename: str, data: bytes, caption: str | None) -> dict:
-    fields = {"chat_id": str(chat_id)}
-    if caption:
-        fields["caption"] = caption
-    return _post_multipart(
-        f"{_API_BASE}/bot{bot_token}/sendDocument", fields, "document", filename, data, "application/pdf"
-    )
+    return await _with_bot(bot_token, _call)
 
 
 async def send_message(bot_token: str, chat_id: int, text: str) -> dict:
-    return await to_thread(_send_message_sync, bot_token, chat_id, text)
+    async def _call(bot: Bot) -> dict:
+        message = await bot.send_message(chat_id, text)
+        return {"message_id": message.message_id}
+
+    return await _with_bot(bot_token, _call)
 
 
 async def send_document(bot_token: str, chat_id: int, filename: str, data: bytes, caption: str | None = None) -> dict:
-    return await to_thread(_send_document_sync, bot_token, chat_id, filename, data, caption)
+    async def _call(bot: Bot) -> dict:
+        document = BufferedInputFile(data, filename=filename)
+        message = await bot.send_document(chat_id, document, caption=caption)
+        return {"message_id": message.message_id}
+
+    return await _with_bot(bot_token, _call)

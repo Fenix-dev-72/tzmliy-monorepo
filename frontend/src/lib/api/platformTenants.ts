@@ -5,6 +5,7 @@ export interface Tenant {
   name: string;
   slug: string;
   status: string;
+  trial_ends_at: string | null;
   created_at: string;
 }
 
@@ -16,6 +17,10 @@ export interface TenantAdminUser {
 
 export function createTenant(accessToken: string, params: { name: string; slug: string }) {
   return apiFetch<Tenant>("/platform/v1/tenants", { method: "POST", accessToken, body: params });
+}
+
+export function listTenants(accessToken: string) {
+  return apiFetch<Tenant[]>("/platform/v1/tenants", { accessToken });
 }
 
 export function createTenantAdminUser(

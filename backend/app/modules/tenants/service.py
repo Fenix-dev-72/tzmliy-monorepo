@@ -211,7 +211,12 @@ async def create_tenant_admin_user(
 
     admin_role = await roles_service.get_role_by_name(pool, tenant_id, "admin")
     # users_service.EmailTakenError propagates as-is; the router catches it.
-    user = await users_service.create_user(pool, tenant_id, email, password, admin_role["id"])
+    # allow_admin_role=True: this is the one legitimate caller allowed to
+    # hand out the system 'admin' role (bootstrapping a brand-new tenant's
+    # first user) -- see users_service.create_user's docstring.
+    user = await users_service.create_user(
+        pool, tenant_id, email, password, admin_role["id"], allow_admin_role=True
+    )
 
     async with platform_connection(pool) as conn:
         await repository.insert_audit_log(

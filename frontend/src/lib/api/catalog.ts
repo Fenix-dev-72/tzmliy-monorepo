@@ -17,8 +17,8 @@ export function createCategory(accessToken: string, body: { name: string; parent
   return apiFetch<CategoryNode>("/api/v1/catalog/categories", { method: "POST", accessToken, body });
 }
 
-export function updateCategory(accessToken: string, id: string, name: string) {
-  return apiFetch<CategoryNode>(`/api/v1/catalog/categories/${id}`, { method: "PATCH", accessToken, body: { name } });
+export function updateCategory(accessToken: string, id: string, body: { name: string }) {
+  return apiFetch<CategoryNode>(`/api/v1/catalog/categories/${id}`, { method: "PATCH", accessToken, body });
 }
 
 export function deleteCategory(accessToken: string, id: string) {

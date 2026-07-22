@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
-import { ArrowLeft, Loader2, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight, Loader2, ShieldCheck } from "lucide-react";
 import { useLang } from "@/lib/i18n/LangContext";
 import { ApiError } from "@/lib/api/client";
 import * as tenantAuthApi from "@/lib/api/tenantAuth";
@@ -87,7 +87,7 @@ export function RegisterVerifyView() {
       <div className="border-primary/25 bg-primary/12 mx-auto mb-6 flex size-16 items-center justify-center rounded-2xl border">
         <ShieldCheck size={28} className="text-primary" />
       </div>
-      <h2 className="font-heading mb-2 text-2xl font-extrabold text-foreground">{t.title}</h2>
+      <h2 className="font-display mb-2 text-[26px] font-bold text-foreground">{t.title}</h2>
       <p className="mb-1 text-sm text-foreground-muted">{t.sent}</p>
       <p className="mb-8 text-[15px] font-bold text-foreground">{state.identifier}</p>
 
@@ -108,8 +108,8 @@ export function RegisterVerifyView() {
       </div>
 
       <Button variant="gold" size="lg" className="w-full" disabled={code.length < 6 || loading} onClick={() => handleVerify(code)}>
-        {loading && <Loader2 size={16} className="animate-spin" />}
-        {loading ? t.loading : t.verify}
+        {loading ? <Loader2 size={16} className="animate-spin" /> : t.verify}
+        {!loading && <ArrowRight size={16} />}
       </Button>
       <button
         onClick={() => navigate("/register")}

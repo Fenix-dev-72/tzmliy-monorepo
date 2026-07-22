@@ -1,79 +1,79 @@
-import { ArrowRight, BarChart3, DollarSign, Phone, Users } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import { ShoppingCart, Users, Plug, BarChart3 } from "lucide-react";
 import { useLang } from "@/lib/i18n/LangContext";
-import { SectionBadge, SectionHeading } from "@/components/shared/SectionBadge";
-import { TiltCard } from "@/components/shared/TiltCard";
-import { useReveal, revealClass } from "@/lib/hooks/useReveal";
+import { Reveal } from "@/components/shared/Reveal";
 
-const content = {
+// "Key feature categories" style section (reference: TeamWave/Framer
+// template's 2x2 icon-card grid), rebuilt with Tizimly's own modules and
+// brand palette (gold/blue/green/orange accents rotated per card) instead
+// of the reference's single pink accent, using the repo's existing
+// Reveal/.glass-card primitives.
+
+interface FeatureCard {
+  icon: LucideIcon;
+  color: string;
+  title: string;
+  desc: string;
+}
+
+const content: Record<"uz" | "ru", { badge: string; title: string; cards: FeatureCard[] }> = {
   uz: {
-    badge: "Asosiy modullar",
-    title: "Biznesingiz uchun hamma narsa",
-    subtitle: "Har bir modul professional jamoalar uchun loyihalangan va bir-biri bilan muammosiz bog'liq.",
-    more: "Batafsil",
-    features: [
+    badge: "Asosiy imkoniyatlar",
+    title: "Bitta platforma, barcha jarayonlar",
+    cards: [
+      {
+        icon: ShoppingCart,
+        color: "var(--color-primary)",
+        title: "Savdo va ombor",
+        desc: "Mahsulotlar, zaxira va sotuvlarni bitta joyda boshqaring. Har bir savdo ombordagi qoldiqni avtomatik yangilaydi, tan narxi asosida foyda hisoblanadi.",
+      },
       {
         icon: Users,
-        color: "#4C6FFF",
-        title: "CRM va Mijozlar",
-        desc: "Leadlar, mijozlar, muloqot tarixi va segmentatsiya. UTEL qo'ng'iroqlari bilan integratsiya, avtomatik follow-up va to'liq pipeline boshqaruvi.",
-        tags: ["Lead boshqaruvi", "Qo'ng'iroq tarixi", "Pipeline", "Segmentatsiya"],
+        color: "var(--color-secondary)",
+        title: "CRM va qo'ng'iroqlar",
+        desc: "Mijozlar bazasi, lidlar va qo'ng'iroq tarixi bir joyda. AmoCRM, Bitrix24 va UTEL integratsiyalari orqali jarayonlarni avtomatlashtiring.",
       },
       {
-        icon: DollarSign,
-        color: "#D4AF37",
-        title: "Moliya va Ledger",
-        desc: "Append-only ledger, qarz va refund workflow. To'liq audit trail, UZS/USD, Click va Payme integratsiyasi. Har bir tranzaksiya o'zgartirib bo'lmaydi.",
-        tags: ["Append-only ledger", "Qarz/Refund", "Click & Payme", "Audit trail"],
-      },
-      {
-        icon: Phone,
-        color: "#2FBF71",
-        title: "Qo'ng'iroqlar & Call-markaz",
-        desc: "UTEL integratsiyasi, qo'ng'iroq yozuvlari, agent statistikasi va real-time monitoring. Mijozni tanib, tarixini darhol ko'rsatadi.",
-        tags: ["UTEL integratsiya", "Yozuvlar", "Agent statistika", "Real-time"],
+        icon: Plug,
+        color: "var(--color-accent-orange)",
+        title: "Integratsiyalar va avtomatlashtirish",
+        desc: "Meta Ads, CRM va IP-telefoniya xizmatlari bilan ulanib, ma'lumotlarni qo'lda kiritishga vaqt sarflamang — hammasi real vaqt rejimida sinxronlanadi.",
       },
       {
         icon: BarChart3,
-        color: "#D4AF37",
-        title: "Live Dashboard & Leaderboard",
-        desc: "SSE orqali real-time yangilanuvchi dashboard. Sotuvchilar reytingi, moliyaviy KPI, qo'ng'iroq statistikasi — hamma narsa darhol ko'rinadi.",
-        tags: ["SSE real-time", "Leaderboard", "KPI monitoring", "Export"],
+        color: "var(--color-success)",
+        title: "Analitika va hisobotlar",
+        desc: "Daromad, qarzdorlik va jamoa samaradorligini real vaqt rejimida kuzating. Kunlik, haftalik va oylik davrlar bo'yicha chuqur tahlil oling.",
       },
     ],
   },
   ru: {
-    badge: "Основные модули",
-    title: "Всё для вашего бизнеса",
-    subtitle: "Каждый модуль разработан для профессиональных команд и бесшовно связан с другими.",
-    more: "Подробнее",
-    features: [
+    badge: "Основные возможности",
+    title: "Одна платформа для всех процессов",
+    cards: [
+      {
+        icon: ShoppingCart,
+        color: "var(--color-primary)",
+        title: "Продажи и склад",
+        desc: "Управляйте товарами, остатками и продажами в одном месте. Каждая продажа автоматически обновляет склад, а прибыль считается по себестоимости.",
+      },
       {
         icon: Users,
-        color: "#4C6FFF",
-        title: "CRM и Клиенты",
-        desc: "Лиды, клиенты, история коммуникаций и сегментация. Интеграция с UTEL-звонками, автоматический follow-up и полное управление пайплайном.",
-        tags: ["Управление лидами", "История звонков", "Пайплайн", "Сегментация"],
+        color: "var(--color-secondary)",
+        title: "CRM и звонки",
+        desc: "База клиентов, лиды и история звонков в одном окне. Автоматизируйте процессы через интеграции с AmoCRM, Bitrix24 и UTEL.",
       },
       {
-        icon: DollarSign,
-        color: "#D4AF37",
-        title: "Финансы и Леджер",
-        desc: "Append-only леджер, рабочий процесс долгов и возвратов. Полный audit trail, UZS/USD, интеграция Click и Payme.",
-        tags: ["Append-only леджер", "Долги/Возвраты", "Click & Payme", "Audit trail"],
-      },
-      {
-        icon: Phone,
-        color: "#2FBF71",
-        title: "Звонки & Колл-центр",
-        desc: "Интеграция с UTEL, записи звонков, статистика агентов и мониторинг в реальном времени. Мгновенно показывает историю клиента.",
-        tags: ["Интеграция UTEL", "Записи", "Статистика агентов", "Real-time"],
+        icon: Plug,
+        color: "var(--color-accent-orange)",
+        title: "Интеграции и автоматизация",
+        desc: "Подключите Meta Ads, CRM и IP-телефонию — данные синхронизируются в реальном времени, без ручного ввода.",
       },
       {
         icon: BarChart3,
-        color: "#D4AF37",
-        title: "Live Dashboard & Leaderboard",
-        desc: "Дашборд с обновлением в реальном времени через SSE. Рейтинг продавцов, финансовые KPI, статистика звонков — всё мгновенно.",
-        tags: ["SSE real-time", "Leaderboard", "KPI мониторинг", "Экспорт"],
+        color: "var(--color-success)",
+        title: "Аналитика и отчёты",
+        desc: "Следите за доходом, задолженностью и эффективностью команды в реальном времени. Глубокая аналитика за день, неделю и месяц.",
       },
     ],
   },
@@ -81,59 +81,44 @@ const content = {
 
 export function FeaturesGrid() {
   const { lang } = useLang();
-  const c = content[lang];
-  const { ref, visible } = useReveal<HTMLDivElement>();
+  const t = content[lang];
 
   return (
-    <section id="features" className="bg-card/30 px-4 py-12 sm:px-6 sm:py-20">
-      <div className="mx-auto max-w-7xl">
-        <SectionHeading badge={<SectionBadge>{c.badge}</SectionBadge>} title={c.title} subtitle={c.subtitle} />
+    <section id="features" className="relative overflow-hidden py-20 sm:py-28">
+      <div
+        className="landing-glow-drift pointer-events-none absolute top-1/3 right-[8%] size-[380px] rounded-full blur-3xl"
+        style={{ background: "radial-gradient(circle, rgba(76,111,255,0.1) 0%, transparent 70%)" }}
+      />
 
-        <div ref={ref} className="grid grid-cols-1 gap-4 sm:gap-6 md:grid-cols-2">
-          {c.features.map((feature, i) => (
-            <TiltCard
-              key={i}
-              className={revealClass(
-                visible,
-                "bg-card border-card-border group rounded-2xl border p-5 shadow-[0_8px_32px_rgba(0,0,0,0.12)] backdrop-blur-md hover:shadow-[0_16px_48px_rgba(0,0,0,0.2)] hover:duration-300 sm:rounded-3xl sm:p-8",
-              )}
-              maxDeg={4}
-            >
-              <div style={{ transitionDelay: `${(i % 2) * 120}ms` }}>
-                <div className="mb-5 flex items-start gap-4">
+      <div className="relative mx-auto max-w-6xl px-6">
+        <Reveal className="mx-auto mb-14 max-w-2xl text-center">
+          <div className="border-primary/25 bg-primary/10 mb-6 inline-flex items-center gap-2 rounded-full border px-4 py-1.5">
+            <div className="bg-primary size-1.5 rounded-full" />
+            <span className="text-primary text-[13px] font-semibold">{t.badge}</span>
+          </div>
+          <h2 className="font-display text-[clamp(28px,4vw,42px)] leading-[1.15] font-bold tracking-tight">
+            {t.title}
+          </h2>
+        </Reveal>
+
+        <div className="grid gap-5 sm:grid-cols-2">
+          {t.cards.map((card, i) => {
+            const Icon = card.icon;
+            return (
+              <Reveal key={card.title} delay={i * 90}>
+                <div className="glass-card card-hover-lift h-full p-8">
                   <div
-                    className="flex size-13 shrink-0 items-center justify-center rounded-2xl border"
-                    style={{ background: `${feature.color}15`, borderColor: `${feature.color}30` }}
+                    className="mb-5 flex size-12 items-center justify-center rounded-xl"
+                    style={{ backgroundColor: `color-mix(in srgb, ${card.color} 14%, transparent)` }}
                   >
-                    <feature.icon size={24} color={feature.color} strokeWidth={1.5} />
+                    <Icon size={22} style={{ color: card.color }} />
                   </div>
-                  <h3 className="font-heading mt-2 text-xl font-bold text-foreground">{feature.title}</h3>
+                  <h3 className="mb-3 text-lg font-bold">{card.title}</h3>
+                  <p className="text-foreground-muted text-[15px] leading-relaxed">{card.desc}</p>
                 </div>
-
-                <p className="mb-5 text-[15px] leading-relaxed text-foreground-muted">{feature.desc}</p>
-
-                <div className="mb-5 flex flex-wrap gap-2">
-                  {feature.tags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="rounded-full border px-3 py-1 text-xs font-semibold"
-                      style={{ background: `${feature.color}10`, borderColor: `${feature.color}25`, color: feature.color }}
-                    >
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-
-                <button
-                  className="flex items-center gap-1.5 text-sm font-semibold"
-                  style={{ color: feature.color }}
-                >
-                  {c.more}
-                  <ArrowRight size={16} />
-                </button>
-              </div>
-            </TiltCard>
-          ))}
+              </Reveal>
+            );
+          })}
         </div>
       </div>
     </section>

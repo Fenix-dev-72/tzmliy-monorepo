@@ -4,16 +4,19 @@ background work = one distinct asyncio task, not a shared tick doing
 unrelated things). Started/cancelled in main.py's lifespan the same way.
 """
 
+import asyncio
 import logging
 from asyncio import sleep
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 import asyncpg
 
 from app.core.config import Settings
 from app.core.crypto import decrypt_secret
 from app.core.database import platform_connection, tenant_connection
-from app.modules.crm import meta_ads, repository
+from app.modules.calls import repository as calls_repository
+from app.modules.crm import meta_ads, repository, service
+from app.modules.crm.providers import CrmApiError, get_provider
 from app.modules.tenants import repository as tenants_repository
 
 logger = logging.getLogger("dashboarduz.crm.worker")
@@ -70,18 +73,141 @@ async def _sync_tenant_meta_ads(pool: asyncpg.Pool, tenant_id) -> None:
                 )
 
 
-async def sync_meta_ads(pool: asyncpg.Pool) -> None:
+_LOCK_TTL_SECONDS = 300  # generous vs. this worker's 6h poll interval -- only
+# there to bound how long a crashed worker can hold a lock, not a real budget.
+
+
+async def sync_meta_ads(pool: asyncpg.Pool, settings: Settings, redis_client) -> None:
     async with platform_connection(pool) as conn:
         tenants = await tenants_repository.list_tenants(conn)
-    for tenant in tenants:
-        await _sync_tenant_meta_ads(pool, tenant["id"])
+
+    # optimize.md #8: was a sequential `for tenant in tenants: await ...` loop
+    # -- one slow/unresponsive tenant's Meta Ads calls delayed every other
+    # tenant's sync on the same tick. Each tenant gets its own
+    # tenant_connection (a distinct pool connection), so running them
+    # concurrently is safe; bounded by a semaphore so a large tenant count
+    # doesn't open unbounded connections or hammer the Meta Ads API at once.
+    semaphore = asyncio.Semaphore(settings.crm_sync_max_concurrency)
+
+    async def _sync_with_limit(tenant_id) -> None:
+        # No job-queue table here (unlike payroll/export/calls' claim_*), so
+        # multi-worker safety (2026-07-14) instead uses a short-lived Redis
+        # lock per tenant -- without it, more than one app process (uvicorn
+        # --workers, multiple VPS) firing the same tick together would double
+        # the Meta Ads API calls (rate-limit risk) and duplicate
+        # ad_campaigns/ad_insights upserts (harmless, idempotent, but still
+        # wasted external calls).
+        lock_key = f"lock:crm_sync:{tenant_id}"
+        acquired = await redis_client.set(lock_key, "1", nx=True, ex=_LOCK_TTL_SECONDS)
+        if not acquired:
+            return
+        async with semaphore:
+            try:
+                await _sync_tenant_meta_ads(pool, tenant_id)
+            except Exception:
+                logger.exception("meta ads sync failed for tenant %s", tenant_id)
+            finally:
+                await redis_client.delete(lock_key)
+
+    await asyncio.gather(*(_sync_with_limit(tenant["id"]) for tenant in tenants))
 
 
-async def run_forever(pool: asyncpg.Pool, settings: Settings) -> None:
+async def run_forever(pool: asyncpg.Pool, settings: Settings, redis_client) -> None:
     logger.info("crm worker starting, poll interval=%ss", settings.meta_ads_sync_poll_seconds)
     while True:
         try:
-            await sync_meta_ads(pool)
+            await sync_meta_ads(pool, settings, redis_client)
         except Exception:
             logger.exception("crm worker tick failed")
         await sleep(settings.meta_ads_sync_poll_seconds)
+
+
+async def _sync_tenant_amocrm_calls(pool: asyncpg.Pool, tenant_id, since: datetime) -> None:
+    credential = await service.get_valid_credential_for_sync(pool, tenant_id, "amocrm")
+    if credential is None:
+        return
+    decrypted_credential = dict(credential)
+    if credential["api_key_encrypted"]:
+        decrypted_credential["api_key_encrypted"] = decrypt_secret(credential["api_key_encrypted"])
+
+    try:
+        calls = await get_provider("amocrm").list_calls(decrypted_credential, since)
+    except CrmApiError:
+        logger.warning("amocrm calls fetch failed for tenant %s", tenant_id, exc_info=True)
+        return
+
+    async with tenant_connection(pool, tenant_id) as conn:
+        # optimize.md #21 (2026-07-17): this used to issue one
+        # get_crm_manager_mapping_by_external_id query per call in the loop
+        # below (N+1) -- bulk-fetch every amocrm mapping for this tenant once
+        # instead and look up in a dict, same "batch it once, not per-row"
+        # fix already applied to finance/service.py's payroll calculation.
+        mappings_by_external_id = {
+            m["external_manager_id"]: m["user_id"]
+            for m in await repository.list_crm_manager_mappings(conn)
+            if m["provider"] == "amocrm" and m["is_active"]
+        }
+        for c in calls:
+            responsible_user_id = mappings_by_external_id.get(c["external_agent_id"]) if c["external_agent_id"] else None
+
+            call = await calls_repository.insert_call(
+                conn,
+                tenant_id,
+                "amocrm",
+                c["external_call_id"],
+                c["direction"],
+                c["from_number"],
+                c["to_number"],
+                responsible_user_id,
+                c["duration_seconds"],
+                c["status"],
+                c["started_at"],
+                c["ended_at"],
+            )
+            if call is None:
+                call = await calls_repository.get_call_by_external_id(conn, "amocrm", c["external_call_id"])
+            # Recording download happens out-of-band via calls_recording_worker.py
+            # (the same claim-based worker already used for UTEL/Мои звонки),
+            # not inline here -- a slow/unavailable recording URL shouldn't
+            # delay ingesting the rest of this tick's calls.
+            if c["recording_url"] and call["recording_object_key"] is None:
+                await calls_repository.set_pending_recording_url(conn, call["id"], c["recording_url"])
+
+
+async def sync_amocrm_calls(pool: asyncpg.Pool, settings: Settings, redis_client) -> None:
+    async with platform_connection(pool) as conn:
+        tenants = await tenants_repository.list_tenants(conn)
+
+    # Generous lookback window vs. the poll interval -- a tick that ran late
+    # (worker restart, one slow tenant) still re-covers any gap instead of
+    # silently skipping calls that landed in between. insert_call's
+    # ON CONFLICT DO NOTHING makes re-fetching the same window on every tick
+    # harmless, same idempotency shape as Meta Ads' campaign/insight upserts.
+    since = datetime.now(timezone.utc) - timedelta(seconds=settings.amocrm_calls_sync_poll_seconds * 3)
+
+    semaphore = asyncio.Semaphore(settings.crm_sync_max_concurrency)
+
+    async def _sync_with_limit(tenant_id) -> None:
+        lock_key = f"lock:amocrm_calls_sync:{tenant_id}"
+        acquired = await redis_client.set(lock_key, "1", nx=True, ex=_LOCK_TTL_SECONDS)
+        if not acquired:
+            return
+        async with semaphore:
+            try:
+                await _sync_tenant_amocrm_calls(pool, tenant_id, since)
+            except Exception:
+                logger.exception("amocrm calls sync failed for tenant %s", tenant_id)
+            finally:
+                await redis_client.delete(lock_key)
+
+    await asyncio.gather(*(_sync_with_limit(tenant["id"]) for tenant in tenants))
+
+
+async def run_forever_amocrm_calls(pool: asyncpg.Pool, settings: Settings, redis_client) -> None:
+    logger.info("amocrm calls sync worker starting, poll interval=%ss", settings.amocrm_calls_sync_poll_seconds)
+    while True:
+        try:
+            await sync_amocrm_calls(pool, settings, redis_client)
+        except Exception:
+            logger.exception("amocrm calls sync worker tick failed")
+        await sleep(settings.amocrm_calls_sync_poll_seconds)

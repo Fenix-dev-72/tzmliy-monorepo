@@ -50,7 +50,7 @@ export function TwoFaVerifyView() {
       <div className="border-secondary/30 bg-secondary/12 mx-auto mb-6 flex size-16 items-center justify-center rounded-2xl border-[1.5px]">
         <Shield size={30} className="text-secondary" />
       </div>
-      <h2 className="font-heading mb-2 text-[22px] font-extrabold text-foreground">{t.title}</h2>
+      <h2 className="font-display mb-2 text-2xl font-bold text-foreground">{t.title}</h2>
       <p className="mx-auto mb-8 max-w-[280px] text-sm text-foreground-muted">{t.sub}</p>
 
       <OtpCodeInput value={code} onChange={setCode} onComplete={handleVerify} />

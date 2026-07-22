@@ -56,3 +56,5 @@ async def delete_category(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Category not found")
     except service.CategoryHasChildrenError:
         raise HTTPException(status.HTTP_409_CONFLICT, "Delete child categories first")
+    except service.CategoryHasProductsError:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Delete or move this category's products first")

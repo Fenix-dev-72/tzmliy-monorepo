@@ -37,7 +37,7 @@ export function PlatformTwoFaVerifyView() {
     try {
       const tokens = await platformAuthApi.verifyLogin2fa({ pending_token: state!.pendingToken!, code: submittedCode });
       completeLogin(tokens);
-      navigate("/platform/welcome");
+      navigate("/platform/dashboard");
     } catch {
       setError(t.error);
     } finally {

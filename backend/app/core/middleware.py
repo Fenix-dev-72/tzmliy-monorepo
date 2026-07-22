@@ -1,17 +1,24 @@
 """Pure-ASGI middleware (no BaseHTTPMiddleware: it re-buffers responses and
 interferes with the analytics SSE stream) for the security hardening pass:
-per-IP rate limiting on credential/webhook endpoints and standard security
-response headers.
+per-IP rate limiting on credential/webhook/general-API endpoints and standard
+security response headers.
 
-The limiter is in-memory and per-process — right for a single app instance,
-but the two-VPS layout planned in Faza 13 needs a shared Redis/Valkey-backed
-limiter instead (the TZ already earmarks Redis for rate limiting). Swap the
-storage inside SlidingWindowLimiter when that lands; the middleware and
-route-classification logic stay as-is.
+optimize.md #11 (2026-07-14): the limiter used to be in-memory and
+per-process — fine for one instance, but silently weaker once this repo runs
+more than one app process/VPS (each process would count its own separate
+quota). Now backed by Redis (a sliding-window log per key, using the same
+`app.state.redis` connection the rest of the app already shares — accessed via
+`scope["app"]`, which Starlette populates on every request scope), so the
+limit holds across however many app processes are running.
+
+2026-07-17: added a third, generous "general" bucket covering every other
+`/api/v1`/`/platform/v1` route -- relying on the auth bucket alone only
+guards against credential guessing, not a valid (or stolen) JWT being used
+to flood business endpoints.
 """
 
 import time
-from collections import deque
+from uuid import uuid4
 
 from app.core.config import Settings
 
@@ -39,40 +46,43 @@ _WEBHOOK_PATHS = (
     "/api/v1/crm/webhooks/",
 )
 
-# Sweep the per-IP bookkeeping this often so one-off IPs don't accumulate
-# forever (each entry is tiny, but "grows without bound" is still a leak).
-_SWEEP_INTERVAL_SECONDS = 300.0
-
+# Every other real API route (2026-07-17) -- everything under these two
+# prefixes that isn't already an auth or webhook path above falls into the
+# general bucket instead of going completely unlimited. Being behind a valid
+# JWT stops credential-guessing but not a compromised/leaked token (or a
+# buggy script) from hammering business endpoints -- that's still a real
+# denial-of-service risk this repo had no answer for until now.
+_GENERAL_API_PATHS = ("/api/v1/", "/platform/v1/")
 
 class SlidingWindowLimiter:
-    def __init__(self, max_requests: int, window_seconds: float) -> None:
+    """Redis-backed sliding-window-log limiter: one ZSET per (name, key),
+    member=unique-per-request, score=request time. Not wrapped in a single
+    atomic Lua script -- a request landing exactly at the boundary between
+    the ZCARD read and the ZADD write could in rare cases slip through by one,
+    same order-of-magnitude looseness the old in-memory version already had
+    (it was never meant to be a hard, provably-exact limiter, just a
+    brute-force speed bump); the important fix here is that the count is now
+    shared across every app process instead of counted separately per-process."""
+
+    def __init__(self, name: str, max_requests: int, window_seconds: float) -> None:
+        self.name = name
         self.max_requests = max_requests
         self.window_seconds = window_seconds
-        self._hits: dict[str, deque[float]] = {}
-        self._last_sweep = time.monotonic()
 
-    def check(self, key: str) -> tuple[bool, float]:
-        """Returns (allowed, retry_after_seconds). Single-threaded within the
-        event loop, so no locking needed."""
-        now = time.monotonic()
-        self._maybe_sweep(now)
-        window = self._hits.setdefault(key, deque())
+    async def check(self, redis_client, key: str) -> tuple[bool, float]:
+        """Returns (allowed, retry_after_seconds)."""
+        redis_key = f"ratelimit:{self.name}:{key}"
+        now = time.time()
         cutoff = now - self.window_seconds
-        while window and window[0] <= cutoff:
-            window.popleft()
-        if len(window) >= self.max_requests:
-            return False, max(window[0] + self.window_seconds - now, 1.0)
-        window.append(now)
+        await redis_client.zremrangebyscore(redis_key, 0, cutoff)
+        count = await redis_client.zcard(redis_key)
+        if count >= self.max_requests:
+            oldest = await redis_client.zrange(redis_key, 0, 0, withscores=True)
+            retry_after = (oldest[0][1] + self.window_seconds - now) if oldest else self.window_seconds
+            return False, max(retry_after, 1.0)
+        await redis_client.zadd(redis_key, {f"{now}:{uuid4()}": now})
+        await redis_client.expire(redis_key, int(self.window_seconds) + 1)
         return True, 0.0
-
-    def _maybe_sweep(self, now: float) -> None:
-        if now - self._last_sweep < _SWEEP_INTERVAL_SECONDS:
-            return
-        self._last_sweep = now
-        cutoff = now - self.window_seconds
-        stale = [key for key, window in self._hits.items() if not window or window[-1] <= cutoff]
-        for key in stale:
-            del self._hits[key]
 
 
 class RateLimitMiddleware:
@@ -80,10 +90,13 @@ class RateLimitMiddleware:
         self.app = app
         self.settings = settings
         self._auth_limiter = SlidingWindowLimiter(
-            settings.rate_limit_auth_requests, settings.rate_limit_auth_window_seconds
+            "auth", settings.rate_limit_auth_requests, settings.rate_limit_auth_window_seconds
         )
         self._webhook_limiter = SlidingWindowLimiter(
-            settings.rate_limit_webhook_requests, settings.rate_limit_webhook_window_seconds
+            "webhook", settings.rate_limit_webhook_requests, settings.rate_limit_webhook_window_seconds
+        )
+        self._general_limiter = SlidingWindowLimiter(
+            "general", settings.rate_limit_general_requests, settings.rate_limit_general_window_seconds
         )
 
     def _client_ip(self, scope) -> str:
@@ -100,6 +113,8 @@ class RateLimitMiddleware:
             return self._auth_limiter
         if path.startswith(_WEBHOOK_PATHS):
             return self._webhook_limiter
+        if path.startswith(_GENERAL_API_PATHS):
+            return self._general_limiter
         return None
 
     async def __call__(self, scope, receive, send) -> None:
@@ -110,7 +125,12 @@ class RateLimitMiddleware:
         if limiter is None:
             await self.app(scope, receive, send)
             return
-        allowed, retry_after = limiter.check(self._client_ip(scope))
+        # scope["app"] is the top-level FastAPI app (Starlette sets this on
+        # every request scope) -- reuses the same Redis connection app.state
+        # already holds (created once in main.py's lifespan), rather than
+        # opening a second pool just for this middleware.
+        redis_client = scope["app"].state.redis
+        allowed, retry_after = await limiter.check(redis_client, self._client_ip(scope))
         if allowed:
             await self.app(scope, receive, send)
             return

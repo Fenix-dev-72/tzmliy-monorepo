@@ -41,7 +41,7 @@ FROM users u JOIN roles r ON r.id = u.role_id
 WHERE u.tenant_id = :tenant_id AND u.phone = :phone;
 
 -- name: get_user_by_id^
-SELECT u.id, u.tenant_id, u.email, u.phone, u.password_hash, u.role_id, r.name AS role_name,
+SELECT u.id, u.tenant_id, u.email, u.phone, u.full_name, u.password_hash, u.role_id, r.name AS role_name,
        u.is_active, u.totp_secret, u.totp_enabled, u.failed_login_attempts, u.locked_until, u.created_at
 FROM users u JOIN roles r ON r.id = u.role_id
 WHERE u.id = :user_id;
@@ -66,9 +66,23 @@ SET failed_login_attempts = 0, locked_until = NULL, updated_at = now()
 WHERE id = :user_id AND (failed_login_attempts > 0 OR locked_until IS NOT NULL);
 
 -- name: list_users
-SELECT u.id, u.tenant_id, u.email, u.phone, u.role_id, r.name AS role_name, u.is_active, u.created_at
+-- Paginated (2026-07-15, optimize.md-style) -- this tenant's users list had
+-- no limit/offset at all, unlike customers/sales/calls/bonus_plans/payroll,
+-- which all got this in the earlier performance pass.
+SELECT u.id, u.tenant_id, u.email, u.phone, u.full_name, u.role_id, r.name AS role_name, u.is_active, u.created_at
 FROM users u JOIN roles r ON r.id = u.role_id
-ORDER BY u.created_at;
+ORDER BY u.created_at
+LIMIT :limit OFFSET :offset;
+
+-- name: update_user_profile^
+UPDATE users SET full_name = :full_name, phone = :phone, updated_at = now()
+WHERE id = :user_id
+RETURNING id, tenant_id, email, phone, full_name, role_id,
+    (SELECT name FROM roles WHERE id = role_id) AS role_name,
+    is_active, created_at;
+
+-- name: delete_login_identifier_by_user_and_type!
+DELETE FROM user_login_identifiers WHERE user_id = :user_id AND identifier_type = :identifier_type;
 
 -- name: update_user_role!
 UPDATE users SET role_id = :role_id, updated_at = now() WHERE id = :user_id;
@@ -80,10 +94,31 @@ UPDATE users SET is_active = false, updated_at = now() WHERE id = :user_id;
 UPDATE users SET password_hash = :password_hash, updated_at = now() WHERE id = :user_id;
 
 -- name: set_user_totp_secret!
-UPDATE users SET totp_secret = :totp_secret, totp_enabled = false WHERE id = :user_id;
+-- Deliberately does NOT touch totp_enabled -- it must only ever be flipped to
+-- true by enable_user_totp (on confirm). A stray/premature call to this query
+-- (e.g. a frontend race calling /2fa/setup before it knows the account is
+-- already enabled) must never silently disable 2FA.
+UPDATE users SET totp_secret = :totp_secret WHERE id = :user_id;
 
 -- name: enable_user_totp!
 UPDATE users SET totp_enabled = true WHERE id = :user_id;
+
+-- name: set_telegram_link_token!
+UPDATE users SET telegram_link_token_hash = :token_hash, telegram_link_token_expires_at = :expires_at
+WHERE id = :user_id;
+
+-- name: get_user_by_telegram_link_token^
+SELECT id, tenant_id, telegram_link_token_expires_at
+FROM users
+WHERE telegram_link_token_hash = :token_hash AND tenant_id = :tenant_id;
+
+-- name: set_telegram_chat_id!
+UPDATE users
+SET telegram_chat_id = :telegram_chat_id, telegram_link_token_hash = NULL, telegram_link_token_expires_at = NULL
+WHERE id = :user_id;
+
+-- name: user_has_telegram_chat_id^
+SELECT EXISTS(SELECT 1 FROM users WHERE id = :user_id AND telegram_chat_id IS NOT NULL) AS exists;
 
 -- name: insert_refresh_session^
 INSERT INTO refresh_sessions (id, tenant_id, user_id, token_hash, expires_at)

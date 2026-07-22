@@ -23,3 +23,9 @@ export function getPermissionsFromAccessToken(token: string): string[] {
   const claims = decodeJwtPayload(token);
   return Array.isArray(claims.permissions) ? (claims.permissions as string[]) : [];
 }
+
+/** Returns the token's `exp` claim in epoch milliseconds, or null if absent/unparseable. */
+export function getTokenExpiryMs(token: string): number | null {
+  const claims = decodeJwtPayload(token);
+  return typeof claims.exp === "number" ? claims.exp * 1000 : null;
+}

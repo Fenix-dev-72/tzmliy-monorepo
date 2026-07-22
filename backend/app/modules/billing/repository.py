@@ -142,6 +142,18 @@ async def get_subscription_payment_by_provider_txn(
     return _row(row)
 
 
+async def get_payment_totals_by_status(
+    conn: asyncpg.Connection, period_start: datetime, period_end: datetime
+) -> list[dict]:
+    rows = [
+        row
+        async for row in _queries.get_payment_totals_by_status(
+            conn, period_start=period_start, period_end=period_end
+        )
+    ]
+    return _rows(rows)
+
+
 async def list_subscription_payments(conn: asyncpg.Connection) -> list[dict]:
     rows = [row async for row in _queries.list_subscription_payments(conn)]
     return _rows(rows)

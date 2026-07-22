@@ -1,7 +1,34 @@
+import re
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from email_validator import EmailNotValidError, validate_email
+from pydantic import BaseModel, Field, field_validator
+
+# Loose E.164-ish check -- optional leading '+', 9-15 digits. Just needs to
+# reject obvious garbage (test tokens, typos) before it's routed to send_code;
+# the phone providers' own webhooks/OTP flows don't parse this further.
+_PHONE_RE = re.compile(r"^\+?\d{9,15}$")
+
+
+def _validate_identifier(value: str) -> str:
+    """Shared identifier check for every login/OTP/registration/password-reset
+    endpoint that accepts a single email-or-phone field. Rejects malformed
+    input at the API boundary (422) instead of silently accepting it and
+    letting send_code fail to deliver later with no feedback to the caller --
+    e.g. `user@gmailcom` (missing dot) previously passed straight through as
+    "channel=email" and got queued for delivery to a domain with no MX record,
+    with the request itself reporting success either way."""
+    value = value.strip()
+    if "@" in value:
+        try:
+            validate_email(value, check_deliverability=False)
+        except EmailNotValidError as exc:
+            raise ValueError(f"Email manzil noto'g'ri: {exc}") from exc
+    elif not _PHONE_RE.match(value):
+        raise ValueError("Telefon raqami noto'g'ri formatda (masalan: +998901234567)")
+    return value
 
 
 class LoginRequest(BaseModel):
@@ -10,6 +37,8 @@ class LoginRequest(BaseModel):
     # logging in; the server resolves the tenant from the identifier itself.
     identifier: str
     password: str
+
+    _validate_identifier = field_validator("identifier")(_validate_identifier)
 
 
 class LoginResponse(BaseModel):
@@ -29,15 +58,23 @@ class MeOut(BaseModel):
     tenant_id: UUID
     email: str | None
     phone: str | None
+    full_name: str | None = None
     role_id: UUID
     role_name: str
     is_active: bool
     totp_enabled: bool
     created_at: datetime
+    # Computed, not stored -- which self-service integration links this user
+    # still needs to complete (client requirement, 2026-07-13). Telegram is
+    # required for everyone; UTEL/CRM only for roles that hold the matching
+    # *.view/manage permission. Empty list = fully onboarded.
+    pending_links: list[Literal["telegram", "utel", "crm"]] = []
 
 
 class PasswordResetRequest(BaseModel):
     identifier: str
+
+    _validate_identifier = field_validator("identifier")(_validate_identifier)
 
 
 class PasswordResetConfirm(BaseModel):
@@ -49,6 +86,8 @@ class PasswordResetConfirm(BaseModel):
     identifier: str
     token: str
     new_password: str = Field(min_length=8, max_length=72)
+
+    _validate_identifier = field_validator("identifier")(_validate_identifier)
 
 
 class OtpRequest(BaseModel):
@@ -66,10 +105,14 @@ class RegistrationCodeRequest(BaseModel):
     whether it looks like an email."""
     identifier: str
 
+    _validate_identifier = field_validator("identifier")(_validate_identifier)
+
 
 class RegistrationCodeVerify(BaseModel):
     identifier: str
     code: str
+
+    _validate_identifier = field_validator("identifier")(_validate_identifier)
 
 
 class RegistrationCodeVerifyOut(BaseModel):

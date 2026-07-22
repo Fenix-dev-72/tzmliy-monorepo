@@ -21,7 +21,7 @@ function TabsList({ className, ...props }: React.ComponentProps<typeof TabsPrimi
     <TabsPrimitive.List
       data-slot="tabs-list"
       className={cn(
-        "bg-background/50 border border-card-border text-foreground-muted inline-flex h-auto w-full items-center justify-center rounded-xl p-1 gap-1",
+        "bg-background/50 border border-card-border text-foreground-muted flex h-auto w-full items-center justify-start gap-1 overflow-x-auto rounded-xl p-1",
         className,
       )}
       {...props}
@@ -37,7 +37,7 @@ function TabsTrigger({
     <TabsPrimitive.Trigger
       data-slot="tabs-trigger"
       className={cn(
-        "data-[state=active]:bg-primary/15 data-[state=active]:text-primary text-foreground-muted inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-[13px] font-semibold whitespace-nowrap transition-all outline-none disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "data-[state=active]:bg-primary/15 data-[state=active]:text-primary text-foreground-muted inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[13px] font-semibold whitespace-nowrap transition-all outline-none disabled:pointer-events-none disabled:opacity-50 sm:flex-1 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className,
       )}
       {...props}

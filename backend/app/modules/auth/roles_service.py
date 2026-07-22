@@ -63,11 +63,10 @@ async def create_role(pool: asyncpg.Pool, tenant_id: UUID, name: str, permission
 async def list_roles(pool: asyncpg.Pool, tenant_id: UUID) -> list[dict]:
     async with tenant_connection(pool, tenant_id) as conn:
         roles = await roles_repository.list_roles(conn)
-        result = []
-        for role in roles:
-            perms = await roles_repository.list_role_permission_keys(conn, role["id"])
-            result.append({**role, "permissions": sorted(perms)})
-        return result
+        if not roles:
+            return []
+        perms_by_role = await roles_repository.list_role_permission_keys_bulk(conn, [role["id"] for role in roles])
+        return [{**role, "permissions": sorted(perms_by_role[role["id"]])} for role in roles]
 
 
 async def update_role_permissions(pool: asyncpg.Pool, tenant_id: UUID, role_id: UUID, permission_keys: list[str]) -> dict:

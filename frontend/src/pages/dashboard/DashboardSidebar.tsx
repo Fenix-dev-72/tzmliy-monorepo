@@ -5,7 +5,8 @@ import {
   CalendarCheck,
   FileBarChart,
   LayoutDashboard,
-  Layers,
+  LifeBuoy,
+  Package,
   Phone,
   Plug,
   Settings,
@@ -16,11 +17,12 @@ import {
   UserCog,
   Users,
   Wallet,
+  Warehouse,
   X,
 } from "lucide-react";
 import { useLang } from "@/lib/i18n/LangContext";
 import { useTenantAuth } from "@/lib/auth/tenantAuthStore";
-import { TzmliyLogo, TzmliyWordmark } from "@/components/layout/TzmliyLogo";
+import { TizimlyLogo, TizimlyWordmark } from "@/components/layout/TizimlyLogo";
 
 const content = {
   uz: {
@@ -35,9 +37,11 @@ const content = {
     attendance: "Davomat",
     integrations: "Integratsiyalar",
     notifications: "Bildirishnomalar",
-    catalog: "Katalog",
+    catalog: "Mahsulotlar",
+    warehouse: "Ombor",
     courseSales: "Course sales",
     reports: "Hisobotlar",
+    support: "Yordam so'rash",
     settings: "Sozlamalar",
   },
   ru: {
@@ -52,9 +56,11 @@ const content = {
     attendance: "Посещаемость",
     integrations: "Интеграции",
     notifications: "Уведомления",
-    catalog: "Каталог",
+    catalog: "Продукты",
+    warehouse: "Склад",
     courseSales: "Course sales",
     reports: "Отчёты",
+    support: "Обратиться за помощью",
     settings: "Настройки",
   },
 };
@@ -101,7 +107,8 @@ function useNavItems() {
       label: t.notifications,
       show: permissions.has("notifications.view"),
     },
-    { to: "/dashboard/catalog", end: false, icon: Layers, label: t.catalog, show: permissions.has("catalog.view") },
+    { to: "/dashboard/products", end: false, icon: Package, label: t.catalog, show: permissions.has("catalog.view") },
+    { to: "/dashboard/warehouse", end: false, icon: Warehouse, label: t.warehouse, show: permissions.has("catalog.view") },
     {
       to: "/dashboard/course-sales",
       end: false,
@@ -116,6 +123,7 @@ function useNavItems() {
       label: t.reports,
       show: permissions.has("reports.view"),
     },
+    { to: "/dashboard/support", end: false, icon: LifeBuoy, label: t.support, show: true },
   ].filter((item) => item.show);
 }
 
@@ -136,7 +144,7 @@ function NavItems({ onNavigate }: { onNavigate?: () => void }) {
           className={({ isActive }) =>
             `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
               isActive
-                ? "bg-primary/12 text-primary"
+                ? "bg-accent-orange/12 text-accent-orange"
                 : "text-foreground-muted hover:translate-x-0.5 hover:bg-accent hover:text-foreground"
             }`
           }
@@ -154,7 +162,7 @@ function NavItems({ onNavigate }: { onNavigate?: () => void }) {
         className={({ isActive }) =>
           `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
             isActive
-              ? "bg-primary/12 text-primary"
+              ? "bg-accent-orange/12 text-accent-orange"
               : "text-foreground-muted hover:translate-x-0.5 hover:bg-accent hover:text-foreground"
           }`
         }
@@ -169,7 +177,7 @@ function NavItems({ onNavigate }: { onNavigate?: () => void }) {
 
 export function DashboardSidebar() {
   return (
-    <aside className="border-card-border bg-background/60 hidden w-60 shrink-0 border-r lg:block">
+    <aside className="border-card-border bg-background/60 hidden w-[280px] shrink-0 border-r lg:block">
       <div className="sticky top-16 py-6">
         <NavItems />
       </div>
@@ -181,23 +189,16 @@ export function DashboardMobileDrawer({ open, onClose }: { open: boolean; onClos
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 lg:hidden">
-      <div
-        className="bg-background/80 absolute inset-0 backdrop-blur-sm"
-        style={{ animation: "fade-up-in 0.25s ease-out both" }}
-        onClick={onClose}
-      />
-      <div
-        className="bg-background border-card-border relative flex h-full w-72 flex-col border-r pt-5 pb-6"
-        style={{ animation: "drawer-slide-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both" }}
-      >
+      <div className="bg-background/80 absolute inset-0 backdrop-blur-sm" onClick={onClose} />
+      <div className="bg-background border-card-border relative flex h-full w-72 flex-col border-r pt-5 pb-6">
         <div className="mb-6 flex items-center justify-between px-4">
           <div className="flex items-center gap-2">
-            <TzmliyLogo size={26} />
-            <TzmliyWordmark className="text-base" />
+            <TizimlyLogo size={26} />
+            <TizimlyWordmark className="text-base" />
           </div>
           <button
             onClick={onClose}
-            className="text-foreground-muted flex size-8 items-center justify-center rounded-lg transition-transform duration-150 hover:bg-accent active:scale-90"
+            className="text-foreground-muted flex size-8 items-center justify-center rounded-lg"
             aria-label="Close menu"
           >
             <X size={18} />

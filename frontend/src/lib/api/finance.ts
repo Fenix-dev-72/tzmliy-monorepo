@@ -13,6 +13,7 @@ export interface Payment {
   method: string;
   idempotency_key: string;
   recorded_by_user_id: string;
+  reversed_at: string | null;
   created_at: string;
 }
 
@@ -23,6 +24,7 @@ export interface LedgerEntry {
   entry_type: "charge" | "payment" | "refund" | "adjustment";
   amount: number;
   currency: string;
+  related_payment_id: string | null;
   description: string | null;
   created_at: string;
 }
@@ -46,11 +48,17 @@ export interface AdjustmentRequest {
   reviewed_at: string | null;
 }
 
+export type BonusType = "percent" | "fixed_per_sale";
+
 export interface BonusPlan {
   id: string;
   name: string;
   applies_to_role_id: string;
+  bonus_type: BonusType;
   commission_bps: number;
+  fixed_amount: number | null;
+  fixed_amount_currency: string | null;
+  catalog_category_id: string | null;
   effective_from: string;
   effective_to: string | null;
   created_at: string;
@@ -61,7 +69,7 @@ export interface PayrollEntry {
   user_id: string;
   period_start: string;
   period_end: string;
-  bonus_plan_id: string;
+  bonus_plan_id: string | null;
   base_amount: number;
   bonus_amount: number;
   currency: string;
@@ -84,8 +92,29 @@ export function listPayments(accessToken: string, saleId: string) {
   return apiFetch<Payment[]>(`/api/v1/finance/payments/${saleId}`, { accessToken });
 }
 
+// One-click undo for a mistakenly-entered payment (2026-07-16) -- posts a
+// compensating ledger entry server-side, restoring the balance.
+export function reversePayment(accessToken: string, paymentId: string) {
+  return apiFetch<LedgerEntry>(`/api/v1/finance/payments/${paymentId}/reverse`, { method: "POST", accessToken });
+}
+
 export function getSaleLedger(accessToken: string, saleId: string) {
   return apiFetch<SaleLedger>(`/api/v1/finance/payments/${saleId}/ledger`, { accessToken });
+}
+
+export interface CustomerOutstandingSale {
+  sale_id: string;
+  catalog_category_id: string | null;
+  category_name: string | null;
+  price_amount: number;
+  currency: string;
+  deadline: string;
+  status: string;
+  balance: number;
+}
+
+export function getCustomerOutstandingSales(accessToken: string, customerId: string) {
+  return apiFetch<CustomerOutstandingSale[]>(`/api/v1/finance/customers/${customerId}/outstanding`, { accessToken });
 }
 
 export function createAdjustmentRequest(
@@ -136,7 +165,11 @@ export function createBonusPlan(
   body: {
     name: string;
     applies_to_role_id: string;
-    commission_bps: number;
+    bonus_type: BonusType;
+    commission_bps?: number;
+    fixed_amount?: number | null;
+    fixed_amount_currency?: string | null;
+    catalog_category_id?: string | null;
     effective_from: string;
     effective_to?: string;
   },
@@ -149,20 +182,56 @@ export function createBonusPlan(
   });
 }
 
-export function listBonusPlans(accessToken: string) {
-  return apiFetch<BonusPlan[]>("/api/v1/finance/bonus-plans", { accessToken });
+export const BONUS_PLANS_PAGE_SIZE = 50;
+
+export function listBonusPlans(accessToken: string, limit = BONUS_PLANS_PAGE_SIZE, offset = 0) {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  return apiFetch<BonusPlan[]>(`/api/v1/finance/bonus-plans?${params.toString()}`, { accessToken });
+}
+
+export type PayrollJobStatus = "pending" | "processing" | "done" | "failed";
+
+export interface PayrollJob {
+  id: string;
+  period_start: string;
+  period_end: string;
+  user_id: string | null;
+  status: PayrollJobStatus;
+  error: string | null;
+  created_at: string;
 }
 
 export function calculatePayroll(
   accessToken: string,
   body: { period_start: string; period_end: string; user_id?: string },
 ) {
-  return apiFetch<PayrollEntry[]>("/api/v1/finance/payroll/calculate", { method: "POST", accessToken, body });
+  // Enqueues a background job (202 Accepted) instead of computing
+  // synchronously -- poll getPayrollJobStatus until status is done/failed.
+  return apiFetch<PayrollJob>("/api/v1/finance/payroll/calculate", { method: "POST", accessToken, body });
 }
 
-export function listPayrollEntries(accessToken: string, userId?: string) {
-  const query = userId ? `?user_id=${userId}` : "";
-  return apiFetch<PayrollEntry[]>(`/api/v1/finance/payroll${query}`, { accessToken });
+export function getPayrollJobStatus(accessToken: string, jobId: string) {
+  return apiFetch<PayrollJob>(`/api/v1/finance/payroll/jobs/${jobId}`, { accessToken });
+}
+
+export const PAYROLL_ENTRIES_PAGE_SIZE = 50;
+
+export function listPayrollEntries(accessToken: string, userId?: string, limit = PAYROLL_ENTRIES_PAGE_SIZE, offset = 0) {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  if (userId) params.set("user_id", userId);
+  return apiFetch<PayrollEntry[]>(`/api/v1/finance/payroll?${params.toString()}`, { accessToken });
+}
+
+export interface ProfitSummaryEntry {
+  currency: string;
+  revenue: number;
+  cost: number;
+  profit: number;
+}
+
+export function getProfitSummary(accessToken: string, periodStart: string, periodEnd: string) {
+  const params = new URLSearchParams({ period_start: periodStart, period_end: periodEnd });
+  return apiFetch<ProfitSummaryEntry[]>(`/api/v1/finance/profit-summary?${params.toString()}`, { accessToken });
 }
 
 // Minimal read, just for the bonus-plan role picker -- full roles

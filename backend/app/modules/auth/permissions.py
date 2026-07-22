@@ -5,13 +5,17 @@ ROLES_MANAGE = "roles.manage"
 CATALOG_VIEW = "catalog.view"
 CATALOG_MANAGE = "catalog.manage"
 CUSTOMERS_VIEW = "customers.view"
+CUSTOMERS_VIEW_ALL = "customers.view_all"
 CUSTOMERS_MANAGE = "customers.manage"
 SALES_VIEW = "sales.view"
+SALES_VIEW_ALL = "sales.view_all"
 SALES_MANAGE = "sales.manage"
 FINANCE_VIEW = "finance.view"
+FINANCE_VIEW_ALL = "finance.view_all"
 FINANCE_MANAGE = "finance.manage"
 FINANCE_APPROVE = "finance.approve"
 CALLS_VIEW = "calls.view"
+CALLS_VIEW_ALL = "calls.view_all"
 CALLS_MANAGE = "calls.manage"
 ATTENDANCE_VIEW = "attendance.view"
 ATTENDANCE_MANAGE = "attendance.manage"
@@ -35,13 +39,17 @@ ALL_PERMISSIONS: frozenset[str] = frozenset(
         CATALOG_VIEW,
         CATALOG_MANAGE,
         CUSTOMERS_VIEW,
+        CUSTOMERS_VIEW_ALL,
         CUSTOMERS_MANAGE,
         SALES_VIEW,
+        SALES_VIEW_ALL,
         SALES_MANAGE,
         FINANCE_VIEW,
+        FINANCE_VIEW_ALL,
         FINANCE_MANAGE,
         FINANCE_APPROVE,
         CALLS_VIEW,
+        CALLS_VIEW_ALL,
         CALLS_MANAGE,
         ATTENDANCE_VIEW,
         ATTENDANCE_MANAGE,
@@ -83,6 +91,17 @@ PRIVILEGED_PERMISSIONS: frozenset[str] = frozenset(
     }
 )
 
+# "view" vs "view_all" (2026-07-22, explicit client request: "har bir xodim faqat
+# o'zinikini ko'rsin, faqat admin ruxsat bergan narsalar ko'rsatiladi"): plain
+# `customers.view`/`sales.view`/`calls.view`/`finance.view` now mean "list/get
+# endpoints return only rows the caller owns" (responsible_user_id/
+# created_by_user_id = caller — see each module's repository.py for the exact
+# filter). The matching `*_view_all` key removes that row-level filter and
+# restores today's "see every tenant row" behavior. Deliberately NOT in
+# PRIVILEGED_PERMISSIONS (unlike e.g. reports.export) -- gating it on 2FA
+# would newly lock admin accounts without 2FA set up out of data they could
+# already see before this change, which is a bigger regression than the
+# broader-visibility risk itself.
 DEFAULT_ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     "admin": ALL_PERMISSIONS,
     "manager": frozenset(
@@ -117,6 +136,15 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
         }
     ),
     "agent": frozenset(
-        {CUSTOMERS_VIEW, CUSTOMERS_MANAGE, SALES_VIEW, SALES_MANAGE, CALLS_VIEW, ANALYTICS_VIEW, CRM_VIEW}
+        {
+            CATALOG_VIEW,
+            CUSTOMERS_VIEW,
+            CUSTOMERS_MANAGE,
+            SALES_VIEW,
+            SALES_MANAGE,
+            CALLS_VIEW,
+            ANALYTICS_VIEW,
+            CRM_VIEW,
+        }
     ),
 }

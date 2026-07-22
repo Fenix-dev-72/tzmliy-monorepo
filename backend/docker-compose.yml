@@ -7,8 +7,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_OWNER_PASSWORD:-owner_dev_password}
       POSTGRES_DB: ${POSTGRES_DB:-dashboarduz}
     ports:
-      # 5432 is taken on this host by an unrelated project's own container.
-      - "5433:5432"
+      - "5432:5432"
     volumes:
       - dashboarduz_postgres_data:/var/lib/postgresql
     healthcheck:
@@ -17,6 +16,57 @@ services:
       timeout: 5s
       retries: 10
 
+  # Scaling-prep (2026-07-18) -- OPTIONAL, not wired into `app`'s DATABASE_URL
+  # by default, so today's direct-to-Postgres path is completely unaffected.
+  # To actually test through it: change `app`/`celery_worker`/`celery_beat`'s
+  # DATABASE_URL above (well, below -- see &backend-container-env) from
+  # `@postgres:5432/` to `@pgbouncer:5432/` (containers reach each other via
+  # the docker network's own internal port, not the host-side 6432 mapping
+  # below), set DB_STATEMENT_CACHE_SIZE=0 in .env (see config.py's docstring
+  # on why -- PgBouncer's transaction-pooling mode is incompatible with
+  # asyncpg's default per-connection prepared-statement cache), then
+  # `docker compose up -d --force-recreate app celery_worker celery_beat`.
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    restart: unless-stopped
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: app_user
+      DB_PASSWORD: ${APP_DB_PASSWORD}
+      DB_NAME: ${POSTGRES_DB:-dashboarduz}
+      POOL_MODE: transaction
+      # trust -- this is a local-dev-only sidecar behind the same docker
+      # network as postgres itself, not internet-reachable; real prod
+      # PgBouncer deployment (once a dedicated DB server exists) should use
+      # a real auth_type + userlist, not trust.
+      # trust here only covers the CLIENT side (app -> pgbouncer). PgBouncer's
+      # own SERVER-side login (pgbouncer -> postgres) still has to satisfy
+      # Postgres 18's default scram-sha-256 requirement for app_user, and
+      # this image's auto-generated userlist.txt didn't negotiate that
+      # correctly in local testing (2026-07-18, "wrong password type" from
+      # Postgres) -- a real deployment needs either a pgbouncer image/version
+      # confirmed to proxy SCRAM correctly, or a dedicated pg_hba.conf rule
+      # for the pgbouncer host. Left as a known gap for whoever actually
+      # wires PgBouncer into production, not blocking the code-level prep
+      # above (verified working directly against Postgres with
+      # statement_cache_size=0 -- see the conversation).
+      AUTH_TYPE: trust
+      MAX_CLIENT_CONN: 200
+      DEFAULT_POOL_SIZE: 20
+    ports:
+      # edoburu/pgbouncer listens on 5432 *inside* the container regardless
+      # of this compose file's own service naming -- confirmed via its own
+      # startup log (2026-07-18) -- so the host-side 6432 only applies to
+      # the left side of this mapping.
+      - "6432:5432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # S3-compatible object storage for call recordings (see app/core/storage.py).
+  # No healthcheck: the minio/minio image ships neither curl nor mc, so a
+  # reliable CMD-SHELL probe needs a separate image -- not worth it for dev.
   minio:
     image: minio/minio:latest
     restart: unless-stopped
@@ -30,67 +80,72 @@ services:
     volumes:
       - dashboarduz_minio_data:/data
 
+  # Ephemeral OTP/password-reset/registration-code storage (see
+  # app/core/redis_client.py) -- TTL-based expiry, no durability needed, so
+  # no volume mount. DB index 1 (not 0) in case a shared box's default DB is
+  # used by something else -- matches the VPS's own additive-only convention.
   redis:
     image: redis:7-alpine
     restart: unless-stopped
     ports:
-      # 6379 is taken on this host by an unrelated project's own container.
-      - "6380:6379"
-    volumes:
-      - dashboarduz_redis_data:/data
-    command: redis-server --appendonly yes
+      - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
       retries: 10
 
-  prometheus:
-    image: prom/prometheus:latest
-    restart: unless-stopped
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - dashboarduz_prometheus_data:/prometheus
-    command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
-      - "--storage.tsdb.retention.time=15d"
-      - "--web.enable-lifecycle"
-    depends_on:
-      - app
-
-  grafana:
-    image: grafana/grafana:latest
-    restart: unless-stopped
-    ports:
-      # 3000 is taken on this host by an unrelated project's own container.
-      - "3001:3000"
-    environment:
-      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
-      GF_USERS_ALLOW_SIGN_UP: "false"
-    volumes:
-      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
-      - dashboarduz_grafana_data:/var/lib/grafana
-    depends_on:
-      - prometheus
-
+  # Bind-mounts source instead of a build step -- there's no backend
+  # Dockerfile in this repo (the VPS deploys via a systemd unit + native venv,
+  # not Docker, per this file's own history), so local Docker dev installs
+  # deps at container start against the plain upstream Python image. Edit
+  # ./app freely; `docker compose restart app` picks the change up. A
+  # requirements.txt change also just needs a restart (re-runs pip install).
   app:
-    build: .
+    image: python:3.13-slim
     restart: unless-stopped
+    working_dir: /app
+    # --workers 4 (2026-07-14, after fixing payroll/export/calls' job-claim
+    # queries to use FOR UPDATE SKIP LOCKED and crm_worker's per-tenant Redis
+    # lock -- see those modules) -- each worker process runs main.py's
+    # lifespan independently, so the 4 asyncio background workers (crm,
+    # payroll, export, call-recording) now genuinely run x4 in parallel;
+    # without the claim-query fix this would double-process jobs. Connection
+    # budget: 4 workers x DB_POOL_MAX_SIZE (.env) + celery_worker's own
+    # 2 x DB_POOL_MAX_SIZE must stay under Postgres's max_connections (100) --
+    # see .env's comment on DB_POOL_MAX_SIZE.
+    command: sh -c "pip install --no-cache-dir -q -r requirements.txt && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4"
     ports:
-      # 8000 is taken on this host by an unrelated project's own container.
       - "8010:8000"
     env_file:
       - .env
-    environment:
-      # Inside the compose network services reach each other by service
-      # name, not localhost -- override the host part of the .env DSNs.
+    environment: &backend-container-env
+      # Host-oriented values in .env (localhost:5433, etc.) are for running
+      # uvicorn/celery natively -- inside a container "localhost" would mean
+      # the container itself, so the docker-network service names/ports
+      # override them here. Everything else (secrets, feature flags) still
+      # comes from .env via env_file above. celery_worker/celery_beat below
+      # reuse this exact block via the &backend-container-env anchor --
+      # OTP delivery and the notification Celery tasks both depend on
+      # CELERY_BROKER_URL/TELEGRAM_OFFSET_REDIS_URL actually reaching the
+      # `redis` service, not localhost, or tasks queue up and nothing ever
+      # consumes them.
+      DATABASE_URL: postgresql://app_user:${APP_DB_PASSWORD}@postgres:5432/${POSTGRES_DB:-dashboarduz}
       MIGRATIONS_DATABASE_URL: postgresql://${POSTGRES_OWNER_USER:-dashboarduz_owner}:${POSTGRES_OWNER_PASSWORD:-owner_dev_password}@postgres:5432/${POSTGRES_DB:-dashboarduz}
-      DATABASE_URL: postgresql://app_user:${APP_DB_PASSWORD:-app_user_dev_password}@postgres:5432/${POSTGRES_DB:-dashboarduz}
       REDIS_URL: redis://redis:6379/1
+      CELERY_BROKER_URL: redis://redis:6379/2
+      TELEGRAM_OFFSET_REDIS_URL: redis://redis:6379/3
+      # Bug fix (2026-07-18, found while wiring up the CRM circuit breaker):
+      # this one was missing from the override list above -- crm/service.py's
+      # _oauth_state_redis() (OAuth state nonces, now also the circuit
+      # breaker's key store) defaulted to config.py's redis://localhost:6379/4,
+      # which inside this container means the container itself, not the
+      # `redis` service -- every call raised a real ConnectionError instead
+      # of reaching Redis at all.
+      CRM_OAUTH_STATE_REDIS_URL: redis://redis:6379/4
       OBJECT_STORAGE_ENDPOINT_URL: http://minio:9000
+    volumes:
+      - .:/app
     depends_on:
       postgres:
         condition: service_healthy
@@ -99,23 +154,78 @@ services:
       minio:
         condition: service_started
 
-  frontend:
-    build: ../frontend
+  # OTP/password-reset code delivery (app/core/tasks.py) runs here -- the app
+  # service above only *enqueues* those tasks (celery_app.py's producer side);
+  # without a running worker process they just sit in Redis forever and no
+  # email/SMS ever goes out. Also carries the entire Telegram notification
+  # pipeline (outbox delivery, schedule dispatch) per app/core/celery_app.py's
+  # autodiscover_tasks/beat_schedule. --concurrency=2 is deliberate, not a
+  # default: prefork's default concurrency is os.cpu_count() (16 here), and
+  # each forked child gets its OWN asyncpg pool (worker_process_init in
+  # notifications/tasks.py) sized DB_POOL_MAX_SIZE -- unconstrained, that's
+  # 16 x DB_POOL_MAX_SIZE connections just for this service, easily blowing
+  # past Postgres's max_connections (100) once combined with the app
+  # service's own pool. This module's actual task volume (OTP + Telegram) is
+  # low, so 2 is ample headroom, not a throughput compromise.
+  celery_worker:
+    image: python:3.13-slim
     restart: unless-stopped
+    working_dir: /app
+    command: sh -c "pip install --no-cache-dir -q -r requirements.txt && celery -A app.core.celery_app worker --loglevel=info --concurrency=2"
+    env_file:
+      - .env
+    environment: *backend-container-env
+    volumes:
+      - .:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Beat is the scheduler (fires notifications.dispatch_due_outbox /
+  # dispatch_due_schedules / poll_group_links on their fixed intervals) --
+  # celery_worker above only executes tasks once queued, it doesn't schedule
+  # the recurring ones itself. Two separate processes, same as production's
+  # dashboarduz-celery.service / dashboarduz-celery-beat.service split.
+  celery_beat:
+    image: python:3.13-slim
+    restart: unless-stopped
+    working_dir: /app
+    command: sh -c "pip install --no-cache-dir -q -r requirements.txt && celery -A app.core.celery_app beat --loglevel=info"
+    env_file:
+      - .env
+    environment: *backend-container-env
+    volumes:
+      - .:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Same bind-mount reasoning as `app` -- no frontend Dockerfile either.
+  # frontend_node_modules is a named volume (not a bind mount) so the
+  # container's own Linux-built node_modules never gets shadowed by the host
+  # bind mount of ../frontend.
+  frontend:
+    image: node:24-alpine
+    restart: unless-stopped
+    working_dir: /app
+    command: sh -c "npm install --no-audit --no-fund && npm run dev -- --host 0.0.0.0"
     ports:
       - "5173:5173"
     environment:
-      # Runs in the browser, so it must point at the app's host-published
-      # port, not the in-network service name.
+      # The browser (not this container) calls the API directly, so this
+      # must be a host-reachable URL, not the app service's docker-network name.
       VITE_API_BASE_URL: http://localhost:8010
     volumes:
-      - ../frontend/src:/app/src
+      - ../frontend:/app
+      - frontend_node_modules:/app/node_modules
     depends_on:
       - app
 
 volumes:
   dashboarduz_postgres_data:
   dashboarduz_minio_data:
-  dashboarduz_redis_data:
-  dashboarduz_prometheus_data:
-  dashboarduz_grafana_data:
+  frontend_node_modules:

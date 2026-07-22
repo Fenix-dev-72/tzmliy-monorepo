@@ -39,6 +39,26 @@ async def list_group_mappings(conn: asyncpg.Connection) -> list[dict]:
     return _rows(rows)
 
 
+async def update_group_mapping(
+    conn: asyncpg.Connection, mapping_id: UUID, label: str, category_id: UUID | None
+) -> dict | None:
+    row = await _queries.update_group_mapping(conn, mapping_id=mapping_id, label=label, category_id=category_id)
+    return _row(row)
+
+
+async def deactivate_group_mapping(conn: asyncpg.Connection, mapping_id: UUID) -> None:
+    await _queries.deactivate_group_mapping(conn, mapping_id=mapping_id)
+
+
+async def delete_group_mapping(conn: asyncpg.Connection, mapping_id: UUID) -> None:
+    await _queries.delete_group_mapping(conn, mapping_id=mapping_id)
+
+
+async def list_schedules_for_group_mapping(conn: asyncpg.Connection, mapping_id: UUID) -> list[dict]:
+    rows = [row async for row in _queries.list_schedules_for_group_mapping(conn, mapping_id=mapping_id)]
+    return _rows(rows)
+
+
 async def get_group_mapping_by_category(conn: asyncpg.Connection, category_id: UUID) -> dict | None:
     row = await _queries.get_group_mapping_by_category(conn, category_id=category_id)
     return _row(row)
@@ -47,6 +67,133 @@ async def get_group_mapping_by_category(conn: asyncpg.Connection, category_id: U
 async def get_default_group_mapping(conn: asyncpg.Connection) -> dict | None:
     row = await _queries.get_default_group_mapping(conn)
     return _row(row)
+
+
+async def get_group_mapping_by_id(conn: asyncpg.Connection, mapping_id: UUID) -> dict | None:
+    row = await _queries.get_group_mapping_by_id(conn, mapping_id=mapping_id)
+    return _row(row)
+
+
+async def insert_schedule(
+    conn: asyncpg.Connection,
+    tenant_id: UUID,
+    label: str,
+    send_time,
+    days_of_week: list[int] | None,
+    is_enabled: bool,
+    group_mapping_id: UUID | None,
+    content_type: str,
+    period: str,
+    custom_text: str | None,
+    user_ids: list[UUID] | None,
+    role_ids: list[UUID] | None,
+    created_by_user_id: UUID,
+) -> dict:
+    row = await _queries.insert_schedule(
+        conn,
+        tenant_id=tenant_id,
+        label=label,
+        send_time=send_time,
+        days_of_week=days_of_week,
+        is_enabled=is_enabled,
+        group_mapping_id=group_mapping_id,
+        content_type=content_type,
+        period=period,
+        custom_text=custom_text,
+        user_ids=user_ids,
+        role_ids=role_ids,
+        created_by_user_id=created_by_user_id,
+    )
+    return _row(row)
+
+
+async def update_schedule(
+    conn: asyncpg.Connection,
+    schedule_id: UUID,
+    label: str,
+    send_time,
+    days_of_week: list[int] | None,
+    is_enabled: bool,
+    group_mapping_id: UUID | None,
+    content_type: str,
+    period: str,
+    custom_text: str | None,
+    user_ids: list[UUID] | None,
+    role_ids: list[UUID] | None,
+) -> dict | None:
+    row = await _queries.update_schedule(
+        conn,
+        schedule_id=schedule_id,
+        label=label,
+        send_time=send_time,
+        days_of_week=days_of_week,
+        is_enabled=is_enabled,
+        group_mapping_id=group_mapping_id,
+        content_type=content_type,
+        period=period,
+        custom_text=custom_text,
+        user_ids=user_ids,
+        role_ids=role_ids,
+    )
+    return _row(row)
+
+
+async def get_schedule_by_id(conn: asyncpg.Connection, schedule_id: UUID) -> dict | None:
+    row = await _queries.get_schedule_by_id(conn, schedule_id=schedule_id)
+    return _row(row)
+
+
+async def list_schedules(conn: asyncpg.Connection) -> list[dict]:
+    rows = [row async for row in _queries.list_schedules(conn)]
+    return _rows(rows)
+
+
+async def delete_schedule(conn: asyncpg.Connection, schedule_id: UUID) -> None:
+    await _queries.delete_schedule(conn, schedule_id=schedule_id)
+
+
+async def mark_schedule_sent(conn: asyncpg.Connection, schedule_id: UUID, sent_date) -> None:
+    await _queries.mark_schedule_sent(conn, schedule_id=schedule_id, sent_date=sent_date)
+
+
+async def list_enabled_schedules(conn: asyncpg.Connection) -> list[dict]:
+    rows = [row async for row in _queries.list_enabled_schedules(conn)]
+    return _rows(rows)
+
+
+async def get_user_ids_by_roles(conn: asyncpg.Connection, role_ids: list[UUID]) -> list[dict]:
+    rows = [row async for row in _queries.get_user_ids_by_roles(conn, role_ids=role_ids)]
+    return _rows(rows)
+
+
+async def insert_group_link_request(
+    conn: asyncpg.Connection,
+    tenant_id: UUID,
+    token_hash: str,
+    category_id: UUID | None,
+    label: str,
+    requested_by_user_id: UUID,
+    expires_at: datetime,
+) -> dict:
+    row = await _queries.insert_group_link_request(
+        conn,
+        tenant_id=tenant_id,
+        token_hash=token_hash,
+        category_id=category_id,
+        label=label,
+        requested_by_user_id=requested_by_user_id,
+        expires_at=expires_at,
+    )
+    return _row(row)
+
+
+async def get_group_link_request_by_token(conn: asyncpg.Connection, tenant_id: UUID, token_hash: str) -> dict | None:
+    row = await _queries.get_group_link_request_by_token(conn, tenant_id=tenant_id, token_hash=token_hash)
+    return _row(row)
+
+
+async def delete_group_link_request(conn: asyncpg.Connection, request_id: UUID) -> None:
+    await _queries.delete_group_link_request(conn, id=request_id)
 
 
 async def enqueue_message(
@@ -92,6 +239,11 @@ async def enqueue_document(
 async def list_outbox_for_tenant(conn: asyncpg.Connection) -> list[dict]:
     rows = [row async for row in _queries.list_outbox_for_tenant(conn)]
     return _rows(rows)
+
+
+async def get_outbox_message_by_id(conn: asyncpg.Connection, outbox_id: UUID) -> dict | None:
+    row = await _queries.get_outbox_message_by_id(conn, id=outbox_id)
+    return _row(row)
 
 
 async def list_due_outbox_messages(conn: asyncpg.Connection, now: datetime) -> list[dict]:

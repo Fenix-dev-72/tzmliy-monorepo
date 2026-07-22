@@ -263,11 +263,13 @@ async def platform_mark_invoice_paid(
 async def platform_recalculate_storage(
     tenant_id: UUID,
     body: ReasonRequest,
+    force: bool = Query(False, description="Skip the cached-snapshot short-circuit and force a fresh scan"),
     pool=Depends(get_pool),
+    settings: Settings = Depends(get_settings),
     admin: PlatformAuthContext = Depends(get_current_platform_admin),
 ):
     try:
-        return await service.recalculate_storage(pool, admin.admin_id, tenant_id, body.reason)
+        return await service.recalculate_storage(pool, admin.admin_id, tenant_id, body.reason, settings, force)
     except service.TwoFactorRequiredError:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Platform Admin must enable 2FA before accessing tenant data")
     except service.SubscriptionNotFoundError:

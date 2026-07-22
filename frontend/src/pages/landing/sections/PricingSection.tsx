@@ -1,195 +1,234 @@
 import { useState } from "react";
+import { Check } from "lucide-react";
 import { Link } from "react-router";
-import { Building2, Check, Crown, Zap } from "lucide-react";
 import { useLang } from "@/lib/i18n/LangContext";
-import { SectionBadge } from "@/components/shared/SectionBadge";
-import { useReveal, revealClass } from "@/lib/hooks/useReveal";
+import { Reveal } from "@/components/shared/Reveal";
+
+// "Pricing Plans" style section (reference: TeamWave/Framer template's
+// Monthly/Yearly toggle + 3-card pricing block, middle card highlighted as
+// "Popular"). Rebuilt around Tizimly's real three billing plans (backend:
+// billing_plans.code CHECK IN ('starter','business','enterprise'), see
+// CLAUDE.md's Billing/Faza 8 section) instead of generic Basic/Pro/
+// Enterprise copy, priced in so'm (this is a Uzbekistan-market product, not
+// USD), with the yearly toggle applying the real -20% the tab label
+// promises.
+
+interface Plan {
+  code: string;
+  name: string;
+  monthly: number | null;
+  features: string[];
+  popular?: boolean;
+}
 
 const content = {
   uz: {
     badge: "Tariflar",
-    title: "Biznesingizga mos tarif",
-    subtitle: "Har qanday hajmdagi kompaniya uchun. Istalgan vaqt o'zgartirish mumkin.",
+    title: "Tarif rejalari",
+    subtitle: "Har qanday biznes hajmi uchun mos tarifni tanlang.",
     monthly: "Oylik",
-    recommended: "Tavsiya etiladi",
-    toggle: { uzs: "UZS", usd: "USD" },
+    yearly: "Yillik — 20% chegirma",
+    perMonth: "/oy",
+    custom: "Individual",
+    cta: "Ushbu tarifni tanlash",
+    ctaEnterprise: "Narx so'rash",
     plans: [
       {
-        icon: Zap,
-        name: "Boshlang'ich",
-        price: { uzs: "490 000", usd: "39" },
-        desc: "Kichik jamoalar va startaplar uchun",
-        features: ["5 ta foydalanuvchi", "CRM: 500 lead/oy", "Moliyaviy hisobot", "Email qo'llab-quvvatlash", "1 GB saqlash", "Asosiy integratsiyalar"],
-        highlight: false,
+        code: "starter",
+        name: "Starter",
+        monthly: 299000,
+        features: [
+          "Savdo va ombor boshqaruvi",
+          "CRM va mijozlar bazasi",
+          "Asosiy analitika va hisobotlar",
+          "5 GB xotira",
+          "Email orqali qo'llab-quvvatlash",
+        ],
       },
       {
-        icon: Building2,
-        name: "Biznes",
-        price: { uzs: "1 490 000", usd: "119" },
-        desc: "O'sayotgan kompaniyalar uchun",
-        features: ["25 ta foydalanuvchi", "CRM: cheksiz leadlar", "To'liq ledger va refund", "UTEL qo'ng'iroq integratsiyasi", "Live Dashboard & Leaderboard", "10 GB saqlash", "Barcha integratsiyalar", "Prioritet qo'llab-quvvatlash"],
-        highlight: true,
+        code: "business",
+        name: "Business",
+        monthly: 590000,
+        popular: true,
+        features: [
+          "Barcha Starter imkoniyatlari",
+          "AmoCRM, Bitrix24, Meta Ads integratsiyalari",
+          "Telegram bot orqali bildirishnomalar",
+          "Kengaytirilgan hisobot va eksport (CSV/XLSX)",
+          "50 GB xotira",
+          "Ustuvor qo'llab-quvvatlash",
+        ],
       },
       {
-        icon: Crown,
-        name: "Korporativ",
-        price: { uzs: "Aloqa qiling", usd: "Contact us" },
-        desc: "Yirik korporatsiyalar uchun",
-        features: ["Cheksiz foydalanuvchilar", "Dedicated server", "SLA 99.95%", "RPO=0 kafolati", "Custom integratsiyalar", "Maxsus API kirish", "Shaxsiy menejer", "24/7 telefon qo'llab-quvvatlash"],
-        highlight: false,
+        code: "enterprise",
+        name: "Enterprise",
+        monthly: null,
+        features: [
+          "Barcha Business imkoniyatlari",
+          "Shaxsiy hisob menejeri",
+          "Maxsus integratsiyalar",
+          "Cheksiz xotira",
+          "24/7 qo'llab-quvvatlash",
+          "SLA kafolati",
+        ],
       },
-    ],
-    cta: { start: "Boshlash", contact: "Aloqa qilish" },
+    ] as Plan[],
   },
   ru: {
     badge: "Тарифы",
-    title: "Тариф для вашего бизнеса",
-    subtitle: "Для компаний любого размера. Можно изменить в любое время.",
-    monthly: "В месяц",
-    recommended: "Рекомендуется",
-    toggle: { uzs: "UZS", usd: "USD" },
+    title: "Тарифные планы",
+    subtitle: "Выберите подходящий тариф для бизнеса любого размера.",
+    monthly: "Помесячно",
+    yearly: "Ежегодно — скидка 20%",
+    perMonth: "/мес",
+    custom: "Индивидуально",
+    cta: "Выбрать этот тариф",
+    ctaEnterprise: "Запросить цену",
     plans: [
       {
-        icon: Zap,
-        name: "Начальный",
-        price: { uzs: "490 000", usd: "39" },
-        desc: "Для небольших команд и стартапов",
-        features: ["5 пользователей", "CRM: 500 лидов/мес", "Финансовая отчётность", "Email поддержка", "1 ГБ хранилища", "Базовые интеграции"],
-        highlight: false,
+        code: "starter",
+        name: "Starter",
+        monthly: 299000,
+        features: [
+          "Управление продажами и складом",
+          "CRM и база клиентов",
+          "Базовая аналитика и отчёты",
+          "5 ГБ хранилища",
+          "Поддержка по email",
+        ],
       },
       {
-        icon: Building2,
-        name: "Бизнес",
-        price: { uzs: "1 490 000", usd: "119" },
-        desc: "Для растущих компаний",
-        features: ["25 пользователей", "CRM: безлимитные лиды", "Полный леджер и возвраты", "Интеграция звонков UTEL", "Live Dashboard & Leaderboard", "10 ГБ хранилища", "Все интеграции", "Приоритетная поддержка"],
-        highlight: true,
+        code: "business",
+        name: "Business",
+        monthly: 590000,
+        popular: true,
+        features: [
+          "Все возможности Starter",
+          "Интеграции AmoCRM, Bitrix24, Meta Ads",
+          "Уведомления через Telegram-бота",
+          "Расширенные отчёты и экспорт (CSV/XLSX)",
+          "50 ГБ хранилища",
+          "Приоритетная поддержка",
+        ],
       },
       {
-        icon: Crown,
-        name: "Корпоративный",
-        price: { uzs: "Свяжитесь", usd: "Contact us" },
-        desc: "Для крупных корпораций",
-        features: ["Неограниченные пользователи", "Выделенный сервер", "SLA 99.95%", "Гарантия RPO=0", "Кастомные интеграции", "Специальный API доступ", "Персональный менеджер", "Телефонная поддержка 24/7"],
-        highlight: false,
+        code: "enterprise",
+        name: "Enterprise",
+        monthly: null,
+        features: [
+          "Все возможности Business",
+          "Персональный менеджер",
+          "Индивидуальные интеграции",
+          "Неограниченное хранилище",
+          "Поддержка 24/7",
+          "Гарантия SLA",
+        ],
       },
-    ],
-    cta: { start: "Начать", contact: "Связаться" },
+    ] as Plan[],
   },
 };
 
-const NOT_CONTACT = new Set(["Aloqa qiling", "Contact us", "Свяжитесь"]);
+function formatSom(amount: number) {
+  return new Intl.NumberFormat("ru-RU").format(amount);
+}
 
 export function PricingSection() {
   const { lang } = useLang();
-  const [currency, setCurrency] = useState<"uzs" | "usd">("uzs");
-  const c = content[lang];
-  const { ref, visible } = useReveal<HTMLDivElement>();
+  const t = content[lang];
+  const [yearly, setYearly] = useState(false);
 
   return (
-    <section id="pricing" className="px-4 py-12 sm:px-6 sm:py-20">
-      <div className="mx-auto max-w-7xl">
-        <div className="mb-10 text-center sm:mb-14">
-          <div className="mb-4 flex justify-center">
-            <SectionBadge>{c.badge}</SectionBadge>
+    <section id="pricing" className="relative overflow-hidden py-20 sm:py-28">
+      <div
+        className="landing-glow-drift pointer-events-none absolute top-0 left-1/2 h-[400px] w-[900px] -translate-x-1/2 rounded-full blur-3xl"
+        style={{ background: "radial-gradient(ellipse, rgba(212,175,55,0.1) 0%, transparent 70%)" }}
+      />
+
+      <div className="relative mx-auto max-w-6xl px-6">
+        <Reveal className="mx-auto mb-10 max-w-2xl text-center">
+          <div className="border-primary/25 bg-primary/10 mb-6 inline-flex items-center gap-2 rounded-full border px-4 py-1.5">
+            <div className="bg-primary size-1.5 rounded-full" />
+            <span className="text-primary text-[13px] font-semibold">{t.badge}</span>
           </div>
-          <h2 className="font-heading mb-3 text-[clamp(28px,4vw,48px)] font-extrabold tracking-tight text-foreground">
-            {c.title}
+          <h2 className="font-display mb-4 text-[clamp(28px,4.2vw,44px)] leading-[1.15] font-bold tracking-tight">
+            {t.title}
           </h2>
-          <p className="mb-6 text-base text-foreground-muted sm:mb-8 sm:text-[17px]">{c.subtitle}</p>
+          <p className="text-foreground-muted text-[15px] leading-relaxed">{t.subtitle}</p>
+        </Reveal>
 
-          <div className="bg-background/80 border-card-border animate-shimmer inline-flex rounded-xl border p-1">
-            {(["uzs", "usd"] as const).map((cur) => (
-              <button
-                key={cur}
-                onClick={() => setCurrency(cur)}
-                className={`rounded-lg px-6 py-2 text-sm font-bold transition-all ${
-                  currency === cur ? "bg-primary/15 text-primary" : "text-foreground-muted"
-                }`}
-              >
-                {c.toggle[cur]}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div ref={ref} className="grid grid-cols-1 gap-5 sm:gap-6 md:grid-cols-3">
-          {c.plans.map((plan, i) => (
-            <div
-              key={i}
-              className={revealClass(
-                visible,
-                `relative rounded-2xl border p-6 backdrop-blur-md hover:-translate-y-2 hover:duration-300 sm:rounded-3xl sm:p-9 ${
-                  plan.highlight
-                    ? "border-primary bg-primary/[0.07] border-2 shadow-[0_16px_48px_rgba(212,175,55,0.15)] hover:shadow-[0_24px_64px_rgba(212,175,55,0.25)] md:scale-[1.02]"
-                    : "bg-card border-card-border shadow-[0_8px_32px_rgba(0,0,0,0.15)] hover:shadow-[0_16px_48px_rgba(0,0,0,0.25)]"
-                }`,
-              )}
-              style={{ transitionDelay: `${i * 100}ms` }}
+        <Reveal delay={80} className="mb-10 flex justify-center">
+          <div className="border-card-border bg-card/40 inline-flex items-center gap-1 rounded-full border p-1">
+            <button
+              type="button"
+              onClick={() => setYearly(false)}
+              className={`rounded-full px-5 py-2 text-sm font-semibold transition-colors ${
+                !yearly ? "bg-primary text-primary-foreground" : "text-foreground-muted hover:text-foreground"
+              }`}
             >
-              {plan.highlight && (
-                <div className="gold-gradient-bg absolute -top-3.5 left-1/2 -translate-x-1/2 rounded-full px-4 py-1 text-xs font-bold whitespace-nowrap text-[#0A0E1A]">
-                  {c.recommended}
-                </div>
-              )}
+              {t.monthly}
+            </button>
+            <button
+              type="button"
+              onClick={() => setYearly(true)}
+              className={`rounded-full px-5 py-2 text-sm font-semibold transition-colors ${
+                yearly ? "bg-primary text-primary-foreground" : "text-foreground-muted hover:text-foreground"
+              }`}
+            >
+              {t.yearly}
+            </button>
+          </div>
+        </Reveal>
 
-              <div className="mb-5 flex items-center gap-3 sm:mb-7">
+        <div className="grid gap-6 lg:grid-cols-3">
+          {t.plans.map((plan, i) => {
+            const price = plan.monthly === null ? null : yearly ? Math.round((plan.monthly * 0.8) / 1000) * 1000 : plan.monthly;
+            return (
+              <Reveal key={plan.code} delay={i * 90}>
                 <div
-                  className={`flex size-11 items-center justify-center rounded-xl ${plan.highlight ? "bg-primary/20" : "bg-accent"}`}
-                >
-                  <plan.icon size={22} className={plan.highlight ? "text-primary" : "text-foreground-muted"} />
-                </div>
-                <div>
-                  <h3 className="font-heading text-lg font-bold text-foreground">{plan.name}</h3>
-                  <p className="text-[13px] text-foreground-muted">{plan.desc}</p>
-                </div>
-              </div>
-
-              <div className="mb-5 flex items-baseline gap-1.5 sm:mb-7">
-                <span className="font-mono text-2xl font-bold text-foreground sm:text-[32px]">{plan.price[currency]}</span>
-                {!NOT_CONTACT.has(plan.price[currency]) && (
-                  <span className="text-[13px] text-foreground-muted">
-                    / {c.monthly} {currency === "uzs" ? "UZS" : "USD"}
-                  </span>
-                )}
-              </div>
-
-              <div className="mb-7">
-                {plan.features.map((feature, j) => (
-                  <div key={j} className="flex gap-2.5 py-2">
-                    <div
-                      className={`mt-0.5 flex size-[18px] shrink-0 items-center justify-center rounded-full ${
-                        plan.highlight ? "bg-primary/20" : "bg-success/15"
-                      }`}
-                    >
-                      <Check size={11} className={plan.highlight ? "text-primary" : "text-success"} strokeWidth={2.5} />
-                    </div>
-                    <span className="text-sm text-foreground">{feature}</span>
-                  </div>
-                ))}
-              </div>
-
-              {i === 2 ? (
-                <a
-                  href="#contact"
-                  className="border-card-border block w-full rounded-xl border py-3.5 text-center text-[15px] font-bold text-foreground transition-all hover:scale-[1.02] hover:bg-accent"
-                >
-                  {c.cta.contact}
-                </a>
-              ) : (
-                <Link
-                  to="/register"
-                  className={`block w-full rounded-xl py-3.5 text-center text-[15px] font-bold transition-all hover:scale-[1.02] ${
-                    plan.highlight
-                      ? "gold-gradient-bg text-[#0A0E1A] shadow-[0_8px_24px_rgba(212,175,55,0.3)] hover:shadow-[0_12px_32px_rgba(212,175,55,0.4)]"
-                      : "border-card-border border text-foreground hover:bg-accent"
+                  className={`flex h-full flex-col rounded-3xl border p-8 ${
+                    plan.popular ? "border-primary bg-card shadow-lg" : "border-card-border bg-card/40"
                   }`}
                 >
-                  {c.cta.start}
-                </Link>
-              )}
-            </div>
-          ))}
+                  <span
+                    className={`mb-6 inline-block w-fit rounded-lg border px-3 py-1 text-xs font-bold tracking-wide uppercase ${
+                      plan.popular ? "border-primary/40 text-primary" : "border-card-border text-foreground-muted"
+                    }`}
+                  >
+                    {plan.name}
+                  </span>
+
+                  <div className="mb-6">
+                    {price === null ? (
+                      <span className="text-4xl font-bold">{t.custom}</span>
+                    ) : (
+                      <>
+                        <span className="text-4xl font-bold">{formatSom(price)}</span>
+                        <span className="text-foreground-muted ml-1 text-sm">{"so'm"}{t.perMonth}</span>
+                      </>
+                    )}
+                  </div>
+
+                  <ul className="border-card-border mb-8 flex-1 space-y-3 border-t pt-6">
+                    {plan.features.map((f) => (
+                      <li key={f} className="flex items-start gap-2.5 text-sm">
+                        <Check size={16} className="mt-0.5 shrink-0" style={{ color: "var(--color-primary)" }} />
+                        <span>{f}</span>
+                      </li>
+                    ))}
+                  </ul>
+
+                  <Link
+                    to="/register"
+                    className={`rounded-xl px-6 py-3 text-center text-sm font-bold transition-opacity hover:opacity-90 ${
+                      plan.popular ? "gold-gradient-bg text-[#0A0E1A]" : "border-card-border hover:bg-accent border"
+                    }`}
+                  >
+                    {plan.monthly === null ? t.ctaEnterprise : t.cta}
+                  </Link>
+                </div>
+              </Reveal>
+            );
+          })}
         </div>
       </div>
     </section>
