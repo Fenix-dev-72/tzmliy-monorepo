@@ -15,6 +15,8 @@ import urllib.request
 from asyncio import to_thread
 from datetime import date
 
+from app.core.net import UnsafeUrlError, validate_public_url
+
 _API_BASE = "https://graph.facebook.com/v21.0"
 
 
@@ -27,8 +29,14 @@ class MetaAdsApiError(Exception):
 
 def _get_json_sync(url: str) -> dict:
     try:
+        # SSRF guard: defense-in-depth. The host here is the fixed Graph API
+        # host, but validating keeps every outbound urlopen in this codebase
+        # uniformly guarded.
+        validate_public_url(url)
         with urllib.request.urlopen(url, timeout=30) as resp:
             body = json.loads(resp.read())
+    except UnsafeUrlError as exc:
+        raise MetaAdsApiError(str(exc)) from exc
     except urllib.error.HTTPError as exc:
         body = json.loads(exc.read())
     except urllib.error.URLError as exc:

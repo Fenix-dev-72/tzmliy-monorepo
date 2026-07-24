@@ -30,6 +30,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Protocol
 
+from app.core.net import validate_public_url
+
 
 class UnknownProviderError(Exception):
     pass
@@ -105,6 +107,8 @@ def _post_json_sync(url: str, body: dict, headers: dict) -> dict:
         url, data=data, headers={**headers, "Content-Type": "application/json"}, method="POST"
     )
     try:
+        # SSRF guard: url is built from the tenant-supplied portal domain.
+        validate_public_url(url)
         with urllib.request.urlopen(req, timeout=15) as resp:
             return json.loads(resp.read())
     except urllib.error.HTTPError as exc:
@@ -136,6 +140,8 @@ def _post_json_sync(url: str, body: dict, headers: dict) -> dict:
 
 def _get_json_sync(url: str, headers: dict | None = None) -> dict:
     try:
+        # SSRF guard: url is built from the tenant-supplied portal domain.
+        validate_public_url(url)
         req = urllib.request.Request(url, headers=headers or {})
         with urllib.request.urlopen(req, timeout=15) as resp:
             body = resp.read()

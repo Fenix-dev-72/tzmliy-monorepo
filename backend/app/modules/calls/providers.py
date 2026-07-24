@@ -33,6 +33,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Protocol
 
+from app.core.net import validate_public_url
+
 
 @dataclass(frozen=True)
 class ParsedCallEvent:
@@ -186,6 +188,12 @@ def get_provider(name: str) -> CallProvider:
 
 
 def _download_sync(url: str, timeout: float) -> bytes:
+    # SSRF guard: the recording URL comes from a (signature-valid) webhook
+    # payload or a connected CRM's call notes -- externally influenced input,
+    # so it must never be allowed to target an internal/metadata address.
+    # Raises UnsafeUrlError, which callers already treat as a non-fatal
+    # recording-download failure (recording_object_key just stays NULL).
+    validate_public_url(url)
     with urllib.request.urlopen(url, timeout=timeout) as response:
         return response.read()
 
