@@ -157,6 +157,37 @@ jobs:
       - name: Run tests
         run: python -m pytest tests/ -v
 
+  security-scan:
+    name: Dependency CVE Scan (advisory)
+    runs-on: ubuntu-latest
+    # Advisory only for now: steps report known CVEs in the log but do not fail
+    # the build (continue-on-error), so a newly-disclosed transitive CVE never
+    # blocks an unrelated merge. Tighten to blocking once the backlog is triaged.
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Python dependency audit (pip-audit)
+        continue-on-error: true
+        run: |
+          python -m pip install --upgrade pip pip-audit
+          pip-audit -r backend/requirements.txt
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Frontend dependency audit (npm audit)
+        continue-on-error: true
+        working-directory: frontend
+        run: npm audit --audit-level=high
+
   summary:
     name: CI Summary
     runs-on: ubuntu-latest
