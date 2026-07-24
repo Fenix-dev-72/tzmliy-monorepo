@@ -27,11 +27,10 @@ auth flow**, and a **platform admin console** (`/platform/*`).
   uninstalled again once confirmed unused. Don't reinstall them speculatively — add them when a form
   actually needs schema validation complex enough to warrant it.
 
-**Installed but currently unused** (leftover from the original Figma-Make design export — `grep` confirms no
-`src/` import as of 2026-07-25): `three`, `@react-three/fiber`, `@react-three/drei`, `gsap`, `lenis`. They
-sit in `package.json` devDeps but nothing imports them; either wire them into a real animation/3D need or
-drop them from `package.json` to slim the install. (`recharts` used to be in this "not installed" list — it
-is now installed *and* used, per the bullet above.)
+**Removed 2026-07-25** (were leftover from the original Figma-Make design export, never imported anywhere in
+`src/`): `three`, `@react-three/fiber`, `@react-three/drei`, `@types/three`, `gsap`, `lenis`. Dropped from
+`package.json` to slim the install. If a future page genuinely needs 3D/animation, re-add the specific one
+then. (`recharts` used to be in the "not installed" list — it is now installed *and* used, per the bullet above.)
 
 **Deliberately not installed**: `@mui/*`, `@emotion/*`, most Radix primitives beyond label/slot/tabs/dialog,
 `react-day-picker`, `react-dnd*`, `embla-carousel*`, `react-slick`, `canvas-confetti`, `vaul`, `cmdk`,
