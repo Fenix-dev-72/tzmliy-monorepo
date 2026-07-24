@@ -13,6 +13,43 @@ import pytest
 
 from app.core.database import tenant_connection
 
+# Minimal insert per tenant-scoped RLS table: (sql, params-from tenant_id/user_id).
+# Kept small on purpose -- just enough to prove the tenant_isolation policy holds
+# on structurally different tables (adjacency tree, a user-referencing row, an
+# outbox row), not to exercise each module's real write path.
+_ISOLATION_CASES = {
+    "catalog_categories": lambda t, u: (
+        "INSERT INTO catalog_categories (tenant_id, name) VALUES ($1, $2) RETURNING id",
+        [t, "iso-cat"],
+    ),
+    "attendance": lambda t, u: (
+        "INSERT INTO attendance (tenant_id, user_id) VALUES ($1, $2) RETURNING id",
+        [t, u],
+    ),
+    "notification_outbox": lambda t, u: (
+        "INSERT INTO notification_outbox (tenant_id, channel, telegram_chat_id, text_body) "
+        "VALUES ($1, 'telegram_message', '123456', 'iso-test') RETURNING id",
+        [t],
+    ),
+}
+
+
+@pytest.mark.parametrize("table", list(_ISOLATION_CASES))
+async def test_rls_isolation_generalizes_across_tables(app_pool, two_tenants, tenant_users, table):
+    tenant_a, tenant_b = two_tenants
+    sql, params = _ISOLATION_CASES[table](tenant_a, tenant_users[tenant_a])
+
+    async with tenant_connection(app_pool, tenant_a) as conn:
+        row_id = await conn.fetchval(sql, *params)
+
+    async with tenant_connection(app_pool, tenant_b) as conn:
+        leaked = await conn.fetch(f"SELECT id FROM {table} WHERE id = $1", row_id)  # noqa: S608 - table from fixed dict
+        assert leaked == [], f"{table}: tenant B must not see tenant A's row"
+
+    async with tenant_connection(app_pool, tenant_a) as conn:
+        own = await conn.fetch(f"SELECT id FROM {table} WHERE id = $1", row_id)  # noqa: S608
+        assert len(own) == 1
+
 
 async def test_read_isolation_hides_other_tenants_rows(app_pool, two_tenants):
     tenant_a, tenant_b = two_tenants

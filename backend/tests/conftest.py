@@ -129,6 +129,9 @@ async def two_tenants(owner_conn):
         # users), so clear dependents before roles/tenants.
         await owner_conn.execute("DELETE FROM payroll_calculation_jobs WHERE tenant_id = ANY($1::uuid[])", ids)
         await owner_conn.execute("DELETE FROM report_export_jobs WHERE tenant_id = ANY($1::uuid[])", ids)
+        await owner_conn.execute("DELETE FROM notification_outbox WHERE tenant_id = ANY($1::uuid[])", ids)
+        await owner_conn.execute("DELETE FROM catalog_categories WHERE tenant_id = ANY($1::uuid[])", ids)
+        await owner_conn.execute("DELETE FROM attendance WHERE tenant_id = ANY($1::uuid[])", ids)
         await owner_conn.execute("DELETE FROM customers WHERE tenant_id = ANY($1::uuid[])", ids)
         await owner_conn.execute(
             "DELETE FROM refresh_sessions WHERE user_id IN (SELECT id FROM users WHERE tenant_id = ANY($1::uuid[]))",
