@@ -9,6 +9,17 @@ import { Button } from "@/components/ui/button";
 import { TizimlyLogo, TizimlyWordmark } from "@/components/layout/TizimlyLogo";
 import type { LeaderboardEntry } from "@/lib/api/analytics";
 
+// Deliberate exception to the app-wide "access tokens live in memory only"
+// rule (see tenantAuthStore/platformAuthStore): a kiosk is a wall-mounted TV
+// that must survive a power-blink or reboot and come straight back to the
+// leaderboard with nobody there to re-type a password, so its token is
+// persisted. The XSS blast radius is intentionally small: this is a
+// dashboard-session token -- the lowest-privilege JWT audience (get_current_
+// dashboard in the backend), read-only, single-tenant, leaderboard-only, no
+// user permissions and no write access -- and the only thing it can read is the
+// "Top sotuvchilar" leaderboard already shown publicly on that same screen.
+// The 24h TTL is checked below on load. Do NOT "fix" this to in-memory storage;
+// that would break the core kiosk use case for no meaningful security gain.
 const STORAGE_KEY = "tzmliy_dashboard_session";
 
 const content = {

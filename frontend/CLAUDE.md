@@ -68,6 +68,13 @@ kept out of `localStorage` to limit XSS blast radius), refresh token in `localSt
 contract is bearer-token-in-body, not httpOnly cookies, so cookie storage isn't actually available without a
 backend change.
 
+**Kiosk is the one deliberate exception** (`DashboardKioskPage.tsx`, `/tv`): its access token *is* persisted
+in `localStorage` (`tzmliy_dashboard_session`). A kiosk is a wall-mounted TV that must survive a reboot and
+return to the leaderboard with nobody there to re-log-in. The blast radius is tiny by design — it's a
+dashboard-session token, the lowest-privilege JWT audience (read-only, single-tenant, leaderboard-only, no
+permissions, no writes), and the only data it unlocks is the leaderboard already shown publicly on that
+screen. Don't "fix" this to in-memory storage; see the comment on `STORAGE_KEY` in the page.
+
 `src/lib/api/client.ts` exposes a `newIdempotencyKey()` helper (`crypto.randomUUID()`) that no current
 endpoint needs yet — it's there so the pattern already exists when a future dashboard phase adds
 `POST /sales`, `POST /finance/payments`, etc., all of which require an `Idempotency-Key` header per
