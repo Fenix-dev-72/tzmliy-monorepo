@@ -123,6 +123,16 @@ WHERE id = (
 )
 RETURNING id, tenant_id, entity, format, status, error, file_object_key, requested_by_user_id, created_at, started_at, finished_at;
 
+-- name: requeue_stale_processing_export_jobs
+-- Stuck-job recovery (2026-07-25) -- see finance's
+-- requeue_stale_processing_payroll_jobs for the full rationale. Flip any
+-- 'processing' export job older than :stale_seconds back to 'pending'. Safe to
+-- re-run: a re-run just regenerates the same file under the same job id.
+UPDATE report_export_jobs
+SET status = 'pending', started_at = NULL
+WHERE status = 'processing' AND started_at < now() - make_interval(secs => :stale_seconds)
+RETURNING id;
+
 -- name: mark_export_job_done!
 UPDATE report_export_jobs SET status = 'done', file_object_key = :file_object_key, finished_at = now() WHERE id = :job_id;
 

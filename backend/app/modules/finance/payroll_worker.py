@@ -46,11 +46,18 @@ async def _process_job(pool: asyncpg.Pool, job: dict) -> None:
             await repository.mark_payroll_job_failed(conn, job["id"], error)
 
 
-async def process_pending_jobs(pool: asyncpg.Pool) -> None:
+async def process_pending_jobs(pool: asyncpg.Pool, stale_seconds: int) -> None:
     async with platform_connection(pool) as conn:
         all_tenants = await tenants_repository.list_tenants(conn)
 
     for tenant in all_tenants:
+        # Recover jobs a crashed worker left stuck in 'processing' before
+        # claiming fresh ones -- requeued jobs are re-claimed in the loop below.
+        async with tenant_connection(pool, tenant["id"]) as conn:
+            requeued = await repository.requeue_stale_processing_payroll_jobs(conn, stale_seconds)
+        if requeued:
+            logger.warning("requeued %d stale payroll job(s) for tenant %s", len(requeued), tenant["id"])
+
         while True:
             async with tenant_connection(pool, tenant["id"]) as conn:
                 job = await repository.claim_pending_payroll_job(conn)
@@ -63,7 +70,7 @@ async def run_forever(pool: asyncpg.Pool, settings: Settings) -> None:
     logger.info("payroll worker starting, poll interval=%ss", settings.finance_payroll_worker_poll_seconds)
     while True:
         try:
-            await process_pending_jobs(pool)
+            await process_pending_jobs(pool, settings.finance_payroll_worker_stale_seconds)
         except Exception:
             logger.exception("payroll worker tick failed")
         await asyncio.sleep(settings.finance_payroll_worker_poll_seconds)

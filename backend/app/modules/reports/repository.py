@@ -79,6 +79,11 @@ async def claim_pending_export_job(conn: asyncpg.Connection) -> dict | None:
     return _row(row)
 
 
+async def requeue_stale_processing_export_jobs(conn: asyncpg.Connection, stale_seconds: int) -> list[dict]:
+    rows = [row async for row in _queries.requeue_stale_processing_export_jobs(conn, stale_seconds=stale_seconds)]
+    return _rows(rows)
+
+
 async def mark_export_job_done(conn: asyncpg.Connection, job_id: UUID, file_object_key: str) -> None:
     await _queries.mark_export_job_done(conn, job_id=job_id, file_object_key=file_object_key)
 

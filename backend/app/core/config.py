@@ -275,6 +275,17 @@ class Settings(BaseSettings):
     # interval as payroll: an interactive "Export" click, not fire-and-forget.
     reports_export_worker_poll_seconds: int = 5
 
+    # Stuck-job recovery (2026-07-25): if a worker process is killed between
+    # claiming a job (status 'pending' -> 'processing') and marking it
+    # done/failed, the job would otherwise stay 'processing' forever. Each
+    # worker tick first requeues any 'processing' job whose started_at is older
+    # than this threshold back to 'pending' for re-claiming. Must be comfortably
+    # longer than any real job's runtime so an alive-but-slow job is never
+    # requeued mid-flight; re-running is safe either way (payroll is an
+    # idempotent per-period upsert, export just regenerates the same file).
+    finance_payroll_worker_stale_seconds: int = 600
+    reports_export_worker_stale_seconds: int = 600
+
     # Personal Telegram-linking poll interval (2026-07-13, self-service
     # employee onboarding) -- a fifth independent background worker. Polls
     # (getUpdates), not a webhook: Telegram's setWebhook requires a public

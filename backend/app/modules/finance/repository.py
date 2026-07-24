@@ -385,6 +385,11 @@ async def claim_pending_payroll_job(conn: asyncpg.Connection) -> dict | None:
     return _row(row)
 
 
+async def requeue_stale_processing_payroll_jobs(conn: asyncpg.Connection, stale_seconds: int) -> list[dict]:
+    rows = [row async for row in _queries.requeue_stale_processing_payroll_jobs(conn, stale_seconds=stale_seconds)]
+    return [dict(r) for r in rows]
+
+
 async def mark_payroll_job_done(conn: asyncpg.Connection, job_id: UUID) -> None:
     await _queries.mark_payroll_job_done(conn, job_id=job_id)
 

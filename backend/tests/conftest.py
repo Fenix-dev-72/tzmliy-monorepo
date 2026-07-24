@@ -122,6 +122,31 @@ async def two_tenants(owner_conn):
         yield tenant_a, tenant_b
     finally:
         ids = [tenant_a, tenant_b]
+        # Order matters for FKs: job tables and users reference tenants (and
+        # users), so clear dependents before roles/tenants.
+        await owner_conn.execute("DELETE FROM payroll_calculation_jobs WHERE tenant_id = ANY($1::uuid[])", ids)
+        await owner_conn.execute("DELETE FROM report_export_jobs WHERE tenant_id = ANY($1::uuid[])", ids)
         await owner_conn.execute("DELETE FROM customers WHERE tenant_id = ANY($1::uuid[])", ids)
+        await owner_conn.execute("DELETE FROM users WHERE tenant_id = ANY($1::uuid[])", ids)
         await owner_conn.execute("DELETE FROM roles WHERE tenant_id = ANY($1::uuid[])", ids)
         await owner_conn.execute("DELETE FROM tenants WHERE id = ANY($1::uuid[])", ids)
+
+
+@pytest_asyncio.fixture
+async def tenant_users(owner_conn, two_tenants):
+    """Seed one minimal user (with its own role) per tenant, returning
+    {tenant_id: user_id}. For tests that need a valid users FK (e.g. a job's
+    requested_by_user_id). Cleaned up by two_tenants' teardown."""
+    users: dict = {}
+    for tenant_id in two_tenants:
+        role_id = await owner_conn.fetchval(
+            "INSERT INTO roles (tenant_id, name) VALUES ($1, $2) RETURNING id", tenant_id, "test-role"
+        )
+        users[tenant_id] = await owner_conn.fetchval(
+            "INSERT INTO users (tenant_id, email, password_hash, role_id) VALUES ($1, $2, $3, $4) RETURNING id",
+            tenant_id,
+            f"test-{uuid.uuid4().hex}@example.test",  # users CHECK requires email or phone
+            "not-a-real-hash",
+            role_id,
+        )
+    return users

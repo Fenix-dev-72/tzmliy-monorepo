@@ -236,6 +236,18 @@ WHERE id = (
 )
 RETURNING id, tenant_id, period_start, period_end, user_id, status, error, requested_by_user_id, created_at, started_at, finished_at;
 
+-- name: requeue_stale_processing_payroll_jobs
+-- Stuck-job recovery (2026-07-25): a worker killed between claim and
+-- mark-done/failed leaves a job in 'processing' forever. Flip any 'processing'
+-- job older than :stale_seconds back to 'pending' so a live worker re-claims
+-- it. Safe to re-run -- payroll calculation is an idempotent per-period upsert.
+-- :stale_seconds is set well above any real run's duration (see config.py) so
+-- an alive-but-slow job is never requeued mid-flight.
+UPDATE payroll_calculation_jobs
+SET status = 'pending', started_at = NULL
+WHERE status = 'processing' AND started_at < now() - make_interval(secs => :stale_seconds)
+RETURNING id;
+
 -- name: mark_payroll_job_done!
 UPDATE payroll_calculation_jobs SET status = 'done', finished_at = now() WHERE id = :job_id;
 
