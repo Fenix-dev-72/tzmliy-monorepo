@@ -23,8 +23,11 @@ import uuid
 from urllib.parse import urlsplit
 
 import asyncpg
+import bcrypt
 import pytest
 import pytest_asyncio
+import redis.asyncio as aioredis
+from httpx import ASGITransport, AsyncClient
 
 _ENV_PATH = os.path.join(os.path.dirname(__file__), "..", ".env")
 
@@ -127,6 +130,11 @@ async def two_tenants(owner_conn):
         await owner_conn.execute("DELETE FROM payroll_calculation_jobs WHERE tenant_id = ANY($1::uuid[])", ids)
         await owner_conn.execute("DELETE FROM report_export_jobs WHERE tenant_id = ANY($1::uuid[])", ids)
         await owner_conn.execute("DELETE FROM customers WHERE tenant_id = ANY($1::uuid[])", ids)
+        await owner_conn.execute(
+            "DELETE FROM refresh_sessions WHERE user_id IN (SELECT id FROM users WHERE tenant_id = ANY($1::uuid[]))",
+            ids,
+        )
+        await owner_conn.execute("DELETE FROM user_login_identifiers WHERE tenant_id = ANY($1::uuid[])", ids)
         await owner_conn.execute("DELETE FROM users WHERE tenant_id = ANY($1::uuid[])", ids)
         await owner_conn.execute("DELETE FROM roles WHERE tenant_id = ANY($1::uuid[])", ids)
         await owner_conn.execute("DELETE FROM tenants WHERE id = ANY($1::uuid[])", ids)
@@ -150,3 +158,56 @@ async def tenant_users(owner_conn, two_tenants):
             role_id,
         )
     return users
+
+
+@pytest_asyncio.fixture
+async def api_client(app_pool):
+    """httpx client bound to the real FastAPI app over ASGITransport. app.state
+    (pool/replica_pool/redis) is wired manually to the docker services rather
+    than running the full lifespan, so the background workers don't start. The
+    rate-limit Redis DB is flushed each test so per-IP buckets don't carry over."""
+    from app.main import app as fastapi_app
+
+    redis_client = aioredis.Redis(
+        host="localhost", port=int(os.environ.get("TEST_REDIS_PORT", "6379")), db=8
+    )
+    await redis_client.flushdb()
+    fastapi_app.state.pool = app_pool
+    fastapi_app.state.replica_pool = app_pool
+    fastapi_app.state.redis = redis_client
+    transport = ASGITransport(app=fastapi_app)
+    try:
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            yield client
+    finally:
+        await redis_client.aclose()
+
+
+@pytest_asyncio.fixture
+async def http_user(owner_conn, two_tenants):
+    """A fully login-capable user under tenant A: real bcrypt password hash plus
+    the user_login_identifiers row that identifier-based login resolves through.
+    Returns {identifier, password, tenant_id, user_id}. Cleaned up by
+    two_tenants' teardown."""
+    tenant_a, _ = two_tenants
+    password = "Sup3rSecret!"
+    pw_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    identifier = f"httptest-{uuid.uuid4().hex}@example.com"  # already lowercase (login normalizes to lower)
+    role_id = await owner_conn.fetchval(
+        "INSERT INTO roles (tenant_id, name) VALUES ($1, $2) RETURNING id", tenant_a, "http-test-role"
+    )
+    user_id = await owner_conn.fetchval(
+        "INSERT INTO users (tenant_id, email, password_hash, role_id) VALUES ($1, $2, $3, $4) RETURNING id",
+        tenant_a,
+        identifier,
+        pw_hash,
+        role_id,
+    )
+    await owner_conn.execute(
+        "INSERT INTO user_login_identifiers (identifier, identifier_type, tenant_id, user_id) "
+        "VALUES ($1, 'email', $2, $3)",
+        identifier,
+        tenant_a,
+        user_id,
+    )
+    return {"identifier": identifier, "password": password, "tenant_id": tenant_a, "user_id": user_id}
