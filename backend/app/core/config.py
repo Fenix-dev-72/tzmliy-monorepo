@@ -227,6 +227,19 @@ class Settings(BaseSettings):
     # existing convention), sharing the same crm/worker.py module.
     amocrm_calls_sync_poll_seconds: int = 300
 
+    # AmoCRM lead pull sync (2026-07-24, client decision) -- replaces the old
+    # webhook-based lead ingestion entirely. Webhook delivery was never
+    # guaranteed (missed deliveries during downtime, and a lead created
+    # before the integration was ever connected would never fire one at
+    # all), so leads are now pulled the same way calls already are, via
+    # filter[updated_at][from]. Shorter interval than calls' 300s since leads
+    # are the more time-sensitive of the two for a seller following up.
+    amocrm_leads_sync_poll_seconds: int = 120
+
+    # Bitrix24 lead pull sync (2026-07-24, same client decision as AmoCRM's
+    # own above) -- Bitrix24 no longer has a webhook path at all either.
+    bitrix24_leads_sync_poll_seconds: int = 120
+
     # One-click OAuth connect for AmoCRM/Bitrix24/Meta Ads (2026-07-15). All
     # default to "" (not configured) -- no real app is registered with any of
     # these three providers yet, so get_oauth_authorize_url raises a clean

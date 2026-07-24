@@ -85,10 +85,10 @@ export function connectMoiZvonki(accessToken: string, body: { domain: string; us
   });
 }
 
-// Gated by calls.view (not calls.manage) server-side -- same "both admin
-// and ordinary employees can retrieve it, no DB access needed" convention as
-// crm.ts's getWebhookUrl. Shown mainly for informational/debugging purposes
-// -- the secret is already embedded in webhook_url itself.
+// Gated by calls.view (not calls.manage) server-side -- both admin and
+// ordinary employees can retrieve it, no DB access needed. Shown mainly for
+// informational/debugging purposes -- the secret is already embedded in
+// webhook_url itself.
 export function getWebhookInfo(accessToken: string, provider: "utel" | "moi_zvonki") {
   return apiFetch<{ webhook_url: string; webhook_secret: string }>(
     `/api/v1/calls/integrations/${provider}/webhook-url`,

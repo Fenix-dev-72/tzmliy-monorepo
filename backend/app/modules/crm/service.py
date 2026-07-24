@@ -1,5 +1,4 @@
 import json
-import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
@@ -14,7 +13,7 @@ from app.core.database import tenant_connection
 from app.modules.calls import repository as calls_repository
 from app.modules.crm import oauth as crm_oauth
 from app.modules.crm import repository
-from app.modules.crm.providers import CrmApiError, InvalidLeadPayloadError, get_provider
+from app.modules.crm.providers import CrmApiError, get_provider
 from app.modules.customers import repository as customers_repository
 from app.modules.finance import repository as finance_repository
 from app.modules.finance import service as finance_service
@@ -25,14 +24,6 @@ _OAUTH_STATE_TTL_SECONDS = 600
 
 
 class IntegrationNotConfiguredError(Exception):
-    pass
-
-
-class InvalidWebhookSignatureError(Exception):
-    pass
-
-
-class InvalidWebhookPayloadError(Exception):
     pass
 
 
@@ -57,22 +48,6 @@ class InvalidOAuthStateError(Exception):
 
 class OAuthDomainRequiredError(Exception):
     pass
-
-
-class WebhookUrlNotAvailableError(Exception):
-    """Raised when a provider has no webhook concept at all (meta_ads) or
-    has no webhook secret configured yet."""
-
-    pass
-
-
-# amocrm's inbound webhook is verified via a shared `?secret=` query param
-# (see providers.py's AmoCrmProvider.verify_webhook); bitrix24's via an
-# `application_token` in the POST body (Bitrix24Provider.verify_webhook) --
-# both need a generated secret/token regardless of connect method, so both
-# are "webhook capable." meta_ads has no webhook concept at all (pull-only
-# analytics) and is deliberately excluded.
-_WEBHOOK_CAPABLE_PROVIDERS = {"amocrm", "bitrix24"}
 
 
 _OAUTH_CLIENT_SETTINGS = {
@@ -132,28 +107,14 @@ def _oauth_redirect_uri(provider: str) -> str:
     return f"{get_settings().oauth_redirect_base_url}/api/v1/crm/oauth/{provider}/callback"
 
 
-async def configure_amocrm(pool: asyncpg.Pool, tenant_id: UUID, subdomain: str, api_token: str, webhook_secret: str) -> dict:
+async def configure_amocrm(pool: asyncpg.Pool, tenant_id: UUID, subdomain: str, api_token: str) -> dict:
+    # webhook_secret_encrypted is None here -- AmoCRM no longer has a webhook
+    # path at all (2026-07-24, see providers.py's module docstring), so a
+    # manually-pasted long-lived token needs no secret generated for it.
     async with tenant_connection(pool, tenant_id) as conn:
         return await repository.upsert_integration_credential_with_account(
-            conn, tenant_id, "amocrm", encrypt_secret(webhook_secret), encrypt_secret(api_token), subdomain
+            conn, tenant_id, "amocrm", None, encrypt_secret(api_token), subdomain
         )
-
-
-async def configure_bitrix24(pool: asyncpg.Pool, tenant_id: UUID, webhook_base_url: str) -> dict:
-    # Validated live (Bitrix24's own profile.json) before ever storing it --
-    # a typo'd/wrong incoming-webhook URL is caught immediately instead of
-    # only surfacing days later on the first real lead push.
-    await get_provider("bitrix24").check_webhook(webhook_base_url)
-
-    # We generate the outgoing-webhook verification token ourselves (rather
-    # than asking the admin to invent one) -- shown back once so they can
-    # paste it into Bitrix24's own Outgoing Webhook config.
-    application_token = secrets.token_urlsafe(24)
-    async with tenant_connection(pool, tenant_id) as conn:
-        row = await repository.upsert_integration_credential_with_account(
-            conn, tenant_id, "bitrix24", encrypt_secret(application_token), encrypt_secret(webhook_base_url), None
-        )
-    return {**row, "application_token": application_token}
 
 
 async def configure_meta_ads(pool: asyncpg.Pool, tenant_id: UUID, ad_account_id: str, access_token: str) -> dict:
@@ -175,9 +136,8 @@ async def list_integrations(pool: asyncpg.Pool, tenant_id: UUID) -> list[dict]:
 
 async def disconnect_integration(pool: asyncpg.Pool, tenant_id: UUID, provider: str) -> None:
     """Soft-deactivates a connected provider (2026-07-17) -- the row is kept
-    (not deleted) so a later reconnect can still COALESCE-preserve the
-    existing webhook secret, same as get_webhook_url's own lazy-backfill
-    logic already assumes for a credential that's merely inactive."""
+    (not deleted) so a later reconnect can still COALESCE-preserve whatever
+    the existing row already has for a credential that's merely inactive."""
     async with tenant_connection(pool, tenant_id) as conn:
         await repository.deactivate_integration_credential(conn, provider)
 
@@ -233,11 +193,10 @@ async def complete_oauth(pool: asyncpg.Pool, provider: str, code: str, state: st
     if token_data.get("expires_in"):
         expires_at = datetime.now(timezone.utc) + timedelta(seconds=token_data["expires_in"])
 
-    # Generated fresh on every OAuth completion, but COALESCE in the upsert
-    # query keeps whatever secret a reconnect finds already stored -- so this
-    # value is only ever actually used the first time a tenant connects.
-    webhook_secret = secrets.token_urlsafe(24) if provider in _WEBHOOK_CAPABLE_PROVIDERS else None
-
+    # webhook_secret_encrypted is always None now -- neither AmoCRM nor
+    # Bitrix24 has a webhook path at all anymore (2026-07-24, see
+    # providers.py's module docstring), so nothing needs one generated at
+    # connect time.
     async with tenant_connection(pool, tenant_id) as conn:
         await repository.upsert_oauth_integration_credential(
             conn,
@@ -247,51 +206,9 @@ async def complete_oauth(pool: asyncpg.Pool, provider: str, code: str, state: st
             token_data.get("account_domain") or domain,
             encrypt_secret(token_data["refresh_token"]) if token_data.get("refresh_token") else None,
             expires_at,
-            webhook_secret_encrypted=encrypt_secret(webhook_secret) if webhook_secret else None,
+            webhook_secret_encrypted=None,
         )
     return tenant_id
-
-
-async def get_webhook_url(pool: asyncpg.Pool, tenant_id: UUID, provider: str) -> tuple[str, str | None]:
-    """Surfaces the tenant's own inbound webhook URL for amocrm and bitrix24
-    (2026-07-16/17, client requirement) -- previously the only way to find
-    this was direct DB access to decrypt webhook_secret_encrypted, which a
-    tenant's own admin/employees obviously don't have. Gated by crm.view
-    (not crm.manage) in the router, deliberately -- the client wants this
-    visible to ordinary employees setting up the integration, not just the
-    admin. Returns (webhook_url, application_token) -- the second element is
-    only non-None for bitrix24 (see the return statement below)."""
-    if provider not in _WEBHOOK_CAPABLE_PROVIDERS:
-        raise WebhookUrlNotAvailableError
-    async with tenant_connection(pool, tenant_id) as conn:
-        credential = await repository.get_active_integration_credential_with_account(conn, provider)
-        if credential is None:
-            raise WebhookUrlNotAvailableError
-        if credential["webhook_secret_encrypted"] is None:
-            # Connected before this feature existed (OAuth never used to
-            # generate one) -- backfill it now instead of leaving the tenant
-            # stuck with no way to ever get a webhook URL.
-            secret = secrets.token_urlsafe(24)
-            await repository.upsert_oauth_integration_credential(
-                conn,
-                tenant_id,
-                provider,
-                credential["api_key_encrypted"],
-                credential["external_account_id"],
-                credential["refresh_token_encrypted"],
-                credential["token_expires_at"],
-                webhook_secret_encrypted=encrypt_secret(secret),
-            )
-        else:
-            secret = decrypt_secret(credential["webhook_secret_encrypted"])
-    base_url = get_settings().oauth_redirect_base_url
-    webhook_url = f"{base_url}/api/v1/crm/webhooks/{provider}/{tenant_id}"
-    if provider == "bitrix24":
-        # Bitrix24 verifies via a token in the POST body, not a URL query
-        # param -- the tenant needs the bare URL for its "handler" field and
-        # this token separately for its "application_token" field.
-        return webhook_url, secret
-    return f"{webhook_url}?secret={secret}", None
 
 
 async def _get_valid_credential(conn: asyncpg.Connection, tenant_id: UUID, provider: str) -> dict | None:
@@ -349,8 +266,6 @@ async def _get_valid_credential(conn: asyncpg.Connection, tenant_id: UUID, provi
     credential["token_expires_at"] = new_expires_at
     return credential
 
-
-logger = logging.getLogger("dashboarduz.crm")
 
 _AMOCRM_WON_STATUS_ID = "142"
 _AMOCRM_LOST_STATUS_ID = "143"
@@ -419,95 +334,36 @@ async def _record_full_payment_if_owed(
         )
 
 
-async def ingest_webhook(
-    pool: asyncpg.Pool, provider_name: str, tenant_id: UUID, raw_body: bytes, headers: dict, query_params: dict
-) -> dict:
-    """Mirrors calls/service.py's ingest_webhook: verify -> webhook_events
-    dedup insert -> resolve/create the customers row -> crm_lead_syncs audit
-    row. tenant_id comes from the URL path (webhooks have no authenticated
-    caller) -- same narrow, deliberate exception to "tenant_id never from
-    client input" as calls' webhook route: the real authentication is the
-    signature/token, verified against that tenant's stored secret.
+async def ingest_amocrm_lead(pool: asyncpg.Pool, tenant_id: UUID, provider, event, responsible_user_id: UUID | None) -> dict:
+    """Called by crm/worker.py's sync_amocrm_leads (2026-07-24, client
+    decision: AmoCRM no longer has a webhook path at all -- webhook delivery
+    was never guaranteed, and a lead created before the integration was ever
+    connected would never fire one anyway, see providers.py's module
+    docstring). Driven by a ParsedLeadEvent built from a periodic
+    `filter[updated_at][from]` pull. Bitrix24's counterpart, further below,
+    is deliberately narrower (see ingest_bitrix24_lead's own docstring) --
+    the two aren't shared since AmoCRM's won/lost/price-sync handling below
+    doesn't apply to Bitrix24 at all.
 
-    Also creates/updates a real sales row for the deal ("сделка", client
-    requirement 2026-07-15) -- not just the customers/lead row -- so it's
-    visibly distinguishable (sales.source) which sales came from a CRM
-    integration. Only happens when the deal's responsible manager resolves
-    to a real Tizimly user via crm_manager_mappings; if it doesn't, only the
-    customer is synced, same as before this pass."""
-    provider = get_provider(provider_name)
-
-    async with tenant_connection(pool, tenant_id) as conn:
-        credential = await repository.get_active_integration_credential_with_account(conn, provider_name)
-        if credential is None:
-            raise IntegrationNotConfiguredError
-        secret = decrypt_secret(credential["webhook_secret_encrypted"]) if credential["webhook_secret_encrypted"] else None
-        if not provider.verify_webhook(headers, query_params, raw_body, secret):
-            # Not persisted -- same anti-DoS reasoning as calls' webhook:
-            # an attacker can put any tenant_id in the URL, so unauthenticated
-            # payloads must never reach webhook_events.
-            raise InvalidWebhookSignatureError
-
-        try:
-            event = provider.parse_lead_event(raw_body, headers.get("content-type", ""))
-        except InvalidLeadPayloadError as exc:
-            # TEMPORARY (2026-07-15): logging the raw payload to verify the
-            # real AmoCRM webhook bracket-notation shape against a live
-            # account -- remove once confirmed working, per this module's
-            # existing "invented-but-plausible, verify at sandbox onboarding"
-            # caveat for AmoCRM's webhook format.
-            logger.warning("amocrm webhook payload rejected: %s | raw=%s", exc, raw_body.decode("utf-8", errors="replace"))
-            raise InvalidWebhookPayloadError from exc
-
-        # Bug found 2026-07-15 while adding sale status tracking: this used to
-        # dedup on event.external_lead_id alone, meaning the FIRST webhook
-        # ever received for a lead permanently claimed that key -- every
-        # later, legitimate event for the same lead (e.g. a status change
-        # after the initial "add") was silently dropped as "duplicate" and
-        # never processed. A lead's status_id changes across its lifecycle
-        # (add -> ... -> won/lost), so folding it into the dedup key lets each
-        # distinct transition be claimed once, while a true retry of the same
-        # transition still dedups correctly.
-        external_event_id = f"{event.external_lead_id}:{event.status_id or 'initial'}"
-        claimed = await calls_repository.claim_webhook_event(conn, tenant_id, provider_name, external_event_id)
-        if not claimed:
-            return {"status": "duplicate"}
-        webhook_event = await calls_repository.insert_webhook_event(
-            conn, tenant_id, provider_name, external_event_id, {"raw": raw_body.decode("utf-8", errors="replace")}, True
-        )
-
-        responsible_user_id = None
-        if event.responsible_manager_id:
-            mapping = await repository.get_crm_manager_mapping_by_external_id(
-                conn, provider_name, event.responsible_manager_id
-            )
-            if mapping is not None:
-                responsible_user_id = mapping["user_id"]
-
-    # Outside the transaction -- a lead-webhook payload never carries a
-    # phone for AmoCRM (see ParsedLeadEvent.phone's docstring), so this is a
-    # follow-up external API call, not DB work, same "slow external I/O
-    # shouldn't hold a DB connection open" principle as calls' recording
-    # download and push_customer_to_crm's provider.push_lead below.
+    No webhook_events dedup needed -- that table exists specifically to make
+    a *retried delivery* of the same webhook a no-op; re-processing the same
+    lead on a later pull tick is already safe on its own via
+    customer-by-phone and sale-by-idempotency-key lookups below, same
+    idempotency shape as calls' insert_call ON CONFLICT DO NOTHING."""
     phone = event.phone
     if phone is None and hasattr(provider, "fetch_lead_phone"):
-        fresh_credential = await get_valid_credential_for_sync(pool, tenant_id, provider_name)
+        fresh_credential = await get_valid_credential_for_sync(pool, tenant_id, "amocrm")
         if fresh_credential is not None:
             decrypted_credential = dict(fresh_credential)
             if fresh_credential["api_key_encrypted"]:
                 decrypted_credential["api_key_encrypted"] = decrypt_secret(fresh_credential["api_key_encrypted"])
             phone = await provider.fetch_lead_phone(decrypted_credential, event.external_lead_id)
-    # Client requirement (2026-07-15, seller/lead analytics): a lead with no
-    # phone number is still synced (flagged low-quality once it's lost, per
-    # the client's own "sifatsiz lid" definition), not dropped -- this used
-    # to raise InvalidWebhookPayloadError here, silently losing every
-    # no-phone lead entirely.
 
     async with tenant_connection(pool, tenant_id) as conn:
         customer = await customers_repository.get_customer_by_phone(conn, phone) if phone else None
         if customer is None:
             customer = await customers_repository.insert_customer(
-                conn, tenant_id, event.full_name, phone, responsible_user_id, "lead", provider_name
+                conn, tenant_id, event.full_name, phone, responsible_user_id, "lead", "amocrm"
             )
             if customer is None:
                 customer = await customers_repository.get_customer_by_phone(conn, phone)
@@ -516,18 +372,13 @@ async def ingest_webhook(
             conn,
             tenant_id,
             customer["id"],
-            provider_name,
+            "amocrm",
             event.external_lead_id,
             "inbound",
             {"full_name": event.full_name, "phone": phone, "email": event.email},
         )
 
     if event.status_id == _AMOCRM_LOST_STATUS_ID:
-        # Unconditional on whether a sale/responsible-manager mapping exists
-        # -- a lead can be abandoned in AmoCRM before ever being attributed
-        # to a Tizimly user, and the client's "sifatsiz lid" classification
-        # should still apply. Client's own definition: no phone OR never
-        # answered a call, AND the lead closed without a purchase.
         is_unreachable = phone is None
         if not is_unreachable:
             async with tenant_connection(pool, tenant_id) as conn:
@@ -535,7 +386,7 @@ async def ingest_webhook(
         quality = "low_quality" if is_unreachable else "unrated"
         lost_reason = None
         if hasattr(provider, "fetch_loss_reason"):
-            fresh_credential = await get_valid_credential_for_sync(pool, tenant_id, provider_name)
+            fresh_credential = await get_valid_credential_for_sync(pool, tenant_id, "amocrm")
             if fresh_credential is not None:
                 decrypted_credential = dict(fresh_credential)
                 if fresh_credential["api_key_encrypted"]:
@@ -548,16 +399,10 @@ async def ingest_webhook(
 
     sale_id = None
     if responsible_user_id is not None:
-        sale_idempotency_key = f"crm:{provider_name}:{event.external_lead_id}"
+        sale_idempotency_key = f"crm:amocrm:{event.external_lead_id}"
         async with tenant_connection(pool, tenant_id) as conn:
             existing_sale = await sales_repository.get_sale_by_idempotency_key(conn, sale_idempotency_key)
         if existing_sale is None:
-            # First time we've seen this deal -- create the real sale.
-            # currency/deadline have no reliable AmoCRM field to source them
-            # from, so both default here (flagged, same "invented-but-
-            # plausible, verify at sandbox onboarding" caveat as this
-            # module's other AmoCRM assumptions) -- price_amount 0 when the
-            # deal itself has no price set (AmoCRM allows that).
             sale, is_new = await sales_service.create_sale(
                 pool,
                 tenant_id,
@@ -569,7 +414,7 @@ async def ingest_webhook(
                 datetime.now(timezone.utc) + timedelta(days=_DEFAULT_SALE_DEADLINE_DAYS),
                 sale_idempotency_key,
                 None,
-                provider_name,
+                "amocrm",
             )
             sale_id = sale["id"]
             if is_new:
@@ -578,46 +423,92 @@ async def ingest_webhook(
                 )
         else:
             sale_id = existing_sale["id"]
-            # Bug found 2026-07-15 (live): a deal's price can change in
-            # AmoCRM after the sale was first created here (the initial
-            # webhook that created it may not even have carried a price yet)
-            # -- until this fix, that later price was never synced, so the
-            # sale (and any "Won" full-payment it triggered) stayed frozen
-            # at whatever price happened to be present on the very first
-            # webhook ever seen for that lead. This keeps price_amount AND
-            # the ledger balance in sync on every event, not just at
-            # creation, by posting a compensating "adjustment" entry for the
-            # delta -- the same reasoning finance's own refund/tariff-change
-            # workflow uses ledger deltas for corrections, not silent
-            # in-place edits.
             if event.price_amount is not None and event.price_amount != existing_sale["price_amount"]:
                 existing_sale = await _sync_sale_price(pool, tenant_id, existing_sale, event.price_amount, responsible_user_id)
             if event.status_id == _AMOCRM_WON_STATUS_ID:
-                # AmoCRM's "Won" is the one reserved, same-ID-everywhere
-                # status -- reaching it means the deal is closed
-                # successfully, so it flips the sale to completed *and*
-                # records the full remaining balance as a payment (client
-                # decision 2026-07-15), not just the status.
                 await sales_service.update_sale_status_from_crm(pool, tenant_id, sale_idempotency_key, "completed")
                 await _record_full_payment_if_owed(
                     pool, tenant_id, existing_sale, responsible_user_id, f"{sale_idempotency_key}:won-payment"
                 )
-                # A converted lead is a good lead by definition (client's
-                # own "sifatsiz" test only applies to leads that never
-                # bought) -- seller/lead analytics, 2026-07-15.
                 async with tenant_connection(pool, tenant_id) as conn:
                     await customers_repository.update_customer_crm_outcome(conn, customer["id"], "customer", "quality", None)
             elif event.status_id == _AMOCRM_LOST_STATUS_ID:
                 await sales_service.update_sale_status_from_crm(pool, tenant_id, sale_idempotency_key, "cancelled")
             elif event.status_id == _AMOCRM_PAYMENT_RECEIVED_STATUS_ID:
-                # Client requirement (2026-07-15): this tenant's own custom
-                # "To'lov qabul qilindi" stage should also record the
-                # payment -- but unlike Won, the deal isn't actually closed
-                # yet (still in progress), so the sale's status is
-                # deliberately left "active", only the payment is recorded.
                 await _record_full_payment_if_owed(
                     pool, tenant_id, existing_sale, responsible_user_id, f"{sale_idempotency_key}:payment-received"
                 )
+
+    return {"status": "processed", "customer_id": customer["id"], "sync_id": sync_row["id"], "sale_id": sale_id}
+
+
+async def ingest_bitrix24_lead(pool: asyncpg.Pool, tenant_id: UUID, event, responsible_user_id: UUID | None) -> dict:
+    """Pull-based counterpart to ingest_amocrm_lead above, called by
+    crm/worker.py's sync_bitrix24_leads (2026-07-24, same client decision --
+    Bitrix24 no longer has a webhook path at all either, see providers.py's
+    module docstring). Deliberately narrower than ingest_amocrm_lead: no
+    won/lost transition or price-sync handling, since Bitrix24's STATUS_ID
+    values are portal-specific custom pipeline stages, not a universal
+    reserved code like AmoCRM's 142/143 -- attempting to auto-detect
+    won/lost without a per-tenant "map your own stage" setting (which
+    doesn't exist yet) would guess wrong as often as right. This matches
+    this integration's pre-existing scope: the old webhook path never
+    actually triggered that logic for Bitrix24 either, since the AmoCRM
+    status-id constants it checked against never matched Bitrix24 events.
+
+    Phone comes directly from Bitrix24Provider.list_leads (no separate
+    fetch_lead_phone follow-up call needed, unlike AmoCRM) -- Bitrix24's
+    crm.lead.list response carries PHONE inline. No webhook_events dedup
+    needed either, same reasoning as ingest_amocrm_lead: customer-by-phone
+    and sale-by-idempotency-key lookups below already make re-processing the
+    same lead on a later pull tick safe."""
+    async with tenant_connection(pool, tenant_id) as conn:
+        customer = await customers_repository.get_customer_by_phone(conn, event.phone) if event.phone else None
+        if customer is None:
+            customer = await customers_repository.insert_customer(
+                conn, tenant_id, event.full_name, event.phone, responsible_user_id, "lead", "bitrix24"
+            )
+            if customer is None:
+                customer = await customers_repository.get_customer_by_phone(conn, event.phone)
+
+        sync_row = await repository.insert_crm_lead_sync(
+            conn,
+            tenant_id,
+            customer["id"],
+            "bitrix24",
+            event.external_lead_id,
+            "inbound",
+            {"full_name": event.full_name, "phone": event.phone, "email": event.email},
+        )
+
+    sale_id = None
+    if responsible_user_id is not None:
+        sale_idempotency_key = f"crm:bitrix24:{event.external_lead_id}"
+        async with tenant_connection(pool, tenant_id) as conn:
+            existing_sale = await sales_repository.get_sale_by_idempotency_key(conn, sale_idempotency_key)
+        if existing_sale is None:
+            sale, is_new = await sales_service.create_sale(
+                pool,
+                tenant_id,
+                customer["id"],
+                None,
+                responsible_user_id,
+                "UZS",
+                event.price_amount or 0,
+                datetime.now(timezone.utc) + timedelta(days=_DEFAULT_SALE_DEADLINE_DAYS),
+                sale_idempotency_key,
+                None,
+                "bitrix24",
+            )
+            sale_id = sale["id"]
+            if is_new:
+                await finance_service.post_charge(
+                    pool, tenant_id, sale["id"], customer["id"], sale["price_amount"], sale["currency"], responsible_user_id
+                )
+        else:
+            sale_id = existing_sale["id"]
+            if event.price_amount is not None and event.price_amount != existing_sale["price_amount"]:
+                await _sync_sale_price(pool, tenant_id, existing_sale, event.price_amount, responsible_user_id)
 
     return {"status": "processed", "customer_id": customer["id"], "sync_id": sync_row["id"], "sale_id": sale_id}
 

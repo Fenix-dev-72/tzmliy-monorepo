@@ -73,6 +73,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.amocrm_calls_sync_worker_task = asyncio.create_task(
         crm_worker.run_forever_amocrm_calls(app.state.pool, settings, app.state.redis)
     )
+    # AmoCRM lead pull sync (2026-07-24, client decision) -- replaces the old
+    # webhook-based lead ingestion entirely (see crm/providers.py's module
+    # docstring). Same "one distinct kind of background work = one distinct
+    # task" reasoning as the calls sync task above; shorter poll interval
+    # since leads are the more time-sensitive of the two.
+    app.state.amocrm_leads_sync_worker_task = asyncio.create_task(
+        crm_worker.run_forever_amocrm_leads(app.state.pool, settings, app.state.redis)
+    )
+    # Bitrix24 lead pull sync (2026-07-24, same client decision as AmoCRM's
+    # own above) -- Bitrix24 no longer has a webhook path at all either.
+    app.state.bitrix24_leads_sync_worker_task = asyncio.create_task(
+        crm_worker.run_forever_bitrix24_leads(app.state.pool, settings, app.state.redis)
+    )
     app.state.payroll_worker_task = asyncio.create_task(payroll_worker.run_forever(app.state.pool, settings))
     app.state.reports_export_worker_task = asyncio.create_task(reports_export_worker.run_forever(app.state.pool, settings))
     app.state.calls_recording_worker_task = asyncio.create_task(calls_recording_worker.run_forever(app.state.pool, settings))
@@ -81,6 +94,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     finally:
         app.state.crm_sync_worker_task.cancel()
         app.state.amocrm_calls_sync_worker_task.cancel()
+        app.state.amocrm_leads_sync_worker_task.cancel()
+        app.state.bitrix24_leads_sync_worker_task.cancel()
         app.state.payroll_worker_task.cancel()
         app.state.reports_export_worker_task.cancel()
         app.state.calls_recording_worker_task.cancel()
@@ -88,6 +103,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             await app.state.crm_sync_worker_task
         with contextlib.suppress(asyncio.CancelledError):
             await app.state.amocrm_calls_sync_worker_task
+        with contextlib.suppress(asyncio.CancelledError):
+            await app.state.bitrix24_leads_sync_worker_task
+        with contextlib.suppress(asyncio.CancelledError):
+            await app.state.amocrm_leads_sync_worker_task
         with contextlib.suppress(asyncio.CancelledError):
             await app.state.payroll_worker_task
         with contextlib.suppress(asyncio.CancelledError):

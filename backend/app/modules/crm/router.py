@@ -15,8 +15,6 @@ from app.modules.crm.schemas import (
     AdCampaignOut,
     AdInsightOut,
     AmoCrmConfigure,
-    Bitrix24Configure,
-    Bitrix24ConfiguredOut,
     CrmLeadSyncOut,
     IntegrationConfiguredOut,
     ManagerCandidateOut,
@@ -26,7 +24,6 @@ from app.modules.crm.schemas import (
     MetaAdsConfigure,
     OAuthAuthorizeUrlOut,
     OAuthProviderName,
-    WebhookUrlOut,
 )
 
 router = APIRouter(prefix="/api/v1/crm", tags=["crm"])
@@ -77,17 +74,7 @@ async def _lead_sync_event_source(request: Request, pool, redis_client, tenant_i
 async def configure_amocrm(
     body: AmoCrmConfigure, pool=Depends(get_pool), auth: AuthContext = Depends(require_permission(CRM_MANAGE))
 ):
-    return await service.configure_amocrm(pool, auth.tenant_id, body.subdomain, body.api_token, body.webhook_secret)
-
-
-@router.post("/integrations/bitrix24", response_model=Bitrix24ConfiguredOut, status_code=status.HTTP_201_CREATED)
-async def configure_bitrix24(
-    body: Bitrix24Configure, pool=Depends(get_pool), auth: AuthContext = Depends(require_permission(CRM_MANAGE))
-):
-    try:
-        return await service.configure_bitrix24(pool, auth.tenant_id, body.webhook_base_url)
-    except CrmApiError as exc:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Invalid Bitrix24 webhook URL: {exc.message}")
+    return await service.configure_amocrm(pool, auth.tenant_id, body.subdomain, body.api_token)
 
 
 @router.post("/integrations/meta-ads", response_model=IntegrationConfiguredOut, status_code=status.HTTP_201_CREATED)
@@ -107,20 +94,6 @@ async def disconnect_integration(
     provider: str, pool=Depends(get_pool), auth: AuthContext = Depends(require_permission(CRM_MANAGE))
 ):
     await service.disconnect_integration(pool, auth.tenant_id, provider)
-
-
-@router.get("/integrations/{provider}/webhook-url", response_model=WebhookUrlOut)
-async def get_webhook_url(
-    provider: str, pool=Depends(get_pool), auth: AuthContext = Depends(require_permission(CRM_VIEW))
-):
-    """Gated by crm.view (read), not crm.manage -- client requirement
-    (2026-07-16): both the tenant admin and ordinary employees should be
-    able to get this URL themselves, without needing DB access."""
-    try:
-        webhook_url, application_token = await service.get_webhook_url(pool, auth.tenant_id, provider)
-        return WebhookUrlOut(webhook_url=webhook_url, application_token=application_token)
-    except service.WebhookUrlNotAvailableError:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "No webhook configured for this provider yet")
 
 
 @router.get("/oauth/{provider}/authorize-url", response_model=OAuthAuthorizeUrlOut)
@@ -169,20 +142,14 @@ async def oauth_callback(
 
 
 @router.post("/webhooks/{provider}/{tenant_id}")
-async def ingest_webhook(provider: str, tenant_id: UUID, request: Request, pool=Depends(get_pool)):
-    raw_body = await request.body()
-    try:
-        return await service.ingest_webhook(
-            pool, provider, tenant_id, raw_body, dict(request.headers), dict(request.query_params)
-        )
-    except UnknownProviderError:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown CRM provider")
-    except service.IntegrationNotConfiguredError:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Integration not configured for this tenant")
-    except service.InvalidWebhookSignatureError:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid webhook signature/token")
-    except service.InvalidWebhookPayloadError:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unrecognized or incomplete lead payload")
+async def ingest_webhook(provider: str, tenant_id: UUID) -> None:
+    """Kept as a stub (2026-07-24, client decision) rather than deleted --
+    neither AmoCRM nor Bitrix24 has a webhook path at all anymore (see
+    providers.py's module docstring, crm/worker.py's sync_amocrm_leads/
+    sync_bitrix24_leads pull instead), so any hit here is either a stale
+    provider-side webhook config nobody's cleaned up yet, or an external
+    scanner -- a clean, explicit 410 is more diagnosable than a bare 404."""
+    raise HTTPException(status.HTTP_410_GONE, "This CRM integration no longer uses webhooks -- leads are synced via periodic API pull")
 
 
 @router.post("/customers/{customer_id}/push", response_model=CrmLeadSyncOut)

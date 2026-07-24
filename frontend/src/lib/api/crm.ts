@@ -46,27 +46,6 @@ export interface AdInsight {
   created_at: string;
 }
 
-export function configureAmoCrm(
-  accessToken: string,
-  body: { subdomain: string; api_token: string; webhook_secret: string },
-) {
-  return apiFetch<CrmIntegration>("/api/v1/crm/integrations/amocrm", { method: "POST", accessToken, body });
-}
-
-export interface Bitrix24Configured extends CrmIntegration {
-  // Shown once -- paste this exact value into Bitrix24's own Outgoing
-  // Webhook "application_token" field. Can't be retrieved again afterwards.
-  application_token: string;
-}
-
-// webhook_base_url is validated live against Bitrix24's own API before
-// being stored (a wrong/typo'd URL is rejected immediately, not just on the
-// first real lead push) -- application_token is generated server-side, not
-// asked for, since the admin doesn't need to invent one.
-export function configureBitrix24(accessToken: string, body: { webhook_base_url: string }) {
-  return apiFetch<Bitrix24Configured>("/api/v1/crm/integrations/bitrix24", { method: "POST", accessToken, body });
-}
-
 export function configureMetaAds(accessToken: string, body: { ad_account_id: string; access_token: string }) {
   return apiFetch<CrmIntegration>("/api/v1/crm/integrations/meta-ads", { method: "POST", accessToken, body });
 }
@@ -91,22 +70,10 @@ export function listIntegrations(accessToken: string) {
 }
 
 // Soft-disconnect (2026-07-17) -- deactivates the stored credential without
-// deleting it, so a later reconnect can still reuse the same webhook secret.
+// deleting it, so a later reconnect can still reuse whatever the row
+// already has.
 export function disconnectIntegration(accessToken: string, provider: OAuthProvider) {
   return apiFetch<void>(`/api/v1/crm/integrations/${provider}`, { method: "DELETE", accessToken });
-}
-
-// Gated by crm.view (not crm.manage) server-side -- both the tenant admin
-// and ordinary employees can fetch this once amocrm/bitrix24 is connected,
-// instead of needing DB access to find the webhook secret themselves
-// (2026-07-16/17). application_token is only set for bitrix24 -- its
-// inbound webhook is verified via a token in the POST body, not a URL query
-// param like amocrm, so the tenant needs both pieces separately.
-export function getWebhookUrl(accessToken: string, provider: OAuthProvider) {
-  return apiFetch<{ webhook_url: string; application_token: string | null }>(
-    `/api/v1/crm/integrations/${provider}/webhook-url`,
-    { accessToken },
-  );
 }
 
 export function listLeads(accessToken: string) {

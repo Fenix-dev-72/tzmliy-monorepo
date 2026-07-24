@@ -31,13 +31,12 @@ WHERE provider IN ('amocrm', 'bitrix24', 'meta_ads') AND is_active = true;
 UPDATE integration_credentials SET is_active = false, updated_at = now() WHERE provider = :provider;
 
 -- name: upsert_oauth_integration_credential^
--- One-click OAuth connect (2026-07-15). Also carries a webhook_secret now
--- (2026-07-16, client requirement: AmoCRM's own inbound webhook still needs
--- a shared secret regardless of OAuth, since AmoCRM's classic webhooks
--- aren't signed at all -- see providers.py's AmoCrmProvider.verify_webhook)
--- -- COALESCE keeps whatever secret already exists on a reconnect, so
--- re-running OAuth never invalidates a webhook URL the tenant already
--- pasted into their AmoCRM account.
+-- One-click OAuth connect (2026-07-15). webhook_secret_encrypted is always
+-- NULL now (2026-07-24) -- neither AmoCRM nor Bitrix24 has a webhook path
+-- at all anymore (see crm/providers.py's module docstring), both pull leads
+-- instead. The column and its COALESCE stay for now in case a future
+-- provider needs a webhook secret again, not because either current
+-- provider still writes one.
 INSERT INTO integration_credentials (tenant_id, provider, webhook_secret_encrypted, api_key_encrypted, external_account_id, refresh_token_encrypted, token_expires_at, is_active)
 VALUES (:tenant_id, :provider, :webhook_secret_encrypted, :api_key_encrypted, :external_account_id, :refresh_token_encrypted, :token_expires_at, true)
 ON CONFLICT (tenant_id, provider)

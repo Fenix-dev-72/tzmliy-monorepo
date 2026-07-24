@@ -7,7 +7,6 @@ import * as crmApi from "@/lib/api/crm";
 import type { AdCampaign, CrmIntegration, CrmLeadSync, OAuthProvider } from "@/lib/api/crm";
 import { ApiError } from "@/lib/api/client";
 import { IntegrationCard } from "@/components/shared/IntegrationCard";
-import { CopyBox } from "@/components/shared/CopyBox";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { FormField } from "@/components/auth/FormField";
@@ -20,7 +19,7 @@ const content = {
     connected: "Ulangan",
     edit: "Tahrirlash",
     disconnect: "Uzish",
-    disconnectConfirm: "Bu integratsiyani uzishga ishonchingiz komilmi? Webhook orqali yangi ma'lumotlar kelishi to'xtaydi.",
+    disconnectConfirm: "Bu integratsiyani uzishga ishonchingiz komilmi? Yangi ma'lumotlar sinxronlanishi to'xtaydi.",
     disconnected: "Integratsiya uzildi",
     cancel: "Bekor qilish",
     save: "Saqlash",
@@ -33,20 +32,8 @@ const content = {
     oneClickDomainRequired: "Iltimos, subdomenni kiriting",
     oauthConnectedToast: "Muvaffaqiyatli ulandi (OAuth)",
     oauthErrorToast: "OAuth orqali ulashda xatolik yuz berdi",
-    subdomain: "Subdomen",
-    apiToken: "API token",
-    webhookSecret: "Webhook maxfiy kaliti",
-    webhookUrl: "Webhook bazaviy URL",
-    appToken: "Ilova tokeni",
     adAccountId: "Reklama hisob ID",
     accessToken: "Access token",
-    invalidWebhookUrl: "Webhook URL noto'g'ri -- Bitrix24'da tekshiring",
-    bitrixTokenHint: "Bu tokenni Bitrix24'ning \"Outgoing webhook\" sozlamasidagi \"application_token\" maydoniga qo'ying:",
-    copy: "Nusxalash",
-    copied: "Nusxalandi",
-    webhookUrlTitle: "Webhook URL",
-    webhookUrlHint: "Bu havolani AmoCRM hisobingizdagi \"Webhooks\" sozlamasiga qo'ying -- shunda lid holati o'zgarganda Tizimly avtomatik xabar oladi. Admin ham, xodimlar ham shu yerdan olishlari mumkin.",
-    bitrixWebhookUrlHint: "Bu URL'ni Bitrix24'ning \"Outgoing webhook\" sozlamasidagi handler maydoniga qo'ying.",
     leadsTitle: "Lidlar tarixi",
     noLeads: "Hali sinxronlangan lidlar yo'q",
     campaignsTitle: "Reklama kampaniyalari",
@@ -60,7 +47,7 @@ const content = {
     connected: "Подключено",
     edit: "Редактировать",
     disconnect: "Отключить",
-    disconnectConfirm: "Точно отключить эту интеграцию? Новые данные через webhook перестанут поступать.",
+    disconnectConfirm: "Точно отключить эту интеграцию? Новые данные перестанут синхронизироваться.",
     disconnected: "Интеграция отключена",
     cancel: "Отмена",
     save: "Сохранить",
@@ -73,20 +60,8 @@ const content = {
     oneClickDomainRequired: "Пожалуйста, введите поддомен",
     oauthConnectedToast: "Успешно подключено (OAuth)",
     oauthErrorToast: "Ошибка при подключении через OAuth",
-    subdomain: "Поддомен",
-    apiToken: "API токен",
-    webhookSecret: "Секрет вебхука",
-    webhookUrl: "Базовый URL вебхука",
-    appToken: "Токен приложения",
     adAccountId: "ID рекламного аккаунта",
     accessToken: "Access token",
-    invalidWebhookUrl: "Неверный webhook URL -- проверьте в Bitrix24",
-    bitrixTokenHint: "Вставьте этот токен в поле \"application_token\" настройки \"Исходящий вебхук\" в Bitrix24:",
-    copy: "Копировать",
-    copied: "Скопировано",
-    webhookUrlTitle: "Webhook URL",
-    webhookUrlHint: "Вставьте эту ссылку в настройку \"Webhooks\" вашего аккаунта AmoCRM -- тогда Tizimly будет автоматически получать уведомления при изменении статуса лида. Её могут получить как админ, так и сотрудники.",
-    bitrixWebhookUrlHint: "Вставьте этот URL в поле обработчика настройки \"Исходящий вебхук\" в Bitrix24.",
     leadsTitle: "История лидов",
     noLeads: "Синхронизированных лидов пока нет",
     campaignsTitle: "Рекламные кампании",
@@ -148,8 +123,6 @@ export function IntegrationsPage() {
   const [error, setError] = useState<string | null>(null);
   const [oauthDomain, setOauthDomain] = useState<Record<string, string>>({});
   const [oauthConnecting, setOauthConnecting] = useState<OAuthProvider | null>(null);
-  const [amocrmWebhookUrl, setAmocrmWebhookUrl] = useState<string | null>(null);
-  const [bitrix24Info, setBitrix24Info] = useState<{ webhook_url: string; application_token: string | null } | null>(null);
 
   // Read the OAuth callback's ?connected=/?oauth_error= query params (same
   // parse-off-the-redirect pattern as NewPasswordView's password-reset deep
@@ -208,34 +181,6 @@ export function IntegrationsPage() {
   const bitrix24Connected = integrations.some((i) => i.provider === "bitrix24" && i.is_active);
   const metaAdsConnected = integrations.some((i) => i.provider === "meta_ads" && i.is_active);
 
-  // Once connected (by either method -- manual paste or 1-click OAuth),
-  // fetch the tenant's own webhook URL to show instead of the connect UI --
-  // admin/employees no longer need DB access to find it (2026-07-16).
-  useEffect(() => {
-    if (!accessToken || !amocrmConnected) {
-      setAmocrmWebhookUrl(null);
-      return;
-    }
-    crmApi
-      .getWebhookUrl(accessToken, "amocrm")
-      .then((r) => setAmocrmWebhookUrl(r.webhook_url))
-      .catch(() => setAmocrmWebhookUrl(null));
-  }, [accessToken, amocrmConnected]);
-
-  // Same treatment for bitrix24 (2026-07-17) -- also retrievable after a
-  // manual configure now (not just shown once), so this same effect covers
-  // both connect paths and page reloads.
-  useEffect(() => {
-    if (!accessToken || !bitrix24Connected) {
-      setBitrix24Info(null);
-      return;
-    }
-    crmApi
-      .getWebhookUrl(accessToken, "bitrix24")
-      .then((r) => setBitrix24Info(r))
-      .catch(() => setBitrix24Info(null));
-  }, [accessToken, bitrix24Connected]);
-
   async function handleOAuthConnect(provider: OAuthProvider) {
     if (!accessToken) return;
     const domain = oauthDomain[provider]?.trim();
@@ -258,32 +203,19 @@ export function IntegrationsPage() {
     }
   }
 
-  async function handleConfigure(provider: "amocrm" | "bitrix24" | "meta_ads", values: Record<string, string>) {
+  async function handleConfigure(provider: "meta_ads", values: Record<string, string>) {
     if (!accessToken) return;
     try {
-      let integration: CrmIntegration;
-      if (provider === "amocrm") {
-        integration = await crmApi.configureAmoCrm(accessToken, {
-          subdomain: values.subdomain,
-          api_token: values.api_token,
-          webhook_secret: values.webhook_secret,
-        });
-      } else if (provider === "bitrix24") {
-        integration = await crmApi.configureBitrix24(accessToken, { webhook_base_url: values.webhook_base_url });
-      } else {
-        integration = await crmApi.configureMetaAds(accessToken, {
-          ad_account_id: values.ad_account_id,
-          access_token: values.access_token,
-        });
-      }
+      const integration = await crmApi.configureMetaAds(accessToken, {
+        ad_account_id: values.ad_account_id,
+        access_token: values.access_token,
+      });
       setIntegrations((prev) => [...prev.filter((i) => i.provider !== integration.provider), integration]);
       toast.success(t.connectedToast);
       await load();
     } catch (err) {
       if (err instanceof ApiError && err.status === 403) {
         toast.error(t.need2fa);
-      } else if (provider === "bitrix24" && err instanceof ApiError && err.status === 400) {
-        toast.error(t.invalidWebhookUrl);
       } else {
         toast.error(t.genericError);
       }
@@ -329,81 +261,93 @@ export function IntegrationsPage() {
 
       <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div>
-          <IntegrationCard
-            icon={Workflow}
-            brandColor="#2FBF71"
-            name="AmoCRM"
-            connected={amocrmConnected}
-            connectLabel={t.connect}
-            connectedLabel={t.connected}
-            editLabel={t.edit}
-            submitLabel={t.save}
-            fields={[
-              { key: "subdomain", label: t.subdomain, placeholder: "mycompany" },
-              { key: "api_token", label: t.apiToken, secret: true },
-              { key: "webhook_secret", label: t.webhookSecret, secret: true },
-            ]}
-            onSubmit={(values) => handleConfigure("amocrm", values)}
-            connectedInfo={
-              amocrmWebhookUrl && <CopyBox hint={t.webhookUrlHint} label={t.webhookUrlTitle} value={amocrmWebhookUrl} secret />
-            }
-            onDisconnect={amocrmConnected ? () => Promise.resolve(setDisconnectTarget("amocrm")) : undefined}
-            disconnectLabel={t.disconnect}
-            readOnly={!canManage}
-          />
-          {canManage && !amocrmConnected && (
-            <OneClickConnectRow
-              provider="amocrm"
-              needsDomain={false}
-              domain={oauthDomain.amocrm ?? ""}
-              onDomainChange={(value) => setOauthDomain((prev) => ({ ...prev, amocrm: value }))}
-              connecting={oauthConnecting === "amocrm"}
-              onConnect={() => handleOAuthConnect("amocrm")}
-              label={t.oneClickConnect}
-              domainPlaceholder={t.oneClickDomainPlaceholder}
-            />
-          )}
+          {/* AmoCRM is OAuth-only (2026-07-24, client decision) -- no manual
+              subdomain/api_token paste option at all anymore, unlike
+              Bitrix24/Meta Ads below. The "1 tugma bilan ulash" button is the
+              entire connect flow: it alone opens AmoCRM's consent screen,
+              and the backend's OAuth callback + sync_amocrm_leads worker
+              handle everything else automatically from there. */}
+          <div className="glass-card p-5 transition-all hover:-translate-y-1">
+            <div className="flex items-center gap-3">
+              <div
+                className="flex size-10 shrink-0 items-center justify-center rounded-xl"
+                style={{ background: "#2FBF7118", color: "#2FBF71" }}
+              >
+                <Workflow size={20} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-bold text-foreground">AmoCRM</div>
+                <div className="flex items-center gap-1.5 text-xs text-foreground-muted">
+                  <span
+                    className="size-1.5 rounded-full"
+                    style={{ background: amocrmConnected ? "#2FBF71" : "var(--card-border)" }}
+                  />
+                  {amocrmConnected ? t.connected : "—"}
+                </div>
+              </div>
+              {canManage && amocrmConnected && (
+                <Button variant="outline" size="sm" onClick={() => setDisconnectTarget("amocrm")}>
+                  {t.disconnect}
+                </Button>
+              )}
+            </div>
+            {canManage && !amocrmConnected && (
+              <OneClickConnectRow
+                provider="amocrm"
+                needsDomain={false}
+                domain={oauthDomain.amocrm ?? ""}
+                onDomainChange={(value) => setOauthDomain((prev) => ({ ...prev, amocrm: value }))}
+                connecting={oauthConnecting === "amocrm"}
+                onConnect={() => handleOAuthConnect("amocrm")}
+                label={t.oneClickConnect}
+                domainPlaceholder={t.oneClickDomainPlaceholder}
+              />
+            )}
+          </div>
         </div>
         <div>
-          <IntegrationCard
-            icon={Building2}
-            brandColor="#4C6FFF"
-            name="Bitrix24"
-            connected={bitrix24Connected}
-            connectLabel={t.connect}
-            connectedLabel={t.connected}
-            editLabel={t.edit}
-            submitLabel={t.save}
-            fields={[
-              { key: "webhook_base_url", label: t.webhookUrl, placeholder: "https://mycompany.bitrix24.ru/rest/1/xxx" },
-            ]}
-            onSubmit={(values) => handleConfigure("bitrix24", values)}
-            connectedInfo={
-              bitrix24Info && (
-                <>
-                  <CopyBox hint={t.bitrixWebhookUrlHint} label={t.webhookUrlTitle} value={bitrix24Info.webhook_url} secret />
-                  {bitrix24Info.application_token && (
-                    <CopyBox hint={t.bitrixTokenHint} label={t.appToken} value={bitrix24Info.application_token} secret />
-                  )}
-                </>
-              )
-            }
-            onDisconnect={bitrix24Connected ? () => Promise.resolve(setDisconnectTarget("bitrix24")) : undefined}
-            disconnectLabel={t.disconnect}
-            readOnly={!canManage}
-          />
-          {canManage && !bitrix24Connected && (
-            <OneClickConnectRow
-              provider="bitrix24"
-              needsDomain
-              domain={oauthDomain.bitrix24 ?? ""}
-              onDomainChange={(value) => setOauthDomain((prev) => ({ ...prev, bitrix24: value }))}
-              connecting={oauthConnecting === "bitrix24"}
-              onConnect={() => handleOAuthConnect("bitrix24")}
-              label={t.oneClickConnect}
-              domainPlaceholder={t.oneClickDomainPlaceholder}
-            />
-          )}
+          {/* Bitrix24 is OAuth-only now too (2026-07-24, client decision --
+              same treatment as AmoCRM above) -- no manual incoming-webhook
+              URL paste option anymore. The "1 tugma bilan ulash" button
+              (needsDomain, Bitrix24's authorize host is portal-specific)
+              alone is the entire connect flow. */}
+          <div className="glass-card p-5 transition-all hover:-translate-y-1">
+            <div className="flex items-center gap-3">
+              <div
+                className="flex size-10 shrink-0 items-center justify-center rounded-xl"
+                style={{ background: "#4C6FFF18", color: "#4C6FFF" }}
+              >
+                <Building2 size={20} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-bold text-foreground">Bitrix24</div>
+                <div className="flex items-center gap-1.5 text-xs text-foreground-muted">
+                  <span
+                    className="size-1.5 rounded-full"
+                    style={{ background: bitrix24Connected ? "#2FBF71" : "var(--card-border)" }}
+                  />
+                  {bitrix24Connected ? t.connected : "—"}
+                </div>
+              </div>
+              {canManage && bitrix24Connected && (
+                <Button variant="outline" size="sm" onClick={() => setDisconnectTarget("bitrix24")}>
+                  {t.disconnect}
+                </Button>
+              )}
+            </div>
+            {canManage && !bitrix24Connected && (
+              <OneClickConnectRow
+                provider="bitrix24"
+                needsDomain
+                domain={oauthDomain.bitrix24 ?? ""}
+                onDomainChange={(value) => setOauthDomain((prev) => ({ ...prev, bitrix24: value }))}
+                connecting={oauthConnecting === "bitrix24"}
+                onConnect={() => handleOAuthConnect("bitrix24")}
+                label={t.oneClickConnect}
+                domainPlaceholder={t.oneClickDomainPlaceholder}
+              />
+            )}
+          </div>
         </div>
         <div>
           <IntegrationCard

@@ -1,29 +1,31 @@
 """AmoCRM / Bitrix24 CRMProvider adapters -- mirrors calls/providers.py's
-CallProvider shape (Protocol + frozen-dataclass event + name-keyed registry +
+CallProvider shape (frozen-dataclass event + name-keyed registry +
 get_provider()/UnknownProviderError), but necessarily broader since CRM sync
-is bidirectional (inbound webhook + outbound API push), unlike calls' pure
-webhook-inbound shape.
+is bidirectional, unlike calls' pure webhook-inbound shape.
 
-Bitrix24's outbound push (crm.lead.add) was confirmed via a live fetch of
-apidocs.bitrix24.com. AmoCRM's exact webhook payload/signature scheme and
-Bitrix24's exact outgoing-webhook body encoding could NOT be confirmed via a
-live fetch in this session (thin/generic search results) -- both providers'
-inbound parsing below assumes the well-established, stable
-application/x-www-form-urlencoded bracket-notation shape used by the vast
-majority of real-world integrations for both platforms. Verify against
-amocrm.ru/developers and a real Bitrix24 outgoing-webhook handler during
-sandbox onboarding before production use (same caveat style as Faza 7's
-UTEL/Мои звонки and Faza 8's Click).
+**Neither provider uses webhooks at all anymore (2026-07-24, client
+decision)** -- both were originally webhook-based (AmoCRM: shared-secret
+query param + form-urlencoded bracket notation; Bitrix24: an outgoing
+webhook's `auth[application_token]`/`data[FIELDS]`), but webhook delivery is
+never guaranteed (missed during downtime, and a lead created before the
+integration was ever connected never fires one at all), so both now pull
+leads periodically instead via each provider's own `list_leads` method (see
+crm/worker.py's sync_amocrm_leads/sync_bitrix24_leads). Both providers are
+now fully OAuth-based too -- no more manually-pasted AmoCRM api_token or
+Bitrix24 incoming-webhook URL; `crm/oauth.py`'s existing OAuth flow (already
+built for all three providers) is the only connect path, "1 tugma bilan
+ulash." AmoCRM's list_leads (`GET /api/v4/leads?filter[updated_at][from]=`)
+is confirmed against amocrm.ru/developers/content/crm_platform/leads-api;
+Bitrix24's (`crm.lead.list`, filter key `">DATE_MODIFY"`) against
+apidocs.bitrix24.ru -- both providers' outbound push (crm.lead.add-shaped)
+is otherwise unchanged, just re-pointed at the OAuth access_token instead of
+the old credential shape.
 """
 
-import hmac
 import json
-import re
 import urllib.error
-import urllib.parse
 import urllib.request
 from asyncio import to_thread
-from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Protocol
@@ -47,12 +49,13 @@ class CrmApiError(Exception):
 class ParsedLeadEvent:
     external_lead_id: str
     full_name: str
-    # Confirmed 2026-07-15 against a real AmoCRM webhook: a lead's own
-    # webhook payload never carries contact/phone fields (that's a wholly
-    # separate webhook event) -- None here is the normal case for AmoCRM,
-    # backfilled by crm/service.py's ingest_webhook via a follow-up API call.
-    # Bitrix24's payload does carry PHONE inline (see its own parse_lead_event),
-    # so this stays required in practice for that provider.
+    # Neither provider's lead-list response reliably carries a phone inline
+    # (AmoCRM: never, confirmed 2026-07-15 -- contact info is a wholly
+    # separate entity; Bitrix24: PHONE is present but this dataclass treats
+    # it as optional either way now that both go through the same pull-based
+    # ingest path) -- None means "backfill via a follow-up API call if the
+    # provider supports one" (AmoCrmProvider.fetch_lead_phone) or "sync
+    # without a phone" otherwise, never a hard failure.
     phone: str | None
     email: str | None
     stage: str
@@ -66,8 +69,9 @@ class ParsedLeadEvent:
     # real Tizimly sale, not just a customers/lead row -- price_amount is the
     # lead's own price field when the payload carries one (None means the
     # deal has no price set, e.g. AmoCRM leads are allowed to have price=0 or
-    # omit it entirely). status_id is AmoCRM's pipeline status id, used to
-    # detect a won/lost transition on later "leads[status]" events -- kept as
+    # omit it entirely). status_id is the provider's own pipeline status id
+    # (AmoCRM: universal 142/143 for Won/Lost; Bitrix24: portal-specific, not
+    # interpreted for won/lost -- see Bitrix24Provider.list_leads) --  kept as
     # a raw string here (provider-specific meaning), interpreted by
     # crm/service.py's ingestion, not this dataclass.
     price_amount: int | None = None
@@ -77,28 +81,22 @@ class ParsedLeadEvent:
 class CRMProvider(Protocol):
     name: str
 
-    def verify_webhook(
-        self, headers: Mapping[str, str], query_params: Mapping[str, str], raw_body: bytes, secret: str | None
-    ) -> bool: ...
-
-    def parse_lead_event(self, raw_body: bytes, content_type: str) -> ParsedLeadEvent: ...
+    async def list_leads(self, credential: dict, since: datetime) -> list[ParsedLeadEvent]: ...
 
     async def push_lead(self, credential: dict, customer: dict) -> str: ...
 
 
-def _parse_bracket_form(raw_body: bytes) -> dict:
-    """Parses application/x-www-form-urlencoded bodies using bracket
-    notation (e.g. "leads[status][0][id]=123") into a nested dict, the shape
-    both AmoCRM and Bitrix24 use for their classic webhook payloads."""
-    parsed = urllib.parse.parse_qs(raw_body.decode("utf-8"))
-    result: dict = {}
-    for key, values in parsed.items():
-        parts = re.findall(r"[^\[\]]+", key)
-        node = result
-        for part in parts[:-1]:
-            node = node.setdefault(part, {})
-        node[parts[-1]] = values[0]
-    return result
+def _first_multi_value(field) -> str | None:
+    """Bitrix24's own multi-value field shape (PHONE/EMAIL) is a list of
+    {VALUE, VALUE_TYPE} dicts, not a bare string -- takes the first value,
+    same "first value wins" simplification AmoCrmProvider.fetch_lead_phone
+    already uses for its own contact lookup. Defensively also accepts a bare
+    string, in case a future Bitrix24 response shape ever flattens it."""
+    if isinstance(field, list) and field:
+        return field[0].get("VALUE")
+    if isinstance(field, str):
+        return field or None
+    return None
 
 
 def _post_json_sync(url: str, body: dict, headers: dict) -> dict:
@@ -172,57 +170,59 @@ def _get_json_sync(url: str, headers: dict | None = None) -> dict:
 class AmoCrmProvider:
     name = "amocrm"
 
-    def verify_webhook(
-        self, headers: Mapping[str, str], query_params: Mapping[str, str], raw_body: bytes, secret: str | None
-    ) -> bool:
-        """AmoCRM's classic webhooks aren't HMAC-signed -- the realistic
-        "signed webhook" here is a shared secret the tenant appends as a
-        query param on the webhook URL they register in AmoCRM."""
-        if secret is None:
-            return False
-        token = query_params.get("secret", "")
-        return hmac.compare_digest(token, secret)
+    async def list_leads(self, credential: dict, since: datetime) -> list[ParsedLeadEvent]:
+        """Pull-based lead sync (2026-07-24, client decision -- replaces the
+        webhook entirely): webhook delivery was never guaranteed (missed
+        deliveries during downtime, and a lead created before this
+        integration was ever connected would never fire one at all), so
+        leads are pulled the same way list_calls above already pulls calls,
+        via `filter[updated_at][from]`. Field names confirmed against
+        amocrm.ru/developers/content/crm_platform/leads-api -- status_id 142
+        (Won) and 143 (Lost) are reserved, identical across every AmoCRM
+        account/pipeline, which is what makes crm/service.py's
+        _AMOCRM_WON_STATUS_ID/_AMOCRM_LOST_STATUS_ID a safe cross-tenant
+        constant. phone is always None here (a lead's own fields never carry
+        contact info) -- crm/service.py's ingest_amocrm_lead backfills it via
+        fetch_lead_phone below, same as the old webhook path did."""
+        subdomain = credential["external_account_id"]
+        headers = {"Authorization": f"Bearer {credential['api_key_encrypted']}"}
+        since_ts = int(since.timestamp())
 
-    def parse_lead_event(self, raw_body: bytes, content_type: str) -> ParsedLeadEvent:
-        parsed = _parse_bracket_form(raw_body)
-        leads = parsed.get("leads", {})
-        # Confirmed live 2026-07-15 against a real connected account/webhook:
-        # AmoCRM uses "add" for lead creation and **"update"** for any field
-        # change including status transitions -- there is no separate
-        # "status" group at all (the original guess this replaced was wrong,
-        # not just incomplete). Also confirmed: a lead webhook's payload
-        # carries ONLY lead fields, never contacts/phone -- contact changes
-        # are their own separate webhook event entirely. phone is therefore
-        # always None here; crm/service.py's ingest_webhook backfills it with
-        # a follow-up API call (fetch_lead_phone below) using the same OAuth
-        # credential, since a customer can't be resolved/created without one.
-        # Confirmed live 2026-07-15: AmoCRM sometimes fires a "status"-only
-        # webhook for a status transition (in addition to, or instead of,
-        # an "update" one for the same change) -- checked last since "add"
-        # and "update" cover the large majority of events seen so far.
-        lead_fields = leads.get("add", {}).get("0") or leads.get("update", {}).get("0") or leads.get("status", {}).get("0")
-        if not isinstance(lead_fields, dict) or not lead_fields.get("id"):
-            raise InvalidLeadPayloadError("No lead id in AmoCRM payload")
-
-        price_raw = lead_fields.get("price")
-        return ParsedLeadEvent(
-            external_lead_id=str(lead_fields["id"]),
-            full_name=lead_fields.get("name") or "AmoCRM Lead",
-            phone=None,
-            email=None,
-            stage="lead",
-            responsible_manager_id=lead_fields.get("responsible_user_id"),
-            price_amount=int(price_raw) if price_raw not in (None, "") else None,
-            status_id=str(lead_fields["status_id"]) if lead_fields.get("status_id") else None,
-        )
+        leads: list[ParsedLeadEvent] = []
+        page = 1
+        while True:
+            url = f"https://{subdomain}.amocrm.ru/api/v4/leads?filter[updated_at][from]={since_ts}&limit=250&page={page}"
+            result = await to_thread(_get_json_sync, url, headers)
+            page_leads = result.get("_embedded", {}).get("leads", [])
+            if not page_leads:
+                break
+            for lead in page_leads:
+                price_raw = lead.get("price")
+                leads.append(
+                    ParsedLeadEvent(
+                        external_lead_id=str(lead["id"]),
+                        full_name=lead.get("name") or "AmoCRM Lead",
+                        phone=None,
+                        email=None,
+                        stage="lead",
+                        responsible_manager_id=str(lead["responsible_user_id"]) if lead.get("responsible_user_id") else None,
+                        price_amount=int(price_raw) if price_raw not in (None, "") else None,
+                        status_id=str(lead["status_id"]) if lead.get("status_id") else None,
+                    )
+                )
+            if len(page_leads) < 250:
+                break
+            page += 1
+        return leads
 
     async def fetch_lead_phone(self, credential: dict, external_lead_id: str) -> str | None:
-        """Backfills the phone a lead-webhook payload never carries (see
-        parse_lead_event's docstring above) -- fetches the lead's first
-        linked contact, then that contact's first PHONE field value. Returns
-        None (not an error) if the lead has no linked contact or the contact
-        has no phone -- ingest_webhook treats that as "can't sync this one",
-        same graceful-degradation shape as everywhere else in this module."""
+        """Backfills the phone a lead never carries inline (see list_leads'
+        docstring above) -- fetches the lead's first linked contact, then
+        that contact's first PHONE field value. Returns None (not an error)
+        if the lead has no linked contact or the contact
+        has no phone -- ingest_amocrm_lead treats that as "can't sync this
+        one", same graceful-degradation shape as everywhere else in this
+        module."""
         subdomain = credential["external_account_id"]
         headers = {"Authorization": f"Bearer {credential['api_key_encrypted']}"}
         lead = await to_thread(
@@ -246,7 +246,7 @@ class AmoCrmProvider:
         lead didn't close via a separate loss_reason_id -- fetches the
         lead's reason id, then that reason's display name. Returns None
         (not an error) if the lead has no loss reason set (the tenant may
-        not use this AmoCRM feature) or the lookup fails; ingest_webhook
+        not use this AmoCRM feature) or the lookup fails; ingest_amocrm_lead
         falls back to its own synthetic reason ("no_phone"/"no_answer")
         in that case."""
         subdomain = credential["external_account_id"]
@@ -434,73 +434,106 @@ class AmoCrmProvider:
 # --- Bitrix24 -------------------------------------------------------------
 
 
+def _bitrix24_rest_url(domain: str, method: str) -> str:
+    """Normalizes whatever complete_oauth stored as external_account_id (the
+    OAuth token response's own "domain" field, confirmed by
+    apidocs.bitrix24.ru's authorization docs to already be a full hostname
+    like "mycompany.bitrix24.ru") into a real REST URL. The `if "." not in`
+    fallback only guards a bare subdomain slipping through (e.g. if a future
+    Bitrix24 response shape ever omits the suffix) -- defensive, not the
+    expected case."""
+    domain = domain.strip()
+    if "." not in domain:
+        domain = f"{domain}.bitrix24.ru"
+    return f"https://{domain}/rest/{method}.json"
+
+
 class Bitrix24Provider:
     name = "bitrix24"
 
-    def verify_webhook(
-        self, headers: Mapping[str, str], query_params: Mapping[str, str], raw_body: bytes, secret: str | None
-    ) -> bool:
-        if secret is None:
-            return False
-        parsed = _parse_bracket_form(raw_body)
-        token = parsed.get("auth", {}).get("application_token", "")
-        return hmac.compare_digest(token, secret)
-
-    def parse_lead_event(self, raw_body: bytes, content_type: str) -> ParsedLeadEvent:
-        parsed = _parse_bracket_form(raw_body)
-        fields = parsed.get("data", {}).get("FIELDS", {})
-        if not isinstance(fields, dict) or not fields.get("ID"):
-            raise InvalidLeadPayloadError("No lead id in Bitrix24 payload")
-        phone = fields.get("PHONE")
-        if not phone:
-            raise InvalidLeadPayloadError("No phone in Bitrix24 payload")
-        return ParsedLeadEvent(
-            external_lead_id=str(fields["ID"]),
-            full_name=fields.get("TITLE") or fields.get("NAME") or "Bitrix24 Lead",
-            phone=phone,
-            email=fields.get("EMAIL"),
-            stage="lead",
-            responsible_manager_id=fields.get("ASSIGNED_BY_ID"),
-        )
-
     async def push_lead(self, credential: dict, customer: dict) -> str:
-        # api_key_encrypted holds the full incoming-webhook base URL for
-        # Bitrix24 -- the URL itself is the credential, per Bitrix24's design.
-        webhook_base_url = credential["api_key_encrypted"].rstrip("/")
-        url = f"{webhook_base_url}/crm.lead.add.json"
+        # OAuth-only (2026-07-24, client decision -- see this module's
+        # docstring): api_key_encrypted is now the OAuth access_token,
+        # external_account_id the portal domain. Confirmed against
+        # apidocs.bitrix24.ru: an OAuth REST call is a normal POST to
+        # https://{domain}/rest/{method}.json with `auth` as a body field
+        # (not a query param, not an Authorization header).
+        url = _bitrix24_rest_url(credential["external_account_id"], "crm.lead.add")
         body = {
+            "auth": credential["api_key_encrypted"],
             "fields": {
                 "TITLE": customer["full_name"],
                 "NAME": customer["full_name"],
                 "PHONE": [{"VALUE": customer["phone"], "VALUE_TYPE": "WORK"}],
-            }
+            },
         }
         result = await to_thread(_post_json_sync, url, body, {})
         if "result" not in result:
             raise CrmApiError(f"Unexpected Bitrix24 response: {result}")
         return str(result["result"])
 
-    async def check_webhook(self, webhook_base_url: str) -> None:
-        """Validates a pasted incoming-webhook URL at configure time by
-        calling Bitrix24's own `profile.json` -- a harmless, always-available
-        read-only method included in every incoming webhook's default scope,
-        regardless of which specific permissions the tenant granted it.
-        Raises CrmApiError (-> a clean 400, not a 500) for a wrong/typo'd URL,
-        instead of only surfacing the problem days later on the first real
-        lead push -- same "validate at connect time" pattern as the Telegram
-        bot token's getMe check."""
-        url = f"{webhook_base_url.rstrip('/')}/profile.json"
-        result = await to_thread(_get_json_sync, url)
-        if "result" not in result:
-            raise CrmApiError(f"Unexpected Bitrix24 response: {result}")
+    async def list_leads(self, credential: dict, since: datetime) -> list[ParsedLeadEvent]:
+        """Pull-based lead sync (2026-07-24, same client decision/reasoning
+        as AmoCRM's own list_leads -- see this module's docstring).
+        `crm.lead.list` is documented DEPRECATED in favor of `crm.item.list`,
+        but still fully functional and is what push_lead above already
+        targets (crm.lead.add), so this stays in the same, already-proven API
+        family rather than mixing old and new CRM APIs in one adapter.
+        Confirmed against apidocs.bitrix24.ru: filter key syntax is the
+        literal string ">DATE_MODIFY" (the comparison operator is part of
+        the key, not bracket notation like AmoCRM's filter[updated_at][from]),
+        pagination is start=(page-1)*50 with a fixed 50-row page size.
+        PHONE/EMAIL come back in Bitrix24's own multi-value field shape (a
+        list of {VALUE, VALUE_TYPE} dicts) -- takes the first value, same
+        "first value wins" simplification AmoCRM's own phone-lookup already
+        uses. No won/lost/price-sync handling here unlike AmoCRM's
+        ingest_amocrm_lead -- Bitrix24's STATUS_ID values are portal-specific
+        (custom pipeline stages), not a universal reserved code like
+        AmoCRM's 142/143, so that mapping isn't safely automatable without a
+        per-tenant "map your own stage" setting that doesn't exist yet
+        (matches this integration's existing, narrower scope)."""
+        since_iso = since.strftime("%Y-%m-%dT%H:%M:%S")
+        leads: list[ParsedLeadEvent] = []
+        start = 0
+        while True:
+            body = {
+                "auth": credential["api_key_encrypted"],
+                "filter": {">DATE_MODIFY": since_iso},
+                "select": ["ID", "TITLE", "NAME", "PHONE", "EMAIL", "ASSIGNED_BY_ID", "STATUS_ID", "OPPORTUNITY"],
+                "start": start,
+            }
+            url = _bitrix24_rest_url(credential["external_account_id"], "crm.lead.list")
+            result = await to_thread(_post_json_sync, url, body, {})
+            page_leads = result.get("result", [])
+            if not isinstance(page_leads, list) or not page_leads:
+                break
+            for lead in page_leads:
+                phone = _first_multi_value(lead.get("PHONE"))
+                email = _first_multi_value(lead.get("EMAIL"))
+                opportunity = lead.get("OPPORTUNITY")
+                leads.append(
+                    ParsedLeadEvent(
+                        external_lead_id=str(lead["ID"]),
+                        full_name=lead.get("TITLE") or lead.get("NAME") or "Bitrix24 Lead",
+                        phone=phone,
+                        email=email,
+                        stage="lead",
+                        responsible_manager_id=str(lead["ASSIGNED_BY_ID"]) if lead.get("ASSIGNED_BY_ID") else None,
+                        price_amount=int(float(opportunity)) if opportunity not in (None, "") else None,
+                        status_id=str(lead["STATUS_ID"]) if lead.get("STATUS_ID") else None,
+                    )
+                )
+            if len(page_leads) < 50:
+                break
+            start += 50
+        return leads
 
     async def list_users(self, credential: dict) -> list[dict]:
         """Same purpose as AmoCrmProvider.list_users -- Bitrix24's
-        user.get.json (confirmed shape: NAME/LAST_NAME/EMAIL fields) returns
-        every active user for the incoming webhook's account."""
-        webhook_base_url = credential["api_key_encrypted"].rstrip("/")
-        url = f"{webhook_base_url}/user.get.json"
-        result = await to_thread(_get_json_sync, url)
+        user.get (confirmed shape: NAME/LAST_NAME/EMAIL fields) returns
+        every active user for the connected portal."""
+        url = _bitrix24_rest_url(credential["external_account_id"], "user.get")
+        result = await to_thread(_post_json_sync, url, {"auth": credential["api_key_encrypted"]}, {})
         users = result.get("result", [])
         out = []
         for u in users:
@@ -511,14 +544,13 @@ class Bitrix24Provider:
     async def list_tasks(self, credential: dict, external_manager_id: str, period_start, period_end) -> list[dict]:
         """Per-seller KPI page's "Follow-up" metric (2026-07-13). Bitrix24's
         exact `tasks.task.list` filter/field docs could not be confirmed via
-        live fetch in this session (same known scraping limitation already
-        noted above for Bitrix24's webhook shape) -- uses the well-established,
-        stable field set (RESPONSIBLE_ID, DEADLINE, STATUS 1-7 where 5 =
-        Completed, CLOSED_DATE), flagged for verification at real sandbox
-        onboarding like this module's other Bitrix24 assumptions."""
-        webhook_base_url = credential["api_key_encrypted"].rstrip("/")
-        url = f"{webhook_base_url}/tasks.task.list.json"
+        live fetch in this session -- uses the well-established, stable
+        field set (RESPONSIBLE_ID, DEADLINE, STATUS 1-7 where 5 = Completed,
+        CLOSED_DATE), flagged for verification at real sandbox onboarding
+        like this module's other Bitrix24 assumptions."""
+        url = _bitrix24_rest_url(credential["external_account_id"], "tasks.task.list")
         body = {
+            "auth": credential["api_key_encrypted"],
             "filter": {
                 "RESPONSIBLE_ID": external_manager_id,
                 ">=DEADLINE": period_start.strftime("%Y-%m-%dT%H:%M:%S"),
