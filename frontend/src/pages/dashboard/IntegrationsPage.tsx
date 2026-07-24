@@ -4,9 +4,8 @@ import { AlertCircle, Building2, Loader2, Megaphone, Workflow, Zap } from "lucid
 import { useLang } from "@/lib/i18n/LangContext";
 import { useTenantAuth } from "@/lib/auth/tenantAuthStore";
 import * as crmApi from "@/lib/api/crm";
-import type { AdCampaign, CrmIntegration, CrmLeadSync, OAuthProvider } from "@/lib/api/crm";
+import type { AdCampaign, CrmIntegration, CrmLeadSync, ManagerCandidate, OAuthProvider } from "@/lib/api/crm";
 import { ApiError } from "@/lib/api/client";
-import { IntegrationCard } from "@/components/shared/IntegrationCard";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { FormField } from "@/components/auth/FormField";
@@ -32,8 +31,10 @@ const content = {
     oneClickDomainRequired: "Iltimos, subdomenni kiriting",
     oauthConnectedToast: "Muvaffaqiyatli ulandi (OAuth)",
     oauthErrorToast: "OAuth orqali ulashda xatolik yuz berdi",
-    adAccountId: "Reklama hisob ID",
-    accessToken: "Access token",
+    linkManagerToggle: "O'zingizni ulash",
+    linkManagerBtn: "Ulash",
+    pickYourself: "O'zingizni tanlang",
+    managerLinked: "Bog'landi",
     leadsTitle: "Lidlar tarixi",
     noLeads: "Hali sinxronlangan lidlar yo'q",
     campaignsTitle: "Reklama kampaniyalari",
@@ -60,8 +61,10 @@ const content = {
     oneClickDomainRequired: "Пожалуйста, введите поддомен",
     oauthConnectedToast: "Успешно подключено (OAuth)",
     oauthErrorToast: "Ошибка при подключении через OAuth",
-    adAccountId: "ID рекламного аккаунта",
-    accessToken: "Access token",
+    linkManagerToggle: "Подключить себя",
+    linkManagerBtn: "Подключить",
+    pickYourself: "Выберите себя",
+    managerLinked: "Подключено",
     leadsTitle: "История лидов",
     noLeads: "Синхронизированных лидов пока нет",
     campaignsTitle: "Рекламные кампании",
@@ -103,6 +106,85 @@ function OneClickConnectRow({
       <Button variant="outline" size="sm" disabled={connecting} onClick={onConnect} className="shrink-0">
         {connecting ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
         {label}
+      </Button>
+    </div>
+  );
+}
+
+// Self-service "link my own CRM identity" (2026-07-24) -- previously only
+// reachable via CompleteSetupPage's onboarding gate, which is driven by
+// user.pending_links, a single flag NOT per-provider: once an employee links
+// ANY one CRM provider, "crm" drops off pending_links entirely, silently
+// hiding the option to also link a SECOND connected provider (a tenant using
+// both AmoCRM and Bitrix24 at once). This lives here instead, permanently
+// available per connected provider, not gated on pending_links at all.
+function ManagerLinkWidget({
+  provider,
+  accessToken,
+  t,
+}: {
+  provider: "amocrm" | "bitrix24";
+  accessToken: string;
+  t: (typeof content)["uz"];
+}) {
+  const [open, setOpen] = useState(false);
+  const [candidates, setCandidates] = useState<ManagerCandidate[] | null>(null);
+  const [selected, setSelected] = useState("");
+  const [linking, setLinking] = useState(false);
+
+  async function handleOpen() {
+    setOpen(true);
+    if (candidates !== null) return;
+    try {
+      setCandidates(await crmApi.listManagerCandidates(accessToken, provider));
+    } catch {
+      setCandidates([]);
+    }
+  }
+
+  async function handleLink() {
+    if (!selected) return;
+    setLinking(true);
+    try {
+      await crmApi.createOwnManagerMapping(accessToken, { provider, external_manager_id: selected });
+      toast.success(t.managerLinked);
+      setOpen(false);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.detail : t.genericError);
+    } finally {
+      setLinking(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <button type="button" onClick={handleOpen} className="text-primary mt-3 text-xs font-medium hover:underline">
+        {t.linkManagerToggle}
+      </button>
+    );
+  }
+
+  return (
+    <div className="border-card-border/60 mt-3 flex flex-col gap-2 border-t pt-3">
+      {candidates === null ? (
+        <Loader2 size={14} className="text-foreground-muted animate-spin" />
+      ) : (
+        <select
+          value={selected}
+          onChange={(e) => setSelected(e.target.value)}
+          className="border-card-border bg-input-background text-foreground rounded-lg border px-3 py-2 text-sm"
+        >
+          <option value="">{t.pickYourself}</option>
+          {candidates.map((c) => (
+            <option key={c.external_manager_id} value={c.external_manager_id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      )}
+      <Button variant="gold" size="sm" disabled={!selected || linking} onClick={handleLink}>
+        {linking && <Loader2 size={14} className="animate-spin" />}
+        {t.linkManagerBtn}
       </Button>
     </div>
   );
@@ -203,25 +285,6 @@ export function IntegrationsPage() {
     }
   }
 
-  async function handleConfigure(provider: "meta_ads", values: Record<string, string>) {
-    if (!accessToken) return;
-    try {
-      const integration = await crmApi.configureMetaAds(accessToken, {
-        ad_account_id: values.ad_account_id,
-        access_token: values.access_token,
-      });
-      setIntegrations((prev) => [...prev.filter((i) => i.provider !== integration.provider), integration]);
-      toast.success(t.connectedToast);
-      await load();
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 403) {
-        toast.error(t.need2fa);
-      } else {
-        toast.error(t.genericError);
-      }
-    }
-  }
-
   // Disconnect (2026-07-17) -- IntegrationCard's own onDisconnect prop calls
   // straight through with no confirmation step, so this just opens a shared
   // ConfirmDialog instead of disconnecting immediately; the real API call
@@ -291,6 +354,7 @@ export function IntegrationsPage() {
                 </Button>
               )}
             </div>
+            {amocrmConnected && accessToken && <ManagerLinkWidget provider="amocrm" accessToken={accessToken} t={t} />}
             {canManage && !amocrmConnected && (
               <OneClickConnectRow
                 provider="amocrm"
@@ -335,6 +399,7 @@ export function IntegrationsPage() {
                 </Button>
               )}
             </div>
+            {bitrix24Connected && accessToken && <ManagerLinkWidget provider="bitrix24" accessToken={accessToken} t={t} />}
             {canManage && !bitrix24Connected && (
               <OneClickConnectRow
                 provider="bitrix24"
@@ -350,36 +415,48 @@ export function IntegrationsPage() {
           </div>
         </div>
         <div>
-          <IntegrationCard
-            icon={Megaphone}
-            brandColor="#F97316"
-            name="Meta Ads"
-            connected={metaAdsConnected}
-            connectLabel={t.connect}
-            connectedLabel={t.connected}
-            editLabel={t.edit}
-            submitLabel={t.save}
-            fields={[
-              { key: "ad_account_id", label: t.adAccountId, placeholder: "act_1234567890" },
-              { key: "access_token", label: t.accessToken, secret: true },
-            ]}
-            onSubmit={(values) => handleConfigure("meta_ads", values)}
-            onDisconnect={metaAdsConnected ? () => Promise.resolve(setDisconnectTarget("meta_ads")) : undefined}
-            disconnectLabel={t.disconnect}
-            readOnly={!canManage}
-          />
-          {canManage && !metaAdsConnected && (
-            <OneClickConnectRow
-              provider="meta_ads"
-              needsDomain={false}
-              domain=""
-              onDomainChange={() => {}}
-              connecting={oauthConnecting === "meta_ads"}
-              onConnect={() => handleOAuthConnect("meta_ads")}
-              label={t.oneClickConnect}
-              domainPlaceholder={t.oneClickDomainPlaceholder}
-            />
-          )}
+          {/* Meta Ads moved to OAuth-only (2026-07-24, client decision --
+              same treatment as AmoCRM/Bitrix24 above): the ad account is now
+              auto-discovered server-side (GET /me/adaccounts) right after
+              connect, so the tenant never types act_{id} or pastes a raw
+              access token by hand anymore. */}
+          <div className="glass-card p-5 transition-all hover:-translate-y-1">
+            <div className="flex items-center gap-3">
+              <div
+                className="flex size-10 shrink-0 items-center justify-center rounded-xl"
+                style={{ background: "#F9731618", color: "#F97316" }}
+              >
+                <Megaphone size={20} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-bold text-foreground">Meta Ads</div>
+                <div className="flex items-center gap-1.5 text-xs text-foreground-muted">
+                  <span
+                    className="size-1.5 rounded-full"
+                    style={{ background: metaAdsConnected ? "#2FBF71" : "var(--card-border)" }}
+                  />
+                  {metaAdsConnected ? t.connected : "—"}
+                </div>
+              </div>
+              {canManage && metaAdsConnected && (
+                <Button variant="outline" size="sm" onClick={() => setDisconnectTarget("meta_ads")}>
+                  {t.disconnect}
+                </Button>
+              )}
+            </div>
+            {canManage && !metaAdsConnected && (
+              <OneClickConnectRow
+                provider="meta_ads"
+                needsDomain={false}
+                domain=""
+                onDomainChange={() => {}}
+                connecting={oauthConnecting === "meta_ads"}
+                onConnect={() => handleOAuthConnect("meta_ads")}
+                label={t.oneClickConnect}
+                domainPlaceholder={t.oneClickDomainPlaceholder}
+              />
+            )}
+          </div>
         </div>
       </div>
 

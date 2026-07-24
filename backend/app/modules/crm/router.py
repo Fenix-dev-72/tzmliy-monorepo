@@ -21,7 +21,6 @@ from app.modules.crm.schemas import (
     ManagerMappingCreate,
     ManagerMappingOut,
     ManagerMappingSelfCreate,
-    MetaAdsConfigure,
     OAuthAuthorizeUrlOut,
     OAuthProviderName,
 )
@@ -75,13 +74,6 @@ async def configure_amocrm(
     body: AmoCrmConfigure, pool=Depends(get_pool), auth: AuthContext = Depends(require_permission(CRM_MANAGE))
 ):
     return await service.configure_amocrm(pool, auth.tenant_id, body.subdomain, body.api_token)
-
-
-@router.post("/integrations/meta-ads", response_model=IntegrationConfiguredOut, status_code=status.HTTP_201_CREATED)
-async def configure_meta_ads(
-    body: MetaAdsConfigure, pool=Depends(get_pool), auth: AuthContext = Depends(require_permission(CRM_MANAGE))
-):
-    return await service.configure_meta_ads(pool, auth.tenant_id, body.ad_account_id, body.access_token)
 
 
 @router.get("/integrations", response_model=list[IntegrationConfiguredOut])

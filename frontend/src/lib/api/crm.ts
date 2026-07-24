@@ -46,10 +46,6 @@ export interface AdInsight {
   created_at: string;
 }
 
-export function configureMetaAds(accessToken: string, body: { ad_account_id: string; access_token: string }) {
-  return apiFetch<CrmIntegration>("/api/v1/crm/integrations/meta-ads", { method: "POST", accessToken, body });
-}
-
 export type OAuthProvider = "amocrm" | "bitrix24" | "meta_ads";
 
 // Returns the URL as JSON rather than redirecting -- this is an

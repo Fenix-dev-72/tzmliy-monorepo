@@ -58,6 +58,24 @@ def _get_campaign_insights_sync(access_token: str, campaign_id: str, since_date:
     return body.get("data", [])
 
 
+def _list_ad_accounts_sync(access_token: str) -> list[dict]:
+    query = urllib.parse.urlencode({"fields": "id,account_id,name", "access_token": access_token})
+    body = _get_json_sync(f"{_API_BASE}/me/adaccounts?{query}")
+    return body.get("data", [])
+
+
+async def list_ad_accounts(access_token: str) -> list[dict]:
+    """Auto-discovery for the OAuth connect flow (2026-07-24) -- so a tenant
+    no longer has to know/type their own act_{id}. Requires ads_read/
+    ads_management scope (already requested in build_authorize_url). Returns
+    [] for a real, valid token with zero ad accounts linked to the Facebook
+    account -- that's a legitimate state (confirmed live against the user's
+    own test token), not an error; callers must handle an empty list rather
+    than assuming at least one always exists.
+    """
+    return await to_thread(_list_ad_accounts_sync, access_token)
+
+
 async def list_campaigns(access_token: str, ad_account_id: str) -> list[dict]:
     return await to_thread(_list_campaigns_sync, access_token, ad_account_id)
 

@@ -98,7 +98,14 @@ export function IntegrationCard({
 
   return (
     <div className="glass-card p-5 transition-all hover:-translate-y-1">
-      <div className="flex items-center gap-3">
+      {/* flex-wrap (2026-07-24): a long connectedLabel (e.g. "Ulangan
+          (@some_bot_username)") used to force the edit/disconnect buttons
+          into the same unbreakable row, squeezing them into overlapping,
+          truncated text on narrow cards -- the action buttons now wrap onto
+          their own row instead of fighting the name/status column for
+          space. truncate on the status line still keeps a very long label
+          from wrapping mid-word within its own column on any width. */}
+      <div className="flex flex-wrap items-center gap-3">
         <div
           className="flex size-10 shrink-0 items-center justify-center rounded-xl"
           style={{ background: `${brandColor}18`, color: brandColor }}
@@ -106,25 +113,29 @@ export function IntegrationCard({
           <Icon size={20} />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-bold text-foreground">{name}</div>
+          <div className="truncate text-sm font-bold text-foreground">{name}</div>
           <div className="flex items-center gap-1.5 text-xs text-foreground-muted">
             <span
-              className="size-1.5 rounded-full"
+              className="size-1.5 shrink-0 rounded-full"
               style={{ background: connected ? "#2FBF71" : "var(--card-border)" }}
             />
-            {connected ? connectedLabel : "—"}
+            <span className="truncate">{connected ? connectedLabel : "—"}</span>
           </div>
         </div>
-        {!readOnly && (
-          <Button variant={connected ? "outline" : "gold"} size="sm" onClick={() => setFormOpen((o) => !o)}>
-            {connected ? (editLabel ?? connectedLabel) : connectLabel}
-          </Button>
-        )}
-        {!readOnly && connected && onDisconnect && (
-          <Button variant="outline" size="sm" disabled={disconnecting} onClick={handleDisconnect}>
-            {disconnecting && <Loader2 size={14} className="animate-spin" />}
-            {disconnectLabel}
-          </Button>
+        {(!readOnly || (connected && onDisconnect)) && (
+          <div className="flex shrink-0 items-center gap-2">
+            {!readOnly && (
+              <Button variant={connected ? "outline" : "gold"} size="sm" onClick={() => setFormOpen((o) => !o)}>
+                {connected ? (editLabel ?? connectedLabel) : connectLabel}
+              </Button>
+            )}
+            {!readOnly && connected && onDisconnect && (
+              <Button variant="outline" size="sm" disabled={disconnecting} onClick={handleDisconnect}>
+                {disconnecting && <Loader2 size={14} className="animate-spin" />}
+                {disconnectLabel}
+              </Button>
+            )}
+          </div>
         )}
       </div>
 

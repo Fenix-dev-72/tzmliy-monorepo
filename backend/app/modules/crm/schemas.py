@@ -42,11 +42,6 @@ class AmoCrmConfigure(BaseModel):
     api_token: str = Field(min_length=1)
 
 
-class MetaAdsConfigure(BaseModel):
-    ad_account_id: str = Field(min_length=1)
-    access_token: str = Field(min_length=1)
-
-
 class OAuthAuthorizeUrlOut(BaseModel):
     authorize_url: str
 

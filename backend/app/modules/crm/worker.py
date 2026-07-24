@@ -30,6 +30,12 @@ async def _sync_tenant_meta_ads(pool: asyncpg.Pool, tenant_id) -> None:
 
     access_token = decrypt_secret(credential["api_key_encrypted"])
     ad_account_id = credential["external_account_id"]
+    if not ad_account_id:
+        # Connected via OAuth but auto-discovery (service.complete_oauth)
+        # found zero ad accounts on Meta's side -- a real, valid state, not
+        # an error. Nothing to sync until the tenant links an ad account to
+        # their Facebook app and reconnects.
+        return
 
     try:
         campaigns = await meta_ads.list_campaigns(access_token, ad_account_id)
@@ -297,10 +303,16 @@ async def run_forever_amocrm_leads(pool: asyncpg.Pool, settings: Settings, redis
 
 
 async def _sync_tenant_bitrix24_leads(pool: asyncpg.Pool, tenant_id, since: datetime) -> None:
-    """Pull-based lead sync for Bitrix24 (2026-07-24, same client decision as
-    AmoCRM's own -- replaces Bitrix24's webhook entirely, see providers.py's
-    module docstring and crm/service.py's ingest_bitrix24_lead). Mirrors
-    _sync_tenant_amocrm_leads above almost exactly."""
+    """Pull-based lead+deal sync for Bitrix24 (2026-07-24, same client
+    decision as AmoCRM's own -- replaces Bitrix24's webhook entirely, see
+    providers.py's module docstring and crm/service.py's
+    ingest_bitrix24_lead). Pulls BOTH crm.lead.list and crm.deal.list --
+    confirmed with the client that this portal uses both Лиды and Сделки
+    directly (many Bitrix24 accounts, especially "упрощённый CRM" ones,
+    skip the Lead stage entirely), so limiting this to Leads alone would
+    silently miss every Deal-only sale. list_leads/list_deals already
+    prefix their external_lead_id ("lead-"/"deal-") so the two id sequences
+    can never collide once merged here."""
     credential = await service.get_valid_credential_for_sync(pool, tenant_id, "bitrix24")
     if credential is None:
         return
@@ -309,10 +321,16 @@ async def _sync_tenant_bitrix24_leads(pool: asyncpg.Pool, tenant_id, since: date
         decrypted_credential["api_key_encrypted"] = decrypt_secret(credential["api_key_encrypted"])
 
     provider = get_provider("bitrix24")
+    leads: list = []
     try:
-        leads = await provider.list_leads(decrypted_credential, since)
+        leads.extend(await provider.list_leads(decrypted_credential, since))
     except CrmApiError:
         logger.warning("bitrix24 leads fetch failed for tenant %s", tenant_id, exc_info=True)
+    try:
+        leads.extend(await provider.list_deals(decrypted_credential, since))
+    except CrmApiError:
+        logger.warning("bitrix24 deals fetch failed for tenant %s", tenant_id, exc_info=True)
+    if not leads:
         return
 
     async with tenant_connection(pool, tenant_id) as conn:

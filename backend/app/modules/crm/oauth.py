@@ -107,7 +107,19 @@ async def exchange_code(
             "access_token": data["access_token"],
             "refresh_token": data.get("refresh_token"),
             "expires_in": data.get("expires_in"),
-            "account_domain": data.get("domain", domain),
+            # Bug found live (2026-07-24): trusted data.get("domain") here,
+            # but a real token exchange against a Bitrix24 local application
+            # returned "oauth.bitrix.info" (the token endpoint's OWN host)
+            # in that field, not the portal's actual domain -- every
+            # subsequent REST call (_bitrix24_rest_url) silently hit the
+            # wrong host and got back a domain-unrelated JSON response with
+            # no "result" key, which list_leads/list_deals then read as "0
+            # results" with no error at all. The domain the tenant typed
+            # into the connect form (`domain`, required -- _require_domain
+            # above already raises if it's empty) is the one value we know
+            # is actually correct, so it's used unconditionally now instead
+            # of ever preferring whatever Bitrix24's own response claims.
+            "account_domain": domain,
         }
     if provider == "meta_ads":
         params = {
@@ -118,14 +130,28 @@ async def exchange_code(
         }
         url = f"https://graph.facebook.com/{_META_ADS_API_VERSION}/oauth/access_token?{urllib.parse.urlencode(params)}"
         data = await to_thread(_get_json_sync, url)
+        short_lived_token = data["access_token"]
+        # The code exchange above only returns a short-lived (~1-2h) user
+        # token. Immediately trade it for a long-lived one (~60 days) via
+        # the documented fb_exchange_token grant (developers.facebook.com/
+        # docs/facebook-login/guides/access-tokens#get-a-long-lived-token) --
+        # otherwise the stored connection would silently die within hours.
+        exchange_params = {
+            "grant_type": "fb_exchange_token",
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "fb_exchange_token": short_lived_token,
+        }
+        exchange_url = f"https://graph.facebook.com/{_META_ADS_API_VERSION}/oauth/access_token?{urllib.parse.urlencode(exchange_params)}"
+        long_lived_data = await to_thread(_get_json_sync, exchange_url)
+        access_token = long_lived_data.get("access_token", short_lived_token)
         return {
-            "access_token": data["access_token"],
+            "access_token": access_token,
             # Meta's short-lived/long-lived token dance has no refresh_token
-            # concept -- long-lived tokens (~60 days) are exchanged for
-            # separately, not refreshed. Flagged here rather than silently
-            # assumed; revisit once a real app confirms the exact contract.
+            # concept -- long-lived tokens are re-exchanged the same way
+            # above, never refreshed via a refresh_token grant.
             "refresh_token": None,
-            "expires_in": data.get("expires_in"),
+            "expires_in": long_lived_data.get("expires_in", data.get("expires_in")),
             "account_domain": None,
         }
     raise UnknownOAuthProviderError(provider)

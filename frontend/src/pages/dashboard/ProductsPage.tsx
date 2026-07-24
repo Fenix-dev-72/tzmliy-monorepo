@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   AlertCircle,
-  ChevronRight,
   ImagePlus,
   Layers,
   Loader2,
@@ -133,6 +132,14 @@ const content = {
 type Lang = keyof typeof content;
 type T = (typeof content)["uz"];
 
+// Categories are a single flat level now (2026-07-24, client decision: max
+// depth is Katalog -> Kategoriya, no more sub-categories -- see
+// backend/app/modules/catalog/service.py's NestedCategoryNotAllowedError).
+// Still takes a CategoryNode[] (its `children` will always be empty going
+// forward) rather than a plain name/id list, so this keeps working
+// unchanged for any pre-existing tenant that somehow still has old nested
+// rows from before this cap landed -- it just flattens them into the
+// dropdown too instead of hiding them.
 function flattenTree(nodes: CategoryNode[], depth = 0): { id: string; label: string; name: string }[] {
   return nodes.flatMap((n) => [
     { id: n.id, label: `${"— ".repeat(depth)}${n.name}`, name: n.name },
@@ -144,9 +151,17 @@ function categoryName(flat: { id: string; name: string }[], id: string): string 
   return flat.find((c) => c.id === id)?.name ?? "—";
 }
 
+// Categories are a single flat level now (2026-07-24, client decision: max
+// depth is Katalog -> Kategoriya, no sub-categories -- see
+// backend/app/modules/catalog/service.py's NestedCategoryNotAllowedError).
+// Used to be recursive (rendered node.children at any depth, with its own
+// per-node "add sub-category" control and expand/collapse chevron) --
+// dropped all of that along with the now-permanently-empty `children`
+// array and `depth` indentation, since nesting can no longer be created at
+// all. Kept as its own component (not inlined into the list .map below)
+// since delete still needs its own per-row confirm dialog + busy state.
 function CategoryTreeItem({
   node,
-  depth,
   productCounts,
   selectedId,
   onSelect,
@@ -157,7 +172,6 @@ function CategoryTreeItem({
   canManage,
 }: {
   node: CategoryNode;
-  depth: number;
   productCounts: Map<string, number>;
   selectedId: string | null;
   onSelect: (id: string) => void;
@@ -168,27 +182,8 @@ function CategoryTreeItem({
   canManage: boolean;
 }) {
   const t = content[lang];
-  const [expanded, setExpanded] = useState(true);
-  const [addOpen, setAddOpen] = useState(false);
-  const [newName, setNewName] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
-
-  async function handleAddChild() {
-    setBusy(true);
-    try {
-      await catalogApi.createCategory(accessToken, { name: newName.trim(), parent_id: node.id });
-      setNewName("");
-      setAddOpen(false);
-      setExpanded(true);
-      onChanged();
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 409) toast.error(t.nameTaken);
-      else onError(err instanceof ApiError ? err.detail : t.genericError);
-    } finally {
-      setBusy(false);
-    }
-  }
 
   async function handleDelete() {
     setBusy(true);
@@ -214,69 +209,21 @@ function CategoryTreeItem({
         className={`group flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm ${
           selectedId === node.id ? "bg-primary/10 text-primary font-semibold" : "text-foreground hover:bg-accent"
         }`}
-        style={{ marginLeft: depth > 0 ? 14 : 0 }}
       >
-        {node.children.length > 0 ? (
-          <button onClick={() => setExpanded((e) => !e)} className="text-foreground-muted shrink-0">
-            <ChevronRight size={13} className={`transition-transform ${expanded ? "rotate-90" : ""}`} />
-          </button>
-        ) : (
-          <span className="w-[13px] shrink-0" />
-        )}
         <button onClick={() => onSelect(node.id)} className="min-w-0 flex-1 truncate text-left">
           {node.name}
         </button>
         <span className="text-foreground-muted text-xs">{count}</span>
         {canManage && (
-          <>
-            <button
-              onClick={() => setAddOpen((o) => !o)}
-              className="text-foreground-muted hover:text-primary shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
-              aria-label="add"
-            >
-              <Plus size={12} />
-            </button>
-            <button
-              onClick={() => setConfirmDelete(true)}
-              className="text-foreground-muted hover:text-destructive shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
-              aria-label="delete"
-            >
-              <Trash2 size={12} />
-            </button>
-          </>
+          <button
+            onClick={() => setConfirmDelete(true)}
+            className="text-foreground-muted hover:text-destructive shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+            aria-label="delete"
+          >
+            <Trash2 size={12} />
+          </button>
         )}
       </div>
-
-      {addOpen && canManage && (
-        <div className="my-1 flex items-center gap-1.5" style={{ marginLeft: depth * 14 + 20 }}>
-          <input
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            className="border-card-border bg-input-background text-foreground h-7 flex-1 rounded-md border px-2 text-xs outline-none"
-            autoFocus
-          />
-          <button disabled={!newName.trim() || busy} onClick={handleAddChild} className="text-primary text-xs font-semibold disabled:opacity-50">
-            {t.create}
-          </button>
-        </div>
-      )}
-
-      {expanded &&
-        node.children.map((child) => (
-          <CategoryTreeItem
-            key={child.id}
-            node={child}
-            depth={depth + 1}
-            productCounts={productCounts}
-            selectedId={selectedId}
-            onSelect={onSelect}
-            lang={lang}
-            accessToken={accessToken}
-            onChanged={onChanged}
-            onError={onError}
-            canManage={canManage}
-          />
-        ))}
 
       <ConfirmDialog
         open={confirmDelete}
@@ -683,7 +630,6 @@ export function ProductsPage() {
                 <CategoryTreeItem
                   key={node.id}
                   node={node}
-                  depth={0}
                   productCounts={productCounts}
                   selectedId={selectedCategoryId}
                   onSelect={setSelectedCategoryId}

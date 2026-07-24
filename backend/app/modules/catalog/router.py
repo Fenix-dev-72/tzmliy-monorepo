@@ -18,8 +18,8 @@ async def create_category(
 ):
     try:
         return await service.create_category(pool, auth.tenant_id, body.name, body.parent_id)
-    except service.ParentNotFoundError:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "parent_id does not exist in this tenant")
+    except service.NestedCategoryNotAllowedError:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Categories can't be nested -- Katalog -> Kategoriya is one flat level")
     except service.DuplicateNameError:
         raise HTTPException(status.HTTP_409_CONFLICT, "A sibling category with this name already exists")
 

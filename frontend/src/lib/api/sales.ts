@@ -17,6 +17,10 @@ export interface Sale {
   version: number;
   product_id: string | null;
   quantity: number;
+  // NULL for a normal human-created sale; "amocrm"/"bitrix24" when this sale
+  // was auto-created from a synced CRM lead (see backend sales/service.py's
+  // create_sale) -- SalesPage.tsx uses this to show a distinguishing badge.
+  source: string | null;
   created_at: string;
   updated_at: string;
 }

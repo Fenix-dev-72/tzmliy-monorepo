@@ -513,7 +513,12 @@ class Bitrix24Provider:
                 opportunity = lead.get("OPPORTUNITY")
                 leads.append(
                     ParsedLeadEvent(
-                        external_lead_id=str(lead["ID"]),
+                        # Prefixed (2026-07-24) so a Lead's numeric id can
+                        # never collide with a Deal's own numeric id once
+                        # list_deals below is merged into the same pull --
+                        # Bitrix24's Lead and Deal ids are separate sequences
+                        # that can both legitimately be e.g. "5".
+                        external_lead_id=f"lead-{lead['ID']}",
                         full_name=lead.get("TITLE") or lead.get("NAME") or "Bitrix24 Lead",
                         phone=phone,
                         email=email,
@@ -527,6 +532,83 @@ class Bitrix24Provider:
                 break
             start += 50
         return leads
+
+    async def list_deals(self, credential: dict, since: datetime) -> list[ParsedLeadEvent]:
+        """Pull-based deal sync (2026-07-24, client confirmed this portal
+        uses BOTH Лиды (Leads) and Сделки (Deals) directly -- many Bitrix24
+        accounts, especially "упрощённый CRM" ones, skip the Lead stage
+        entirely and create Deals straight away, same as list_leads' own
+        `crm.lead.list` shape but targeting `crm.deal.list` instead (method
+        name, filter/pagination confirmed against apidocs.bitrix24.ru the
+        same way -- both crm.lead.list and crm.deal.list are documented
+        DEPRECATED in favor of crm.item.list, still fully functional).
+        Unlike a Lead, a Deal's contact (name/phone) lives on a separate
+        linked Contact entity, not inline -- CONTACT_ID is resolved via one
+        follow-up crm.contact.get call per deal that has one, same
+        "backfill via a follow-up API call" shape as AmoCrmProvider's own
+        fetch_lead_phone."""
+        since_iso = since.strftime("%Y-%m-%dT%H:%M:%S")
+        deals: list[ParsedLeadEvent] = []
+        start = 0
+        while True:
+            body = {
+                "auth": credential["api_key_encrypted"],
+                "filter": {">DATE_MODIFY": since_iso},
+                "select": ["ID", "TITLE", "ASSIGNED_BY_ID", "STAGE_ID", "OPPORTUNITY", "CONTACT_ID"],
+                "start": start,
+            }
+            url = _bitrix24_rest_url(credential["external_account_id"], "crm.deal.list")
+            result = await to_thread(_post_json_sync, url, body, {})
+            page_deals = result.get("result", [])
+            if not isinstance(page_deals, list) or not page_deals:
+                break
+            for deal in page_deals:
+                full_name = deal.get("TITLE") or "Bitrix24 Deal"
+                phone = None
+                email = None
+                contact_id = deal.get("CONTACT_ID")
+                if contact_id:
+                    contact = await self.fetch_deal_contact(credential, str(contact_id))
+                    if contact is not None:
+                        phone = _first_multi_value(contact.get("PHONE"))
+                        email = _first_multi_value(contact.get("EMAIL"))
+                        contact_name = " ".join(p for p in (contact.get("NAME"), contact.get("LAST_NAME")) if p).strip()
+                        if contact_name:
+                            full_name = contact_name
+                opportunity = deal.get("OPPORTUNITY")
+                deals.append(
+                    ParsedLeadEvent(
+                        external_lead_id=f"deal-{deal['ID']}",
+                        full_name=full_name,
+                        phone=phone,
+                        email=email,
+                        stage="lead",
+                        responsible_manager_id=str(deal["ASSIGNED_BY_ID"]) if deal.get("ASSIGNED_BY_ID") else None,
+                        price_amount=int(float(opportunity)) if opportunity not in (None, "") else None,
+                        # Deliberately not carried through as status_id --
+                        # STAGE_ID is portal-specific (same reasoning as
+                        # Lead's own STATUS_ID above), so it's not used for
+                        # any won/lost detection here either.
+                        status_id=None,
+                    )
+                )
+            if len(page_deals) < 50:
+                break
+            start += 50
+        return deals
+
+    async def fetch_deal_contact(self, credential: dict, contact_id: str) -> dict | None:
+        """Backfills a Deal's linked Contact (name/phone/email), which
+        crm.deal.list never carries inline -- returns None (not an error) if
+        the lookup fails, same graceful-degradation shape as everywhere else
+        a follow-up API call backfills optional data in this module."""
+        url = _bitrix24_rest_url(credential["external_account_id"], "crm.contact.get")
+        try:
+            result = await to_thread(_post_json_sync, url, {"auth": credential["api_key_encrypted"], "id": contact_id}, {})
+        except CrmApiError:
+            return None
+        contact = result.get("result")
+        return contact if isinstance(contact, dict) else None
 
     async def list_users(self, credential: dict) -> list[dict]:
         """Same purpose as AmoCrmProvider.list_users -- Bitrix24's

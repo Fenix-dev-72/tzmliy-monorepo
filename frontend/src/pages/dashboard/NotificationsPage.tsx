@@ -32,6 +32,7 @@ const content = {
     sub: "Telegram bot va guruh xabarlari",
     connect: "Ulash",
     connected: "Ulangan",
+    edit: "Tahrirlash",
     save: "Saqlash",
     cancel: "Bekor qilish",
     botToken: "Bot tokeni",
@@ -43,6 +44,7 @@ const content = {
     botOnboarding: "Bot yo'q bo'lsa: Telegram'da @BotFather ga yozing, /newbot buyrug'i bilan yangi bot yarating va olingan tokenni shu yerga joylashtiring.",
     connectedAs: "Ulangan bot",
     mappingsTitle: "Guruh bog'lanishlari",
+    connectedGroupsTitle: "Ulangan guruhlar",
     label: "Nom",
     addMapping: "Guruhga qo'shish",
     addMappingOpened: "Telegram'da guruh tanlang",
@@ -116,6 +118,7 @@ const content = {
     sub: "Telegram бот и групповые сообщения",
     connect: "Подключить",
     connected: "Подключено",
+    edit: "Изменить",
     save: "Сохранить",
     cancel: "Отмена",
     botToken: "Токен бота",
@@ -127,6 +130,7 @@ const content = {
     botOnboarding: "Нет бота? Напишите @BotFather в Telegram, создайте бота командой /newbot и вставьте полученный токен сюда.",
     connectedAs: "Подключённый бот",
     mappingsTitle: "Привязки групп",
+    connectedGroupsTitle: "Подключённые группы",
     label: "Название",
     addMapping: "Добавить в группу",
     addMappingOpened: "Выберите группу в Telegram",
@@ -564,6 +568,7 @@ export function NotificationsPage() {
           connected={configured}
           connectLabel={t.connect}
           connectedLabel={botUsername ? `${t.connected} (@${botUsername})` : t.connected}
+          editLabel={t.edit}
           submitLabel={t.save}
           fields={[{ key: "bot_token", label: t.botToken, secret: true }]}
           onSubmit={handleConnect}
@@ -584,22 +589,38 @@ export function NotificationsPage() {
         <>
           <div className="glass-card mb-6 p-5 sm:p-6">
             <h2 className="mb-4 text-sm font-bold text-foreground">{t.mappingsTitle}</h2>
-            <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <FormField label={t.label} value={mappingLabel} onChange={(e) => setMappingLabel(e.target.value)} placeholder="Sotuvlar guruhi" className="mb-0" />
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              {/* FormField's own className prop lands on the <input>, not
+                  its wrapper <div className="mb-4"> -- passing "flex-1"
+                  there did nothing for this row's sizing (the wrapper div
+                  still sized to content, not the row), and the wrapper's
+                  own mb-4 bottom margin threw off sm:items-end alignment
+                  against the button next to it (crooked "Guruhga qo'shish"
+                  seen live, 2026-07-24). Wrapping in a flex-1 div and
+                  zeroing the wrapper's own margin from outside (`[&>div]:
+                  mb-0`) fixes both without touching the shared component. */}
+              <div className="[&>div]:mb-0 flex-1">
+                <FormField
+                  label={t.label}
+                  value={mappingLabel}
+                  onChange={(e) => setMappingLabel(e.target.value)}
+                  placeholder="Sotuvlar guruhi"
+                />
+              </div>
               <Button
                 variant="gold"
                 size="sm"
                 disabled={!mappingLabel.trim() || mappingSaving || Boolean(groupDeepLink)}
                 onClick={handleCreateMapping}
-                className="h-11 self-end"
+                className="h-11 w-full shrink-0 sm:w-auto"
               >
                 {mappingSaving && <Loader2 size={14} className="animate-spin" />}
                 {t.addMapping}
               </Button>
             </div>
             {groupDeepLink && (
-              <div className="border-primary/25 bg-primary/8 mb-4 rounded-xl border p-3">
-                <div className="flex items-center gap-2">
+              <div className="border-primary/25 bg-primary/8 mt-4 rounded-xl border p-3">
+                <div className="flex flex-wrap items-center gap-2">
                   <Loader2 size={14} className="text-primary animate-spin" />
                   <span className="text-sm text-foreground">{t.waitingForGroup}</span>
                   <a href={groupDeepLink} target="_blank" rel="noreferrer" className="text-primary ml-auto flex items-center gap-1 text-xs font-medium hover:underline">
@@ -607,7 +628,7 @@ export function NotificationsPage() {
                   </a>
                 </div>
                 {groupLinkToken && (
-                  <div className="mt-3 border-t border-primary/15 pt-3">
+                  <div className="border-primary/15 mt-3 border-t pt-3">
                     <p className="mb-1.5 text-xs text-foreground-muted">{t.fallbackHint}</p>
                     <div className="flex items-center gap-2">
                       <code className="bg-background/60 flex-1 truncate rounded-lg px-2.5 py-1.5 text-xs text-foreground">
@@ -631,15 +652,26 @@ export function NotificationsPage() {
                 )}
               </div>
             )}
-            {mappings.length === 0 ? (
-              <p className="text-xs text-foreground-muted">{t.noMappings}</p>
-            ) : (
-              <div className="flex flex-col gap-2">
+          </div>
+
+          {/* Split out of the "add a group" card above (2026-07-24, client
+              feedback) -- the create-form and the already-connected groups
+              used to share one card with no visual separation, so a
+              connected group's row read as part of the form instead of a
+              distinct list. Its own card + heading + divide-y rows (same
+              list convention as SaleRow/CallsPage) makes "these are your
+              existing connections" immediately legible. Only rendered once
+              there's something to show -- an empty list here would just be
+              a second "nothing yet" message duplicating noMappings below. */}
+          {mappings.length > 0 && (
+            <div className="glass-card mb-6 p-5 sm:p-6">
+              <h2 className="mb-1 text-sm font-bold text-foreground">{t.connectedGroupsTitle}</h2>
+              <div className="divide-card-border/60 mt-3 flex flex-col divide-y">
                 {mappings.map((m) => (
-                  <div key={m.id} className="flex items-center justify-between gap-2 text-sm">
+                  <div key={m.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
                     <div className="min-w-0">
-                      <span className="text-foreground">{m.resolved_title || m.label}</span>
-                      <span className="font-mono ml-2 text-xs text-foreground-muted">{m.telegram_chat_id}</span>
+                      <div className="truncate text-sm font-medium text-foreground">{m.resolved_title || m.label}</div>
+                      <div className="truncate font-mono text-xs text-foreground-muted">{m.telegram_chat_id}</div>
                     </div>
                     <div className="flex shrink-0 items-center gap-1.5">
                       <button
@@ -667,8 +699,9 @@ export function NotificationsPage() {
                   </div>
                 ))}
               </div>
-            )}
-          </div>
+            </div>
+          )}
+          {mappings.length === 0 && <p className="mb-6 text-xs text-foreground-muted">{t.noMappings}</p>}
 
           {canManage && (
             <div className="glass-card mb-6 p-5 sm:p-6">
@@ -862,6 +895,7 @@ export function NotificationsPage() {
         loading={scheduleSaving}
         onConfirm={handleSaveSchedule}
         onCancel={() => setScheduleDialogOpen(false)}
+        wide
       >
         <div className="mb-2 flex flex-col gap-3">
           <FormField label={t.scheduleLabel} value={scheduleLabel} onChange={(e) => setScheduleLabel(e.target.value)} className="mb-0" />

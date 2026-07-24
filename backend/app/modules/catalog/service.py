@@ -7,7 +7,17 @@ from app.modules.catalog import repository
 from app.modules.catalog.schemas import CategoryNode
 
 
-class ParentNotFoundError(Exception):
+class NestedCategoryNotAllowedError(Exception):
+    """Raised when a category-create/move tries to set a parent_id at all
+    (2026-07-24, client decision: max depth is now Katalog -> Kategoriya,
+    a single flat level -- no more "Telefon -> S25 Ultra -> Qora -> 512GB"
+    style deep chains, per the original Faza 3 design this module's own
+    docstring in CLAUDE.md still describes). parent_id itself is left in
+    the schema/DB rather than dropped -- no migration needed since
+    production had zero already-nested categories when this landed, and
+    keeping the column is a strictly smaller, easier-to-revert change than
+    ripping out the adjacency-list shape entirely."""
+
     pass
 
 
@@ -38,9 +48,9 @@ def _build_tree(rows: list[dict]) -> list[CategoryNode]:
 
 
 async def create_category(pool: asyncpg.Pool, tenant_id: UUID, name: str, parent_id: UUID | None) -> dict:
+    if parent_id is not None:
+        raise NestedCategoryNotAllowedError
     async with tenant_connection(pool, tenant_id) as conn:
-        if parent_id is not None and await repository.get_category_by_id(conn, parent_id) is None:
-            raise ParentNotFoundError
         try:
             return await repository.insert_category(conn, tenant_id, parent_id, name)
         except asyncpg.UniqueViolationError as exc:

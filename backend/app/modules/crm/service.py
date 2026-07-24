@@ -11,6 +11,7 @@ from app.core.config import get_settings
 from app.core.crypto import decrypt_secret, encrypt_secret
 from app.core.database import tenant_connection
 from app.modules.calls import repository as calls_repository
+from app.modules.crm import meta_ads
 from app.modules.crm import oauth as crm_oauth
 from app.modules.crm import repository
 from app.modules.crm.providers import CrmApiError, get_provider
@@ -117,13 +118,6 @@ async def configure_amocrm(pool: asyncpg.Pool, tenant_id: UUID, subdomain: str, 
         )
 
 
-async def configure_meta_ads(pool: asyncpg.Pool, tenant_id: UUID, ad_account_id: str, access_token: str) -> dict:
-    async with tenant_connection(pool, tenant_id) as conn:
-        return await repository.upsert_integration_credential_with_account(
-            conn, tenant_id, "meta_ads", None, encrypt_secret(access_token), ad_account_id
-        )
-
-
 async def list_integrations(pool: asyncpg.Pool, tenant_id: UUID) -> list[dict]:
     """Backs GET /crm/integrations -- lets IntegrationsPage know which
     providers are already connected on a fresh page load, not just right
@@ -193,6 +187,22 @@ async def complete_oauth(pool: asyncpg.Pool, provider: str, code: str, state: st
     if token_data.get("expires_in"):
         expires_at = datetime.now(timezone.utc) + timedelta(seconds=token_data["expires_in"])
 
+    account_id = token_data.get("account_domain") or domain
+    if provider == "meta_ads":
+        # Auto-discovery (2026-07-24, "shunda id kerak bolmadi" -- the
+        # tenant no longer types act_{id} by hand): pick the first ad
+        # account the connecting user's token can see. An empty list is a
+        # real, valid state (confirmed live) -- store the credential anyway
+        # with external_account_id=None rather than failing the whole
+        # connect; worker.py's meta_ads sync already needs to skip cleanly
+        # when it's still unset, same as any tenant who hasn't linked an ad
+        # account on Meta's side yet.
+        try:
+            ad_accounts = await meta_ads.list_ad_accounts(token_data["access_token"])
+        except meta_ads.MetaAdsApiError:
+            ad_accounts = []
+        account_id = ad_accounts[0]["id"] if ad_accounts else None
+
     # webhook_secret_encrypted is always None now -- neither AmoCRM nor
     # Bitrix24 has a webhook path at all anymore (2026-07-24, see
     # providers.py's module docstring), so nothing needs one generated at
@@ -203,7 +213,7 @@ async def complete_oauth(pool: asyncpg.Pool, provider: str, code: str, state: st
             tenant_id,
             provider,
             encrypt_secret(token_data["access_token"]),
-            token_data.get("account_domain") or domain,
+            account_id,
             encrypt_secret(token_data["refresh_token"]) if token_data.get("refresh_token") else None,
             expires_at,
             webhook_secret_encrypted=None,

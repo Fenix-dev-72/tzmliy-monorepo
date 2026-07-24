@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import {
   AlertCircle,
   ArrowLeft,
+  Building2,
   ChevronDown,
   CreditCard,
   Loader2,
@@ -12,6 +13,7 @@ import {
   ShoppingCart,
   Trash2,
   Undo2,
+  Workflow,
   X,
 } from "lucide-react";
 import { useLang } from "@/lib/i18n/LangContext";
@@ -186,6 +188,30 @@ const content = {
 
 type SalesContent = (typeof content)["uz"];
 
+// Distinguishes a CRM-auto-created sale from a normal human-entered one
+// (client requirement, 2026-07-24) -- reuses the same brand icon/color each
+// provider already has on IntegrationsPage.tsx, so a "Bu AmoCRM'dan kelgan
+// savdo" reads as visually consistent across the app, not a one-off style.
+const SOURCE_META: Record<string, { label: string; color: string; icon: typeof Workflow }> = {
+  amocrm: { label: "AmoCRM", color: "#2FBF71", icon: Workflow },
+  bitrix24: { label: "Bitrix24", color: "#4C6FFF", icon: Building2 },
+};
+
+function SourceBadge({ source }: { source: string }) {
+  const meta = SOURCE_META[source];
+  if (!meta) return null;
+  const Icon = meta.icon;
+  return (
+    <span
+      className="flex shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-semibold whitespace-nowrap"
+      style={{ background: `${meta.color}15`, borderColor: `${meta.color}30`, color: meta.color }}
+    >
+      <Icon size={11} />
+      {meta.label}
+    </span>
+  );
+}
+
 function SaleRow({
   sale,
   customerName,
@@ -292,6 +318,7 @@ function SaleRow({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-3">
+          {sale.source && <SourceBadge source={sale.source} />}
           <span className="font-mono text-sm font-semibold text-primary">{formatMoney(sale.price_amount, sale.currency)}</span>
           <span
             className="rounded-full border px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap"
