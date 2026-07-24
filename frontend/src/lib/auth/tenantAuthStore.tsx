@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import * as tenantAuthApi from "@/lib/api/tenantAuth";
-import { ApiError } from "@/lib/api/client";
+import { ApiError, setUnauthorizedHandler } from "@/lib/api/client";
 import { getPermissionsFromAccessToken, getTokenExpiryMs } from "./jwt";
 import type { LoginResult, TenantUser, TokenPair } from "./types";
 
@@ -38,14 +38,15 @@ export function TenantAuthProvider({ children }: { children: ReactNode }) {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [user, setUser] = useState<TenantUser | null>(null);
 
-  // Access tokens are short-lived (15min) and in-memory only (see CLAUDE.md),
-  // with nothing that retries a 401 -- without a proactive refresh, a tab
-  // left open (or just backgrounded) silently sits on an expired token until
-  // the user does a hard reload, at which point every in-flight action
-  // (e.g. the CRM webhook-url fetch, "Ulash" configure calls) fails with a
-  // generic error. refreshTimerRef schedules a refresh shortly before expiry;
-  // the visibilitychange handler below covers the case where the browser
-  // throttled/suspended that timer while the tab was hidden.
+  // Access tokens are short-lived (15min) and in-memory only (see CLAUDE.md).
+  // Without a proactive refresh, a tab left open (or just backgrounded)
+  // silently sits on an expired token until the user does a hard reload, at
+  // which point every in-flight action (e.g. the CRM webhook-url fetch, "Ulash"
+  // configure calls) fails with a generic error. refreshTimerRef schedules a
+  // refresh shortly before expiry; the visibilitychange handler below covers
+  // the case where the browser throttled/suspended that timer while the tab was
+  // hidden; and the reactive setUnauthorizedHandler effect further down catches
+  // anything that still slips through to a 401 mid-request.
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const performSilentRefreshRef = useRef<() => Promise<void>>(async () => {});
 
@@ -142,6 +143,23 @@ export function TenantAuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     performSilentRefreshRef.current = performSilentRefresh;
   }, [performSilentRefresh]);
+
+  // Reactive session recovery: when an authenticated request 401s (an access
+  // token that expired before the proactive timer fired, or was revoked), the
+  // api client calls this to silently refresh -- or, if the refresh token is
+  // also dead, performSilentRefresh logs out. The cooldown coalesces a burst of
+  // concurrent 401s into one refresh and guards against any retry loop (e.g. a
+  // just-issued token immediately rejected by /auth/me).
+  useEffect(() => {
+    let lastReactiveRefresh = 0;
+    setUnauthorizedHandler(() => {
+      const now = Date.now();
+      if (now - lastReactiveRefresh < 5000) return;
+      lastReactiveRefresh = now;
+      performSilentRefreshRef.current();
+    });
+    return () => setUnauthorizedHandler(null);
+  }, []);
 
   // Browsers throttle/suspend setTimeout in background tabs, so the
   // scheduled pre-expiry refresh above can't be relied on alone -- this

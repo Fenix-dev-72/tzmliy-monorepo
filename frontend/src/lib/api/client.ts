@@ -15,6 +15,22 @@ export function newIdempotencyKey(): string {
   return crypto.randomUUID();
 }
 
+// Reactive session recovery (M6): the auth store registers a handler here so
+// that when any *authenticated* request (one that carried a bearer token) comes
+// back 401 -- an access token that expired before the store's proactive refresh
+// timer fired, or was revoked server-side -- the store can silently refresh (or,
+// if the refresh token is also dead, cleanly log out) instead of leaving the app
+// stuck on a broken authenticated view. The failing request still rejects; this
+// only recovers the session for subsequent ones. Login/OTP/refresh calls send no
+// bearer token, so their normal 401s never trigger it (and the refresh call
+// itself carries no token, so there's no retry loop).
+type UnauthorizedHandler = () => void;
+let unauthorizedHandler: UnauthorizedHandler | null = null;
+
+export function setUnauthorizedHandler(handler: UnauthorizedHandler | null): void {
+  unauthorizedHandler = handler;
+}
+
 interface RequestOptions {
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
@@ -72,6 +88,7 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
   }
 
   if (!res.ok) {
+    if (res.status === 401 && options.accessToken) unauthorizedHandler?.();
     throw new ApiError(res.status, await parseErrorDetail(res));
   }
 
@@ -117,6 +134,7 @@ export async function apiFetchForm<T>(path: string, options: FormRequestOptions)
   }
 
   if (!res.ok) {
+    if (res.status === 401 && options.accessToken) unauthorizedHandler?.();
     throw new ApiError(res.status, await parseErrorDetail(res));
   }
 
