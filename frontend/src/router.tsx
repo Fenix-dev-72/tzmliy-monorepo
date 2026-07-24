@@ -5,6 +5,7 @@ import { DashboardLayout } from "@/pages/dashboard/DashboardLayout";
 import { PlatformAuthLayout } from "@/pages/platform-auth/PlatformAuthLayout";
 import { PlatformDashboardLayout } from "@/pages/platform-auth/PlatformDashboardLayout";
 import { NotFound } from "@/pages/NotFound";
+import { RouteErrorBoundary } from "@/components/shared/RouteErrorBoundary";
 
 // Route-level code splitting (2026-07-17) -- every dashboard/auth/platform
 // page used to be imported eagerly at the top of this file, so the very
@@ -20,14 +21,16 @@ import { NotFound } from "@/pages/NotFound";
 // round trip to the pages guaranteed to be needed immediately.
 
 export const router = createBrowserRouter([
-  { path: "/", element: <LandingPage /> },
+  { path: "/", element: <LandingPage />, errorElement: <RouteErrorBoundary /> },
   {
     path: "/tv",
+    errorElement: <RouteErrorBoundary />,
     lazy: () => import("@/pages/kiosk/DashboardKioskPage").then((m) => ({ Component: m.DashboardKioskPage })),
   },
   {
     path: "/dashboard",
     element: <DashboardLayout />,
+    errorElement: <RouteErrorBoundary />,
     children: [
       { index: true, lazy: () => import("@/pages/dashboard/DashboardPage").then((m) => ({ Component: m.DashboardPage })) },
       { path: "sales", lazy: () => import("@/pages/dashboard/SalesPage").then((m) => ({ Component: m.SalesPage })) },
@@ -80,6 +83,7 @@ export const router = createBrowserRouter([
   {
     path: "/login",
     element: <TenantAuthLayout />,
+    errorElement: <RouteErrorBoundary />,
     children: [
       { index: true, lazy: () => import("@/pages/tenant-auth/LoginView").then((m) => ({ Component: m.LoginView })) },
       { path: "otp", lazy: () => import("@/pages/tenant-auth/OtpVerifyView").then((m) => ({ Component: m.OtpVerifyView })) },
@@ -94,6 +98,7 @@ export const router = createBrowserRouter([
   {
     path: "/register",
     element: <TenantAuthLayout />,
+    errorElement: <RouteErrorBoundary />,
     children: [
       { index: true, lazy: () => import("@/pages/tenant-auth/RegisterView").then((m) => ({ Component: m.RegisterView })) },
       {
@@ -109,6 +114,7 @@ export const router = createBrowserRouter([
   },
   {
     path: "/platform",
+    errorElement: <RouteErrorBoundary />,
     children: [
       {
         path: "login",
