@@ -56,13 +56,32 @@ _GENERAL_API_PATHS = ("/api/v1/", "/platform/v1/")
 
 class SlidingWindowLimiter:
     """Redis-backed sliding-window-log limiter: one ZSET per (name, key),
-    member=unique-per-request, score=request time. Not wrapped in a single
-    atomic Lua script -- a request landing exactly at the boundary between
-    the ZCARD read and the ZADD write could in rare cases slip through by one,
-    same order-of-magnitude looseness the old in-memory version already had
-    (it was never meant to be a hard, provably-exact limiter, just a
-    brute-force speed bump); the important fix here is that the count is now
-    shared across every app process instead of counted separately per-process."""
+    member=unique-per-request, score=request time. The prune+count+admit is a
+    single atomic Lua script (2026-07-25), so two concurrent requests at the
+    window boundary can't both read the same under-limit count and both be
+    admitted -- the previous separate ZCARD-then-ZADD could slip one through by
+    one under a race. The count is also shared across every app process (unlike
+    the original per-process in-memory version)."""
+
+    # KEYS[1] = zset key. ARGV: 1=now, 2=cutoff, 3=max_requests,
+    # 4=window_seconds, 5=unique member. Returns {allowed(1/0), retry_seconds}.
+    _CHECK_SCRIPT = """
+    redis.call('ZREMRANGEBYSCORE', KEYS[1], 0, ARGV[2])
+    local count = redis.call('ZCARD', KEYS[1])
+    if count >= tonumber(ARGV[3]) then
+        local oldest = redis.call('ZRANGE', KEYS[1], 0, 0, 'WITHSCORES')
+        local retry = tonumber(ARGV[4])
+        if oldest[2] then
+            retry = tonumber(oldest[2]) + tonumber(ARGV[4]) - tonumber(ARGV[1])
+        end
+        retry = math.ceil(retry)
+        if retry < 1 then retry = 1 end
+        return {0, retry}
+    end
+    redis.call('ZADD', KEYS[1], ARGV[1], ARGV[5])
+    redis.call('EXPIRE', KEYS[1], math.floor(tonumber(ARGV[4])) + 1)
+    return {1, 0}
+    """
 
     def __init__(self, name: str, max_requests: int, window_seconds: float) -> None:
         self.name = name
@@ -74,15 +93,11 @@ class SlidingWindowLimiter:
         redis_key = f"ratelimit:{self.name}:{key}"
         now = time.time()
         cutoff = now - self.window_seconds
-        await redis_client.zremrangebyscore(redis_key, 0, cutoff)
-        count = await redis_client.zcard(redis_key)
-        if count >= self.max_requests:
-            oldest = await redis_client.zrange(redis_key, 0, 0, withscores=True)
-            retry_after = (oldest[0][1] + self.window_seconds - now) if oldest else self.window_seconds
-            return False, max(retry_after, 1.0)
-        await redis_client.zadd(redis_key, {f"{now}:{uuid4()}": now})
-        await redis_client.expire(redis_key, int(self.window_seconds) + 1)
-        return True, 0.0
+        member = f"{now}:{uuid4()}"
+        allowed, retry_after = await redis_client.eval(
+            self._CHECK_SCRIPT, 1, redis_key, now, cutoff, self.max_requests, self.window_seconds, member
+        )
+        return bool(allowed), float(retry_after)
 
 
 class RateLimitMiddleware:
