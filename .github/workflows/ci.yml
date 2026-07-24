@@ -158,11 +158,15 @@ jobs:
         run: python -m pytest tests/ -v
 
   security-scan:
-    name: Dependency CVE Scan (advisory)
+    name: Dependency CVE Scan
     runs-on: ubuntu-latest
-    # Advisory only for now: steps report known CVEs in the log but do not fail
-    # the build (continue-on-error), so a newly-disclosed transitive CVE never
-    # blocks an unrelated merge. Tighten to blocking once the backlog is triaged.
+    # Triaged 2026-07-25: backend requirements are CVE-clean, so pip-audit is
+    # BLOCKING (fails CI on any new vuln) to keep it that way. The frontend
+    # npm audit stays advisory (continue-on-error) because the one outstanding
+    # high is react-router's RSC-mode CSRF advisory (GHSA-qwww-vcr4-c8h2), whose
+    # only fix is the react-router 7 -> 8 major upgrade; this SPA doesn't use RSC
+    # mode, so it isn't exposed. Do that migration separately, then drop
+    # continue-on-error below to make the frontend audit blocking too.
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -172,8 +176,7 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Python dependency audit (pip-audit)
-        continue-on-error: true
+      - name: Python dependency audit (pip-audit, blocking)
         run: |
           python -m pip install --upgrade pip pip-audit
           pip-audit -r backend/requirements.txt
@@ -183,7 +186,7 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Frontend dependency audit (npm audit)
+      - name: Frontend dependency audit (npm audit, advisory)
         continue-on-error: true
         working-directory: frontend
         run: npm audit --audit-level=high
@@ -191,13 +194,13 @@ jobs:
   summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [frontend-check, backend-check, backend-tests]
+    needs: [frontend-check, backend-check, backend-tests, security-scan]
     if: always()
 
     steps:
       - name: Check results
         run: |
-          if [ "${{ needs.frontend-check.result }}" != "success" ] || [ "${{ needs.backend-check.result }}" != "success" ] || [ "${{ needs.backend-tests.result }}" != "success" ]; then
+          if [ "${{ needs.frontend-check.result }}" != "success" ] || [ "${{ needs.backend-check.result }}" != "success" ] || [ "${{ needs.backend-tests.result }}" != "success" ] || [ "${{ needs.security-scan.result }}" != "success" ]; then
             echo "::error::One or more CI jobs failed"
             exit 1
           fi
