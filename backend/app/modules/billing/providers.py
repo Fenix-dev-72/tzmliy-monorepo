@@ -55,6 +55,10 @@ class PaymeProvider:
     def verify_auth(self, headers: Mapping[str, str], merchant_key: str) -> bool:
         """Payme authenticates with `Authorization: Basic base64("Paycom:"+key)`,
         not a signed payload -- this is the entirety of the auth check."""
+        # Fail closed when unconfigured: an empty merchant_key would otherwise
+        # accept `Authorization: Basic base64("Paycom:")` from an attacker.
+        if not merchant_key:
+            return False
         expected = "Basic " + base64.b64encode(f"Paycom:{merchant_key}".encode()).decode()
         actual = headers.get("authorization") or headers.get("Authorization") or ""
         return hmac.compare_digest(expected, actual)
@@ -94,6 +98,10 @@ class ClickProvider:
         action + sign_time). Click sends this on both Prepare (action=0) and
         Complete (action=1); merchant_prepare_id only exists in the formula
         for the Complete step."""
+        # Fail closed when unconfigured: an empty secret would let an attacker
+        # compute a matching MD5 sign_string and forge a payment confirmation.
+        if not secret:
+            return False
         action = int(params["action"])
         parts = [str(params["click_trans_id"]), str(params["service_id"]), secret, str(params["merchant_trans_id"])]
         if action == CLICK_ACTION_COMPLETE:

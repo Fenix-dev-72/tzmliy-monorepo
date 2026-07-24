@@ -1,13 +1,17 @@
 # Tzmliy Frontend
 
 React + TypeScript SPA for **Tzmliy** — a multi-tenant B2B SaaS platform (sales, finance, CRM, calls,
-analytics) built on top of the `dashboarduz` backend. This repo currently covers the **public landing
-page**, the **tenant auth flow** (login + self-service registration, see below), a minimal **tenant
-dashboard** (`/dashboard`, analytics summary only), the **platform admin auth flow**, and a minimal
-**platform admin console** (`/platform/tenants/new` — create a tenant + its first admin user, now a
-secondary/support path). Everything else (Users, Sales, Finance, CRM, Calls, the rest of Billing,
-Notifications, full Analytics, Reports, the rest of the Platform Admin console) is a future phase — see
-"Scope" below.
+analytics) built on top of the `dashboarduz` backend. This repo covers the **public landing page**, the
+**tenant auth flow** (login + self-service registration, see below), a **full tenant dashboard**
+(`/dashboard/*` — see the page list below), a **Live Leaderboard kiosk** (`/kiosk`), the **platform admin
+auth flow**, and a **platform admin console** (`/platform/*`).
+
+> **Doc status (updated 2026-07-25):** the tenant dashboard is now built out, not "analytics summary only"
+> as earlier revisions of this file said. `src/pages/dashboard/` currently ships pages for Sales, Finance,
+> Customers, Products/Warehouse, Users, Roles, Calls, Attendance, Reports, Notifications, Integrations
+> (CRM/Meta Ads), Sellers/KPI, Support, 2FA settings, and the main analytics `DashboardPage`. Treat the
+> "future phases" note under **Scope** as historical — most of it is done. If a specific page is missing a
+> feature, check the page file itself rather than trusting this summary.
 
 ## Tech stack
 
@@ -16,18 +20,23 @@ Notifications, full Analytics, Reports, the rest of the Platform Admin console) 
 - React Router 7 (`createBrowserRouter`, routes in `src/router.tsx`)
 - A handful of vendored/adapted shadcn-style primitives in `src/components/ui/` (button, input, label, tabs,
   input-otp, sonner) built on the specific Radix primitives each one needs
-- `qrcode.react` for rendering the Platform Admin 2FA `otpauth_uri` as a scannable QR code
+- `qrcode.react` for rendering the 2FA `otpauth_uri` as a scannable QR code
+- `recharts` for dashboard charts (`CourseSalesPage`, `SalesTrendCharts`, `SellersPage`, `KpiCard`)
 - Plain `useState`-driven forms with manual validation — **not** `react-hook-form`/`zod`. Those were
-  installed during initial planning but never wired in because hand-rolled state was sufficient for this
-  scope; they were uninstalled again once confirmed unused. Don't reinstall them speculatively — add them
-  when a dashboard-phase form actually needs schema validation complex enough to warrant it.
+  installed during initial planning but never wired in because hand-rolled state was sufficient; they were
+  uninstalled again once confirmed unused. Don't reinstall them speculatively — add them when a form
+  actually needs schema validation complex enough to warrant it.
 
-**Deliberately not installed**: `@mui/*`, `@emotion/*`, most Radix primitives beyond label/slot/tabs,
-`recharts`, `react-day-picker`, `react-dnd*`, `embla-carousel*`, `react-slick`, `canvas-confetti`, `vaul`,
-`cmdk`, `react-resizable-panels`, `react-responsive-masonry`, `next-themes`, `date-fns`, `@popperjs/core`,
-`motion`. These came from the original Figma-Make design export but aren't used by anything in this repo.
-Add each back only when a future dashboard page genuinely needs it — don't bulk-install them because an old
-reference file mentions them.
+**Installed but currently unused** (leftover from the original Figma-Make design export — `grep` confirms no
+`src/` import as of 2026-07-25): `three`, `@react-three/fiber`, `@react-three/drei`, `gsap`, `lenis`. They
+sit in `package.json` devDeps but nothing imports them; either wire them into a real animation/3D need or
+drop them from `package.json` to slim the install. (`recharts` used to be in this "not installed" list — it
+is now installed *and* used, per the bullet above.)
+
+**Deliberately not installed**: `@mui/*`, `@emotion/*`, most Radix primitives beyond label/slot/tabs/dialog,
+`react-day-picker`, `react-dnd*`, `embla-carousel*`, `react-slick`, `canvas-confetti`, `vaul`, `cmdk`,
+`react-resizable-panels`, `react-responsive-masonry`, `next-themes`, `date-fns`, `@popperjs/core`, `motion`.
+Add each back only when a page genuinely needs it — don't bulk-install because an old reference file mentions them.
 
 ## Env config
 
@@ -68,9 +77,15 @@ endpoint needs yet — it's there so the pattern already exists when a future da
 (decoded a real one — only `sub`/`type`/`iat`/`exp` are present), unlike what `FRONTEND.md`'s general claims
 note might suggest. `platformAuthStore.tsx`'s `totpEnabled` state is therefore tracked from *which auth step
 succeeded* (login's `requires_2fa` flag, or a successful `confirm2fa()`/verify-login call), never by decoding
-the token. Don't reintroduce JWT-claim decoding for this — it caused a real bug (infinite redirect loop
-between `/platform/2fa-setup` and `/platform/welcome`, plus a StrictMode double-`/2fa/setup`-call side
-effect) that was fixed by removing `src/lib/auth/jwt.ts` entirely.
+the token. Don't reintroduce JWT-claim decoding into the **platform** auth flow — it caused a real bug
+(infinite redirect loop between `/platform/2fa-setup` and `/platform/welcome`, plus a StrictMode
+double-`/2fa/setup`-call side effect).
+
+`src/lib/auth/jwt.ts` was deleted during that fix but has since been reintroduced for a narrow, unrelated
+purpose: `DashboardKioskPage.tsx` decodes a kiosk-session token's `exp` client-side to know when to prompt
+re-login (it is the *only* importer as of 2026-07-25). That's a UI-convenience decode, not an authorization
+decision — the backend remains the real authority. Keep it scoped to that; don't let JWT decoding creep back
+into the tenant/platform permission logic.
 
 ## Self-service registration (reversed 2026-07-10 — read this before touching auth)
 
@@ -131,26 +146,21 @@ codebase doesn't end up with two parallel styling systems once dashboard pages a
 
 ## Scope
 
-**In scope now**:
+**In scope now** (updated 2026-07-25):
 - `/` landing page
-- `/login/*` tenant auth (identifier + password, phone/OTP, forgot/reset), `/register/*` self-service tenant
-  registration (identifier → code → company+password → trial-or-pay), `/dashboard` (tenant post-login page —
-  `GET /api/v1/analytics/summary` (today's totals) plus `GET /api/v1/analytics/revenue-timeseries`
-  (Kunlik/Haftalik/Oylik toggle — last 24h hourly / 7d daily / 30d daily, bucketed in Python against a fixed
-  Asia/Tashkent offset, not SQL `date_trunc`, to avoid a session-timezone mismatch — see
-  `analytics/service.py`'s `_bucket_boundaries`) and `GET /api/v1/analytics/debt-summary` (outstanding +
-  overdue customer debt per currency); shows an explicit empty state for a tenant with no sales yet)
-- `/platform/*` platform admin auth, `/platform/tenants/new` (secondary tenant-onboarding path, two-step
-  wizard: `POST /platform/v1/tenants` then `POST /platform/v1/tenants/{id}/admin-user`)
-- `src/lib/api/billing.ts` — scoped narrowly to what `/register/plan` needs (`GET /plans`,
-  `POST /subscription`, `POST /payments/initiate`), not a full billing dashboard
+- `/login/*` tenant auth (identifier + password, phone/OTP, forgot/reset) and `/register/*` self-service
+  tenant registration (identifier → code → company+password → trial-or-pay)
+- `/dashboard/*` — the full tenant console: the analytics `DashboardPage` (`GET /api/v1/analytics/summary`,
+  `.../revenue-timeseries` with a Kunlik/Haftalik/Oylik toggle, `.../debt-summary`), plus Sales, Finance
+  (payments/ledger/adjustments/bonus-plans/payroll), Customers, Products/Warehouse, Users, Roles, Calls,
+  Attendance, Reports, Notifications, Integrations (CRM/Meta Ads OAuth), Sellers/KPI, Support, and tenant-side
+  2FA settings (`TwoFactorSettingsPage.tsx`)
+- `/kiosk` — Live Leaderboard kiosk (`DashboardKioskPage.tsx`, dashboard-session token)
+- `/platform/*` platform admin auth + console, including `/platform/tenants/new` (two-step wizard:
+  `POST /platform/v1/tenants` then `POST /platform/v1/tenants/{id}/admin-user`)
 
-**Future phases, not built yet**: a tenant-side 2FA setup page (needed to make `/register/plan`'s "pay now"
-path actually completable — see the Self-service registration section above), Users, Roles/Permissions,
-Catalog, Customers/CRM, Sales, Finance (payments/ledger/adjustment-requests/bonus-plans/payroll), Calls,
-Attendance, the rest of Billing (usage/invoices/plan changes after signup), Notifications, the rest of
-Analytics (leaderboard, course-sales, period filtering, SSE live updates), Live Leaderboard kiosk, external
-CRM integrations, Reports, and the rest of the Platform Admin console (tenant list/billing/audit logs). The
-routing structure, API client pattern, and folder layout (`src/pages/<feature>/`, `src/components/<shared>/`,
-`src/lib/api/`, `src/lib/auth/`) are meant to extend cleanly into these — see
-`FRONTEND.md` for the full API surface each one will need.
+**Known gaps / still thin**: no global 401 interceptor or React `errorElement`/ErrorBoundary (an uncaught
+render error white-screens the app); `SalesPage.tsx` (~1.1k lines) and `NotificationsPage.tsx` (~1k lines)
+are monolithic and worth splitting; no ESLint/test tooling is wired in despite `eslint-disable` directives in
+the source. Consult `FRONTEND.md` for the authoritative per-page API surface — it is the source of truth for
+endpoint shapes, not this summary.

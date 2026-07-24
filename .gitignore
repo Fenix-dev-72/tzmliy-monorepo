@@ -6,6 +6,10 @@ backend/__pycache__/
 backend/.env
 .idea/
 
+# Redis/Valkey dumps and Celery beat schedule
+*.rdb
+backend/celerybeat-schedule*
+
 # Frontend (Vite/React)
 frontend/node_modules/
 frontend/dist/
