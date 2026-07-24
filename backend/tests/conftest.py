@@ -1,0 +1,127 @@
+"""Shared pytest fixtures for the integration suite.
+
+These tests exercise the real Postgres RLS policies, so they need a live,
+migrated database with the app's two roles (`app_user` = NOBYPASSRLS,
+`dashboarduz_owner` = owner). The local docker-compose Postgres is that DB:
+
+    docker compose up -d postgres
+    python -m app.db.migrate   # if not already applied
+
+Connection DSNs default to the docker-exposed Postgres on localhost:5432. They
+are built the same way `docker-compose.yml` builds the container's own DSNs — from
+the `APP_DB_PASSWORD` / `POSTGRES_OWNER_*` / `POSTGRES_DB` vars in `backend/.env`,
+NOT from the literal `DATABASE_URL` / `MIGRATIONS_DATABASE_URL` lines (those point
+at a native 5433 instance and can carry a stale password). Override any of
+TEST_DATABASE_URL / TEST_MIGRATIONS_DATABASE_URL / TEST_PG_PORT if your setup differs.
+
+If Postgres isn't reachable, the DB-dependent tests skip (not fail) with a hint.
+"""
+
+import os
+import socket
+import uuid
+from urllib.parse import urlsplit
+
+import asyncpg
+import pytest
+import pytest_asyncio
+
+_ENV_PATH = os.path.join(os.path.dirname(__file__), "..", ".env")
+
+
+def _read_env(key: str, default: str) -> str:
+    try:
+        with open(_ENV_PATH, encoding="utf-8") as fh:
+            for line in fh:
+                if line.startswith(key + "="):
+                    return line.split("=", 1)[1].strip()
+    except FileNotFoundError:
+        pass
+    return default
+
+
+_PORT = os.environ.get("TEST_PG_PORT", "5432")
+_DB = _read_env("POSTGRES_DB", "dashboarduz")
+_APP_PASSWORD = _read_env("APP_DB_PASSWORD", "app_user_dev_password")
+_OWNER_USER = _read_env("POSTGRES_OWNER_USER", "dashboarduz_owner")
+_OWNER_PASSWORD = _read_env("POSTGRES_OWNER_PASSWORD", "owner_dev_password")
+
+APP_DSN = os.environ.get("TEST_DATABASE_URL") or (
+    f"postgresql://app_user:{_APP_PASSWORD}@localhost:{_PORT}/{_DB}"
+)
+OWNER_DSN = os.environ.get("TEST_MIGRATIONS_DATABASE_URL") or (
+    f"postgresql://{_OWNER_USER}:{_OWNER_PASSWORD}@localhost:{_PORT}/{_DB}"
+)
+
+
+@pytest.fixture(scope="session")
+def _require_db() -> None:
+    parts = urlsplit(APP_DSN)
+    sock = socket.socket()
+    sock.settimeout(2)
+    try:
+        sock.connect((parts.hostname or "localhost", int(parts.port or 5432)))
+    except OSError:
+        pytest.skip(
+            f"Postgres not reachable at {parts.hostname}:{parts.port} — start it with "
+            "`docker compose up -d postgres` (see tests/conftest.py)",
+            allow_module_level=False,
+        )
+    finally:
+        sock.close()
+
+
+@pytest_asyncio.fixture
+async def app_pool(_require_db):
+    """asyncpg pool connected as `app_user` (NOBYPASSRLS) — RLS policies apply,
+    exactly as they do for the running app."""
+    pool = await asyncpg.create_pool(dsn=APP_DSN, min_size=1, max_size=4)
+    try:
+        yield pool
+    finally:
+        await pool.close()
+
+
+@pytest_asyncio.fixture
+async def fresh_app_conn(_require_db):
+    """A brand-new `app_user` connection that has never set app.tenant_id, so
+    the GUC is genuinely unset (NULL) rather than left as an empty string by a
+    prior LOCAL set_config on a pooled connection. Needed to test the true
+    default-deny path."""
+    conn = await asyncpg.connect(APP_DSN)
+    try:
+        yield conn
+    finally:
+        await conn.close()
+
+
+@pytest_asyncio.fixture
+async def owner_conn(_require_db):
+    """Connection as the owner role (bypasses RLS) — used only to set up and
+    tear down platform-level fixture data (tenants), never as the thing under
+    test."""
+    conn = await asyncpg.connect(OWNER_DSN)
+    try:
+        yield conn
+    finally:
+        await conn.close()
+
+
+@pytest_asyncio.fixture
+async def two_tenants(owner_conn):
+    """Create two throwaway tenants and clean them (plus any dependent rows the
+    tests created) up afterwards. Yields (tenant_a_id, tenant_b_id)."""
+    suffix = uuid.uuid4().hex[:8]
+    tenant_a = await owner_conn.fetchval(
+        "INSERT INTO tenants (name, slug) VALUES ($1, $2) RETURNING id", "RLS Test A", f"rls-test-a-{suffix}"
+    )
+    tenant_b = await owner_conn.fetchval(
+        "INSERT INTO tenants (name, slug) VALUES ($1, $2) RETURNING id", "RLS Test B", f"rls-test-b-{suffix}"
+    )
+    try:
+        yield tenant_a, tenant_b
+    finally:
+        ids = [tenant_a, tenant_b]
+        await owner_conn.execute("DELETE FROM customers WHERE tenant_id = ANY($1::uuid[])", ids)
+        await owner_conn.execute("DELETE FROM roles WHERE tenant_id = ANY($1::uuid[])", ids)
+        await owner_conn.execute("DELETE FROM tenants WHERE id = ANY($1::uuid[])", ids)

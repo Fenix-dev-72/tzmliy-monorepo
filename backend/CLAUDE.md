@@ -56,7 +56,15 @@ Run the dev server (auto-reload):
 uvicorn app.main:app --reload
 ```
 
-The app serves on `http://127.0.0.1:8000`. `test_main.http` has example requests (PyCharm/IntelliJ HTTP client, or adapt with curl). There is no automated test suite yet.
+The app serves on `http://127.0.0.1:8000`. `test_main.http` has example requests (PyCharm/IntelliJ HTTP client, or adapt with curl).
+
+**Automated tests** (started 2026-07-25 as the top audit follow-up): a pytest integration suite lives in `backend/tests/`, currently covering the security-critical RLS tenant-isolation invariant (`tests/test_rls_isolation.py` — drives the real `core.database.tenant_connection` against a live DB as the NOBYPASSRLS `app_user` role). It needs the docker Postgres running and migrated; if the DB is unreachable the tests **skip**, not fail. Test-only deps are in `requirements-dev.txt`.
+```
+docker compose up -d postgres          # + python -m app.db.migrate if needed
+pip install -r requirements-dev.txt
+python -m pytest tests/ -v
+```
+Test DSNs are built from `.env`'s `APP_DB_PASSWORD`/`POSTGRES_OWNER_*`/`POSTGRES_DB` against `localhost:5432` (the docker-exposed port), mirroring how `docker-compose.yml` builds the container's own DSNs — deliberately NOT the literal `DATABASE_URL`/`MIGRATIONS_DATABASE_URL` lines (those point at a native 5433 instance and can carry a stale password). Override via `TEST_DATABASE_URL`/`TEST_MIGRATIONS_DATABASE_URL`/`TEST_PG_PORT`. See `tests/conftest.py`.
 
 **Also run the Celery worker locally, or OTP/email codes silently never get delivered** (2026-07-12 regression risk): since OTP/registration/password-reset codes moved off the request path onto Celery (see the Auth section below), `send_code` now just enqueues onto Redis and returns immediately — the request itself succeeds either way, so a missing worker doesn't show up as an error, the code just never arrives. `CLAUDE.md`/the VPS systemd unit only document the production invocation (`celery -A app.core.celery_app worker --loglevel=info --concurrency=2`), which **fails outright on Windows** (Celery's default `prefork` pool needs `fork()`, unavailable on Windows) — add `--pool=solo` for local Windows dev:
 ```
