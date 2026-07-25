@@ -57,6 +57,16 @@ SET status = :status,
 WHERE id = :sale_id AND version = :expected_version
 RETURNING id, tenant_id, customer_id, catalog_category_id, responsible_user_id, currency, price_amount, deadline, delivery_mode, status, version, idempotency_key, source, product_id, quantity, created_at, updated_at;
 
+-- name: mark_sale_completed^
+-- Auto-complete a sale once its balance is fully paid (finance.record_payment).
+-- Only flips an 'active' sale; the caller already holds the row lock
+-- (get_sale_summary_for_update = FOR UPDATE), so no version check is needed.
+-- Returns the row on transition, NULL if it wasn't 'active' (no-op).
+UPDATE sales
+SET status = 'completed', version = version + 1, updated_at = now()
+WHERE id = :sale_id AND status = 'active'
+RETURNING id, status, version;
+
 -- name: insert_sale_change^
 INSERT INTO sale_changes (tenant_id, sale_id, actor_user_id, changed_fields, reason)
 VALUES (:tenant_id, :sale_id, :actor_user_id, :changed_fields::jsonb, :reason)

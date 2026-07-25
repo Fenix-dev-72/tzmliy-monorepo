@@ -116,6 +116,11 @@ async def update_sale_status_from_crm(
     return _row(row)
 
 
+async def mark_sale_completed(conn: asyncpg.Connection, sale_id: UUID) -> dict | None:
+    row = await _queries.mark_sale_completed(conn, sale_id=sale_id)
+    return _row(row)
+
+
 async def insert_sale_change(
     conn: asyncpg.Connection,
     tenant_id: UUID,

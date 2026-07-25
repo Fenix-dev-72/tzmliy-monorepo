@@ -5,6 +5,7 @@ import asyncpg
 
 from app.core.database import tenant_connection
 from app.modules.finance import repository
+from app.modules.sales import repository as sales_repository
 from app.modules.sales import service as sales_service
 
 
@@ -175,6 +176,25 @@ async def record_payment(
             await repository.insert_ledger_entry(
                 conn, tenant_id, sale_id, sale["customer_id"], "payment", -amount, currency, row["id"], None, None, actor_user_id
             )
+            # Auto-complete the sale once it's fully paid (client request
+            # 2026-07-25): the balance above is as-of *before* this payment and
+            # amount <= balance is enforced, so the new balance is
+            # balance - amount; == 0 means fully paid. The sale row is locked
+            # (get_sale_summary_for_update), so flipping its status here is
+            # race-safe and atomic with the payment. Only an 'active' sale is
+            # touched; the sale_changes row keeps the history (same as a manual
+            # status edit).
+            if balance - amount <= 0 and sale["status"] == "active":
+                completed = await sales_repository.mark_sale_completed(conn, sale_id)
+                if completed is not None:
+                    await sales_repository.insert_sale_change(
+                        conn,
+                        tenant_id,
+                        sale_id,
+                        actor_user_id,
+                        {"status": {"old": "active", "new": "completed"}},
+                        "auto: to'liq to'landi",
+                    )
             return row
         existing = await repository.get_payment_by_idempotency_key(conn, idempotency_key)
         if (
