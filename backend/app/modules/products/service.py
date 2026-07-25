@@ -157,3 +157,22 @@ async def get_photo_url(pool: asyncpg.Pool, tenant_id: UUID, product_id: UUID) -
     if product["photo_object_key"] is None:
         raise PhotoNotAvailableError
     return await presigned_get_url(product["photo_object_key"])
+
+
+# How many products to surface in the "most stocked" / "slow moving" lists.
+_WAREHOUSE_STATS_LIMIT = 5
+
+
+async def get_warehouse_stats(pool: asyncpg.Pool, tenant_id: UUID) -> dict:
+    async with tenant_connection(pool, tenant_id) as conn:
+        totals = await repository.get_warehouse_totals(conn)
+        total_value = await repository.get_warehouse_value_by_currency(conn)
+        most_stocked = await repository.get_most_stocked_products(conn, _WAREHOUSE_STATS_LIMIT)
+        slow_moving = await repository.get_slow_moving_products(conn, _WAREHOUSE_STATS_LIMIT)
+    return {
+        "total_products": totals["total_products"],
+        "total_units": totals["total_units"],
+        "total_value": total_value,
+        "most_stocked": most_stocked,
+        "slow_moving": slow_moving,
+    }

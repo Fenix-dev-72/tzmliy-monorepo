@@ -50,3 +50,29 @@ class ProductOut(BaseModel):
 
 class ProductPhotoUrlOut(BaseModel):
     photo_url: str
+
+
+class WarehouseCurrencyValueOut(BaseModel):
+    currency: str
+    value: int
+
+
+class WarehouseProductStatOut(BaseModel):
+    product_id: UUID
+    name: str
+    stock_quantity: int
+
+
+class WarehouseSlowMovingOut(BaseModel):
+    product_id: UUID
+    name: str
+    stock_quantity: int
+    last_sold_at: datetime | None
+
+
+class WarehouseStatsOut(BaseModel):
+    total_products: int
+    total_units: int
+    total_value: list[WarehouseCurrencyValueOut]
+    most_stocked: list[WarehouseProductStatOut]
+    slow_moving: list[WarehouseSlowMovingOut]

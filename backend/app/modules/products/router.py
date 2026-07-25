@@ -5,7 +5,14 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, 
 from app.core.deps import AuthContext, get_pool, require_permission
 from app.modules.auth.permissions import CATALOG_MANAGE, CATALOG_VIEW
 from app.modules.products import service
-from app.modules.products.schemas import ProductCreate, ProductOut, ProductPhotoUrlOut, ProductUpdate, StockAdjust
+from app.modules.products.schemas import (
+    ProductCreate,
+    ProductOut,
+    ProductPhotoUrlOut,
+    ProductUpdate,
+    StockAdjust,
+    WarehouseStatsOut,
+)
 
 router = APIRouter(prefix="/api/v1/products", tags=["products"])
 
@@ -42,6 +49,16 @@ async def list_products(
     auth: AuthContext = Depends(require_permission(CATALOG_VIEW)),
 ):
     return await service.list_products(pool, auth.tenant_id, category_id)
+
+
+@router.get("/warehouse-stats", response_model=WarehouseStatsOut)
+async def get_warehouse_stats(
+    pool=Depends(get_pool),
+    auth: AuthContext = Depends(require_permission(CATALOG_VIEW)),
+):
+    """Warehouse dashboard stats: total stock (units + retail value per
+    currency), the most-overstocked products, and the slowest-moving ones."""
+    return await service.get_warehouse_stats(pool, auth.tenant_id)
 
 
 @router.patch("/{product_id}", response_model=ProductOut)

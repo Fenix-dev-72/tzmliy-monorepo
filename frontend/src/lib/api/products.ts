@@ -57,3 +57,30 @@ export function uploadProductPhoto(accessToken: string, id: string, file: File) 
 export function getProductPhotoUrl(accessToken: string, id: string) {
   return apiFetch<{ photo_url: string }>(`/api/v1/products/${id}/photo-url`, { accessToken });
 }
+
+export interface WarehouseCurrencyValue {
+  currency: "UZS" | "USD";
+  value: number;
+}
+
+export interface WarehouseProductStat {
+  product_id: string;
+  name: string;
+  stock_quantity: number;
+}
+
+export interface WarehouseSlowMoving extends WarehouseProductStat {
+  last_sold_at: string | null;
+}
+
+export interface WarehouseStats {
+  total_products: number;
+  total_units: number;
+  total_value: WarehouseCurrencyValue[];
+  most_stocked: WarehouseProductStat[];
+  slow_moving: WarehouseSlowMoving[];
+}
+
+export function getWarehouseStats(accessToken: string) {
+  return apiFetch<WarehouseStats>("/api/v1/products/warehouse-stats", { accessToken });
+}

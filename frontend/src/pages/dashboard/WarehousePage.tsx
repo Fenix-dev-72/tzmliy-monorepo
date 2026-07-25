@@ -5,7 +5,7 @@ import { useLang } from "@/lib/i18n/LangContext";
 import { useTenantAuth } from "@/lib/auth/tenantAuthStore";
 import * as catalogApi from "@/lib/api/catalog";
 import * as productsApi from "@/lib/api/products";
-import type { Product } from "@/lib/api/products";
+import type { Product, WarehouseStats } from "@/lib/api/products";
 import { ApiError } from "@/lib/api/client";
 import { formatMoney } from "@/lib/format/money";
 import { stockStatus } from "@/lib/format/stock";
@@ -42,6 +42,14 @@ const content = {
     restocked: "Ombor to'ldirildi",
     corrected: "Ombor tuzatildi",
     invalidStock: "Sonni to'g'ri kiriting",
+    totalUnits: "Jami zaxira (dona)",
+    stockValue: "Qiymati",
+    mostStocked: "Eng ko'p qolgan",
+    slowMoving: "Uzoq sotilmagan",
+    daysAgo: "kun oldin",
+    today: "bugun",
+    neverSold: "Sotilmagan",
+    none: "—",
   },
   ru: {
     title: "Склад",
@@ -72,8 +80,20 @@ const content = {
     restocked: "Склад пополнен",
     corrected: "Склад скорректирован",
     invalidStock: "Укажите корректное количество",
+    totalUnits: "Всего на складе (шт)",
+    stockValue: "Стоимость",
+    mostStocked: "Больше всего остатка",
+    slowMoving: "Долго не продаётся",
+    daysAgo: "дн. назад",
+    today: "сегодня",
+    neverSold: "Не продавался",
+    none: "—",
   },
 };
+
+function daysSince(iso: string): number {
+  return Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000));
+}
 
 type T = (typeof content)["uz"];
 type Filter = "all" | "critical" | "low";
@@ -165,6 +185,7 @@ export function WarehousePage() {
   const canManage = user?.permissions.includes("catalog.manage") ?? false;
 
   const [products, setProducts] = useState<Product[] | null>(null);
+  const [stats, setStats] = useState<WarehouseStats | null>(null);
   const [categoryNames, setCategoryNames] = useState<Map<string, string>>(new Map());
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
@@ -174,8 +195,13 @@ export function WarehousePage() {
     if (!accessToken) return;
     setError(null);
     try {
-      const [productsData, tree] = await Promise.all([productsApi.listProducts(accessToken), catalogApi.listCategories(accessToken)]);
+      const [productsData, tree, statsData] = await Promise.all([
+        productsApi.listProducts(accessToken),
+        catalogApi.listCategories(accessToken),
+        productsApi.getWarehouseStats(accessToken),
+      ]);
       setProducts(productsData);
+      setStats(statsData);
       const map = new Map<string, string>();
       const walk = (nodes: typeof tree) => {
         for (const n of nodes) {
@@ -241,6 +267,65 @@ export function WarehousePage() {
             <StatCard label={t.criticalCount} value={criticalCount} color="#EF4444" />
             <StatCard label={t.lowCount} value={lowCount} color="#F59E0B" />
           </div>
+
+          {stats && (
+            <div className="mb-5 grid grid-cols-1 gap-4 sm:mb-6 lg:grid-cols-3">
+              <div className="glass-card p-4 sm:p-5">
+                <div className="mb-1 text-xs font-semibold text-foreground-muted">{t.totalUnits}</div>
+                <div className="font-mono text-2xl font-bold text-foreground">{stats.total_units}</div>
+                <div className="mt-2 space-y-0.5">
+                  {stats.total_value.length === 0 ? (
+                    <span className="text-xs text-foreground-muted">{t.none}</span>
+                  ) : (
+                    stats.total_value.map((v) => (
+                      <div key={v.currency} className="text-xs text-foreground-muted">
+                        {t.stockValue}:{" "}
+                        <span className="font-mono text-foreground">{formatMoney(v.value, v.currency)}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="glass-card p-4 sm:p-5">
+                <div className="mb-2.5 text-xs font-semibold text-foreground-muted">{t.mostStocked}</div>
+                {stats.most_stocked.length === 0 ? (
+                  <p className="text-xs text-foreground-muted">{t.none}</p>
+                ) : (
+                  <ul className="space-y-1.5">
+                    {stats.most_stocked.map((p) => (
+                      <li key={p.product_id} className="flex items-center justify-between gap-2 text-sm">
+                        <span className="min-w-0 flex-1 truncate text-foreground">{p.name}</span>
+                        <span className="font-mono shrink-0 text-xs font-semibold text-foreground-muted">
+                          {p.stock_quantity}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div className="glass-card p-4 sm:p-5">
+                <div className="mb-2.5 text-xs font-semibold text-foreground-muted">{t.slowMoving}</div>
+                {stats.slow_moving.length === 0 ? (
+                  <p className="text-xs text-foreground-muted">{t.none}</p>
+                ) : (
+                  <ul className="space-y-1.5">
+                    {stats.slow_moving.map((p) => {
+                      const d = p.last_sold_at === null ? null : daysSince(p.last_sold_at);
+                      const when = d === null ? t.neverSold : d === 0 ? t.today : `${d} ${t.daysAgo}`;
+                      return (
+                        <li key={p.product_id} className="flex items-center justify-between gap-2 text-sm">
+                          <span className="min-w-0 flex-1 truncate text-foreground">{p.name}</span>
+                          <span className="shrink-0 text-xs text-foreground-muted">{when}</span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="mb-5 flex gap-2 sm:mb-6">
             {(["all", "critical", "low"] as Filter[]).map((f) => (

@@ -86,3 +86,23 @@ async def set_product_photo(conn: asyncpg.Connection, product_id: UUID, photo_ob
 async def category_exists(conn: asyncpg.Connection, category_id: UUID) -> bool:
     row = await _queries.category_exists(conn, category_id=category_id)
     return row["exists"]
+
+
+async def get_warehouse_totals(conn: asyncpg.Connection) -> dict:
+    row = await _queries.get_warehouse_totals(conn)
+    return _row(row)
+
+
+async def get_warehouse_value_by_currency(conn: asyncpg.Connection) -> list[dict]:
+    rows = [row async for row in _queries.get_warehouse_value_by_currency(conn)]
+    return [dict(r) for r in rows]
+
+
+async def get_most_stocked_products(conn: asyncpg.Connection, limit: int) -> list[dict]:
+    rows = [row async for row in _queries.get_most_stocked_products(conn, limit=limit)]
+    return [dict(r) for r in rows]
+
+
+async def get_slow_moving_products(conn: asyncpg.Connection, limit: int) -> list[dict]:
+    rows = [row async for row in _queries.get_slow_moving_products(conn, limit=limit)]
+    return [dict(r) for r in rows]
