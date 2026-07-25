@@ -11,6 +11,16 @@
 --
 -- NOTE: permissions are embedded in the access token at issue time, so an
 -- affected admin must re-login (or refresh) for the change to take effect.
+--
+-- PROD RLS CAVEAT (found 2026-07-25): role_permissions carries FORCE ROW LEVEL
+-- SECURITY, and on prod the migrations owner role (dashboarduz_owner) is NOT a
+-- superuser and does NOT bypass RLS, while migrations run with no app.tenant_id
+-- set -- so this INSERT touches 0 rows there (same reason 0046's backfill never
+-- reached pre-existing tenants). It works on the local docker DB (owner is
+-- superuser). On prod it was applied by running the identical INSERT as the
+-- postgres superuser once (INSERT 0 16). Any future backfill INTO an RLS/FORCE
+-- table from a migration must account for this (run as superuser, or per-tenant
+-- with set_config('app.tenant_id', ...)).
 INSERT INTO role_permissions (role_id, tenant_id, permission_key)
 SELECT r.id, r.tenant_id, k.permission_key
 FROM roles r
