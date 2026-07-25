@@ -7,9 +7,31 @@ import * as analyticsApi from "@/lib/api/analytics";
 import type { ProductSalesEntry } from "@/lib/api/analytics";
 import { categoricalPalette } from "@/lib/format/chartColors";
 
+type Period = "day" | "week" | "month";
+
 const content = {
-  uz: { title: "Top mahsulotlar", seeAll: "Barchasini ko'rish", sold: "Sotilgan", unit: "dona", others: "Boshqalar", empty: "Hali savdolar mavjud emas" },
-  ru: { title: "Топ товаров", seeAll: "Смотреть все", sold: "Продано", unit: "шт", others: "Другое", empty: "Продаж пока нет" },
+  uz: {
+    title: "Top mahsulotlar",
+    seeAll: "Barchasini ko'rish",
+    sold: "Sotilgan",
+    unit: "dona",
+    others: "Boshqalar",
+    empty: "Bu davrda savdo bo'lmagan",
+    day: "Kunlik",
+    week: "Haftalik",
+    month: "Oylik",
+  },
+  ru: {
+    title: "Топ товаров",
+    seeAll: "Смотреть все",
+    sold: "Продано",
+    unit: "шт",
+    others: "Другое",
+    empty: "За этот период продаж нет",
+    day: "День",
+    week: "Неделя",
+    month: "Месяц",
+  },
 };
 
 // Show the biggest sellers as their own slices and fold the long tail into one
@@ -17,24 +39,37 @@ const content = {
 // cycled (dataviz rule), so the slice count never exceeds the palette length.
 const MAX_SLICES = 5;
 
+// Kunlik/Haftalik/Oylik = last 24h / 7d / 30d, matching the revenue-timeseries
+// toggle's own semantics elsewhere on this dashboard.
+const PERIOD_DAYS: Record<Period, number> = { day: 1, week: 7, month: 30 };
+
+function rangeFor(period: Period): { start: string; end: string } {
+  const now = new Date();
+  const start = new Date(now.getTime() - PERIOD_DAYS[period] * 24 * 60 * 60 * 1000);
+  return { start: start.toISOString(), end: now.toISOString() };
+}
+
 interface Slice {
   name: string;
   units: number;
   color: string;
 }
 
-export function TopProductsCard({ accessToken, periodStart, periodEnd }: { accessToken: string; periodStart: string; periodEnd: string }) {
+export function TopProductsCard({ accessToken }: { accessToken: string }) {
   const { lang } = useLang();
   const { isDark } = useThemeContext();
   const t = content[lang];
+  const [period, setPeriod] = useState<Period>("day");
   const [entries, setEntries] = useState<ProductSalesEntry[] | null>(null);
 
   useEffect(() => {
+    setEntries(null);
+    const { start, end } = rangeFor(period);
     analyticsApi
-      .getProductSales(accessToken, periodStart, periodEnd)
+      .getProductSales(accessToken, start, end)
       .then((rows) => setEntries([...rows].sort((a, b) => b.units_sold - a.units_sold)))
       .catch(() => setEntries([]));
-  }, [accessToken, periodStart, periodEnd]);
+  }, [accessToken, period]);
 
   const { slices, total } = useMemo(() => {
     const palette = categoricalPalette(isDark);
@@ -48,16 +83,37 @@ export function TopProductsCard({ accessToken, periodStart, periodEnd }: { acces
     return { slices: built, total: built.reduce((sum, s) => sum + s.units, 0) };
   }, [entries, isDark, t.others]);
 
+  const periods: { value: Period; label: string }[] = [
+    { value: "day", label: t.day },
+    { value: "week", label: t.week },
+    { value: "month", label: t.month },
+  ];
+
   return (
     <div className="glass-card flex h-full flex-col p-5 sm:p-6">
-      <div className="mb-4 flex items-center justify-between gap-2">
+      <div className="mb-3 flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-foreground">{t.title}</h3>
         <Link to="/dashboard/course-sales" className="text-primary text-xs font-semibold whitespace-nowrap">
           {t.seeAll}
         </Link>
       </div>
 
-      {entries === null && <div className="bg-accent/60 h-44 flex-1 animate-pulse rounded-xl" />}
+      <div className="mb-4 flex gap-1.5">
+        {periods.map((p) => (
+          <button
+            key={p.value}
+            type="button"
+            onClick={() => setPeriod(p.value)}
+            className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors ${
+              period === p.value ? "bg-primary/12 text-primary" : "text-foreground-muted hover:bg-accent"
+            }`}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+
+      {entries === null && <div className="bg-accent/60 h-40 flex-1 animate-pulse rounded-xl" />}
 
       {entries !== null && slices.length === 0 && (
         <div className="flex flex-1 items-center justify-center py-6">

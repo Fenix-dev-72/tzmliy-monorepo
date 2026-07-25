@@ -285,7 +285,7 @@ export function DashboardPage() {
 
           <div className="mb-5 grid grid-cols-1 items-stretch gap-4 sm:mb-6 xl:grid-cols-3">
             <TopSellersTable accessToken={accessToken} />
-            <TopProductsCard accessToken={accessToken} periodStart={periodStart} periodEnd={periodEnd} />
+            <TopProductsCard accessToken={accessToken} />
             <LatestOrdersTable accessToken={accessToken} />
           </div>
 
