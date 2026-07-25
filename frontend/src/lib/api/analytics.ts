@@ -49,6 +49,20 @@ export function getCourseSales(accessToken: string, periodStart?: string, period
   return apiFetch<CategorySalesEntry[]>(`/api/v1/analytics/course-sales${query}`, { accessToken });
 }
 
+export interface ProductSalesEntry {
+  product_id: string;
+  product_name: string;
+  units_sold: number;
+}
+
+export function getProductSales(accessToken: string, periodStart?: string, periodEnd?: string) {
+  const params = new URLSearchParams();
+  if (periodStart) params.set("period_start", periodStart);
+  if (periodEnd) params.set("period_end", periodEnd);
+  const query = params.toString() ? `?${params.toString()}` : "";
+  return apiFetch<ProductSalesEntry[]>(`/api/v1/analytics/product-sales${query}`, { accessToken });
+}
+
 export interface SellerSalesByMode {
   mode: "online" | "offline" | "intensive" | null;
   currency: string;

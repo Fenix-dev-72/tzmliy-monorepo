@@ -77,6 +77,18 @@ async def get_category_sales_summary(
     return _rows(rows)
 
 
+async def get_product_sales_summary(
+    conn: asyncpg.Connection, period_start: datetime, period_end: datetime, caller_id: UUID, can_view_all: bool
+) -> list[dict]:
+    rows = [
+        row
+        async for row in _queries.get_product_sales_summary(
+            conn, period_start=period_start, period_end=period_end, caller_id=caller_id, can_view_all=can_view_all
+        )
+    ]
+    return _rows(rows)
+
+
 async def get_sales_totals_by_currency(
     conn: asyncpg.Connection, period_start: datetime, period_end: datetime, caller_id: UUID, can_view_all: bool
 ) -> list[dict]:

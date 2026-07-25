@@ -132,6 +132,18 @@ async def get_category_sales_summary(
         return await repository.get_category_sales_summary(conn, period_start, period_end, caller_id, can_view_all)
 
 
+async def get_product_sales_summary(
+    replica_pool: asyncpg.Pool,
+    tenant_id: UUID,
+    period_start: datetime,
+    period_end: datetime,
+    caller_id: UUID,
+    can_view_all: bool,
+) -> list[dict]:
+    async with read_tenant_connection(replica_pool, tenant_id) as conn:
+        return await repository.get_product_sales_summary(conn, period_start, period_end, caller_id, can_view_all)
+
+
 async def get_dashboard_summary(
     replica_pool: asyncpg.Pool,
     tenant_id: UUID,

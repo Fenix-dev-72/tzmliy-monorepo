@@ -66,6 +66,23 @@ WHERE s.created_at >= :period_start AND s.created_at < :period_end
 GROUP BY s.catalog_category_id, cc.name, s.currency
 ORDER BY total_amount DESC;
 
+-- name: get_product_sales_summary
+-- Product-level "top products" for the dashboard donut (2026-07-25): units sold
+-- per product from sales.product_id + quantity. Only product-linked sales
+-- (product_id NOT NULL) -- category/course sales stay in
+-- get_category_sales_summary above. Currency is not grouped on: units are units
+-- regardless of price currency, so a product is one slice. Own-data scoping
+-- like get_leaderboard.
+SELECT s.product_id AS product_id, p.name AS product_name,
+       COALESCE(SUM(s.quantity), 0)::bigint AS units_sold
+FROM sales s
+JOIN products p ON p.id = s.product_id
+WHERE s.product_id IS NOT NULL
+  AND s.created_at >= :period_start AND s.created_at < :period_end
+  AND (:can_view_all OR s.responsible_user_id = :caller_id)
+GROUP BY s.product_id, p.name
+ORDER BY units_sold DESC;
+
 -- name: get_sales_totals_by_currency
 -- Own-data scoping (2026-07-22): see get_leaderboard above.
 SELECT currency, COUNT(*) AS sales_count, COALESCE(SUM(price_amount), 0)::bigint AS total_amount

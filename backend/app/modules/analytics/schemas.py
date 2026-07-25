@@ -43,6 +43,12 @@ class CategorySalesEntryOut(BaseModel):
     total_amount: int
 
 
+class ProductSalesEntryOut(BaseModel):
+    product_id: UUID
+    product_name: str
+    units_sold: int
+
+
 class CurrencyTotalOut(BaseModel):
     currency: str
     total_amount: int

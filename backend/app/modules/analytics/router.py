@@ -28,6 +28,7 @@ from app.modules.analytics.schemas import (
     DebtSummaryOut,
     LeaderboardEntryOut,
     LeadQualitySummaryOut,
+    ProductSalesEntryOut,
     RevenueBucketOut,
     SellerKpisOut,
 )
@@ -163,6 +164,23 @@ async def get_course_sales(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "period_end must be after period_start")
     can_view_all = SALES_VIEW_ALL in auth.permissions
     return await service.get_category_sales_summary(replica_pool, auth.tenant_id, start, end, auth.user_id, can_view_all)
+
+
+@router.get("/product-sales", response_model=list[ProductSalesEntryOut])
+async def get_product_sales(
+    period_start: datetime | None = None,
+    period_end: datetime | None = None,
+    replica_pool=Depends(get_replica_pool),
+    auth: AuthContext = Depends(require_permission(ANALYTICS_VIEW)),
+):
+    """Units sold per product (for the dashboard "Top mahsulotlar" donut).
+    Same period/own-data-scoping contract as /course-sales."""
+    try:
+        start, end = service.resolve_period(period_start, period_end)
+    except service.InvalidPeriodError:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "period_end must be after period_start")
+    can_view_all = SALES_VIEW_ALL in auth.permissions
+    return await service.get_product_sales_summary(replica_pool, auth.tenant_id, start, end, auth.user_id, can_view_all)
 
 
 @router.get("/summary", response_model=DashboardSummaryOut)
