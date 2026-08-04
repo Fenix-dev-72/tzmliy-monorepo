@@ -1,5 +1,12 @@
 const BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
+// Envelope shape for numbered-pagination list endpoints (2026-07-28) --
+// mirrors the backend's `app.core.pagination.Paginated[T]` response model.
+export interface Paginated<T> {
+  items: T[];
+  total: number;
+}
+
 export class ApiError extends Error {
   status: number;
   detail: string;

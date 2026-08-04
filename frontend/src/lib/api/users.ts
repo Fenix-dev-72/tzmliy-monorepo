@@ -1,4 +1,4 @@
-import { apiFetch } from "./client";
+import { apiFetch, type Paginated } from "./client";
 
 export interface TenantUserRow {
   id: string;
@@ -19,7 +19,8 @@ export function createUser(
   return apiFetch<TenantUserRow>("/api/v1/users", { method: "POST", accessToken, body });
 }
 
-export const USERS_PAGE_SIZE = 20;
+// 7 per page (2026-07-28) -- numbered pagination, not "load more".
+export const USERS_PAGE_SIZE = 7;
 
 // Callers that need every user for a lookup/dropdown (not the paginated
 // Users management page itself) should pass USERS_DROPDOWN_LIMIT explicitly
@@ -28,7 +29,7 @@ export const USERS_DROPDOWN_LIMIT = 200;
 
 export function listUsers(accessToken: string, limit = USERS_PAGE_SIZE, offset = 0) {
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
-  return apiFetch<TenantUserRow[]>(`/api/v1/users?${params.toString()}`, { accessToken });
+  return apiFetch<Paginated<TenantUserRow>>(`/api/v1/users?${params.toString()}`, { accessToken });
 }
 
 export function updateUserRole(accessToken: string, userId: string, roleId: string) {

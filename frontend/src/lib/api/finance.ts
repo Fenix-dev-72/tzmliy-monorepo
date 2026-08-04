@@ -1,4 +1,4 @@
-import { apiFetch, newIdempotencyKey } from "./client";
+import { apiFetch, newIdempotencyKey, type Paginated } from "./client";
 
 export type PaymentMethod = "cash" | "card" | "click" | "payme" | "manual";
 export type AdjustmentType = "refund" | "tariff_change";
@@ -214,12 +214,13 @@ export function getPayrollJobStatus(accessToken: string, jobId: string) {
   return apiFetch<PayrollJob>(`/api/v1/finance/payroll/jobs/${jobId}`, { accessToken });
 }
 
-export const PAYROLL_ENTRIES_PAGE_SIZE = 50;
+// 7 per page (2026-07-28) -- numbered pagination, not "load more".
+export const PAYROLL_ENTRIES_PAGE_SIZE = 7;
 
 export function listPayrollEntries(accessToken: string, userId?: string, limit = PAYROLL_ENTRIES_PAGE_SIZE, offset = 0) {
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   if (userId) params.set("user_id", userId);
-  return apiFetch<PayrollEntry[]>(`/api/v1/finance/payroll?${params.toString()}`, { accessToken });
+  return apiFetch<Paginated<PayrollEntry>>(`/api/v1/finance/payroll?${params.toString()}`, { accessToken });
 }
 
 export interface ProfitSummaryEntry {
@@ -236,6 +237,9 @@ export function getProfitSummary(accessToken: string, periodStart: string, perio
 
 // Minimal read, just for the bonus-plan role picker -- full roles
 // management (create role, edit permissions) lands in Faza B's lib/api/roles.ts.
-export function listRolesForSelect(accessToken: string) {
-  return apiFetch<{ id: string; name: string }[]>("/api/v1/roles", { accessToken });
+// limit=200 (the backend's max) -- this is a dropdown, not the paginated
+// Roles management page, same convention as customers/users' *_DROPDOWN_LIMIT.
+export async function listRolesForSelect(accessToken: string) {
+  const result = await apiFetch<Paginated<{ id: string; name: string }>>("/api/v1/roles?limit=200", { accessToken });
+  return result.items;
 }

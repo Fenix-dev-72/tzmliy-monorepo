@@ -1,4 +1,4 @@
-import { apiFetch } from "./client";
+import { apiFetch, type Paginated } from "./client";
 
 export interface Call {
   id: string;
@@ -36,12 +36,22 @@ export interface ManagerMapping {
   created_at: string;
 }
 
-export const CALLS_PAGE_SIZE = 50;
+// 7 per page (2026-07-28) -- numbered pagination, not "load more".
+export const CALLS_PAGE_SIZE = 7;
 
-export function listCalls(accessToken: string, responsibleUserId?: string, limit = CALLS_PAGE_SIZE, offset = 0) {
+export function listCalls(
+  accessToken: string,
+  responsibleUserId?: string,
+  limit = CALLS_PAGE_SIZE,
+  offset = 0,
+  status?: string,
+  q?: string,
+) {
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   if (responsibleUserId) params.set("responsible_user_id", responsibleUserId);
-  return apiFetch<Call[]>(`/api/v1/calls/calls?${params.toString()}`, { accessToken });
+  if (status) params.set("status", status);
+  if (q) params.set("q", q);
+  return apiFetch<Paginated<Call>>(`/api/v1/calls/calls?${params.toString()}`, { accessToken });
 }
 
 export function getRecordingUrl(accessToken: string, callId: string) {

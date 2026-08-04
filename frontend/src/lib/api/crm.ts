@@ -1,4 +1,4 @@
-import { apiFetch } from "./client";
+import { apiFetch, type Paginated } from "./client";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
@@ -129,8 +129,12 @@ export function subscribeLeads(
   return () => controller.abort();
 }
 
-export function listAdCampaigns(accessToken: string) {
-  return apiFetch<AdCampaign[]>("/api/v1/crm/ad-campaigns", { accessToken });
+// 7 per page (2026-07-28) -- numbered pagination, not an unbounded list.
+export const AD_CAMPAIGNS_PAGE_SIZE = 7;
+
+export function listAdCampaigns(accessToken: string, limit = AD_CAMPAIGNS_PAGE_SIZE, offset = 0) {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  return apiFetch<Paginated<AdCampaign>>(`/api/v1/crm/ad-campaigns?${params.toString()}`, { accessToken });
 }
 
 export function listAdInsights(accessToken: string, campaignId?: string) {

@@ -1,4 +1,4 @@
-import { apiFetch, newIdempotencyKey } from "./client";
+import { apiFetch, newIdempotencyKey, type Paginated } from "./client";
 
 export type SaleStatus = "active" | "completed" | "cancelled";
 export type DeliveryMode = "online" | "offline" | "intensive";
@@ -37,11 +37,12 @@ export interface SaleCreateInput {
   quantity?: number;
 }
 
-export const SALES_PAGE_SIZE = 50;
+// 7 per page (2026-07-28) -- numbered pagination, not "load more".
+export const SALES_PAGE_SIZE = 7;
 
 export function listSales(accessToken: string, limit = SALES_PAGE_SIZE, offset = 0) {
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
-  return apiFetch<Sale[]>(`/api/v1/sales?${params.toString()}`, { accessToken });
+  return apiFetch<Paginated<Sale>>(`/api/v1/sales?${params.toString()}`, { accessToken });
 }
 
 export function createSale(accessToken: string, body: SaleCreateInput) {
