@@ -1,81 +1,87 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* Light mode — premium enterprise blue/orange (2026-07-16 reskin) */
-  --background: #f8fafc;
+  /* Light mode — navy/gold (2026-07-27 reskin, ported from the Claude Design
+     mockup "Tizimly Dashboard.dc.html" -- see project_frontend memory /
+     the dashboard-redesign plan for the source palette). */
+  --background: #f2f5fa;
   --background-alt: #ffffff;
-  --foreground: #0f172a;
-  --foreground-muted: #64748b;
+  --foreground: #0f1729;
+  --foreground-muted: #5b6779;
   --card: #ffffff;
-  --card-foreground: #0f172a;
-  --card-border: #e5e7eb;
+  --card-foreground: #0f1729;
+  --card-border: rgba(15, 23, 42, 0.1);
   --popover: #ffffff;
-  --popover-foreground: #0f172a;
-  --primary: #2563eb;
+  --popover-foreground: #0f1729;
+  --primary: #2f6fe4;
   --primary-foreground: #ffffff;
-  --accent-orange: #f97316;
-  --accent-orange-foreground: #ffffff;
-  /* Legacy gold-named tokens kept for the classes below (auth/landing still
-     use .gold-gradient-bg/.gold-hairline) -- repointed to the new primary
-     blue rather than renamed, so those out-of-scope pages stay coherent
-     without a repo-wide rename. */
-  --gold-solid: #2563eb;
-  --gold-grad-from: #2563eb;
-  --gold-grad-via: #3b82f6;
-  --gold-grad-to: #1d4ed8;
+  /* The mockup's single accent color (`--accent: #E8B429`) -- deliberately
+     not theme-swapped between light/dark, same as the source design, and
+     deliberately dark text on top (a light gold reads poorly with white
+     text at any reasonable contrast). */
+  --accent-orange: #e8b429;
+  --accent-orange-foreground: #0a101e;
+  --gold-solid: #e8b429;
+  --gold-grad-from: #f3cb6b;
+  --gold-grad-via: #e8b429;
+  --gold-grad-to: #b8860b;
   --secondary: #1e3a8a;
   --secondary-foreground: #ffffff;
   --muted: #f1f5f9;
   --muted-foreground: #64748b;
   --accent: #eef2f6;
-  --accent-foreground: #0f172a;
-  --destructive: #ef4444;
+  --accent-foreground: #0f1729;
+  --destructive: #f87171;
   --destructive-foreground: #ffffff;
-  --success: #10b981;
-  --danger: #ef4444;
+  --success: #34d399;
+  --danger: #f87171;
   --warning: #f59e0b;
-  --border: #e5e7eb;
-  --input-bg: #f8fafc;
+  --border: rgba(15, 23, 42, 0.1);
+  --input-bg: #f2f5fa;
   --switch-background: #e5e7eb;
-  --ring: #2563eb;
-  --radius: 1.125rem;
+  --ring: #2f6fe4;
+  /* 2026-07-27 recalibrated to match the mockup's crisper corner scale
+     (buttons/inputs ~9-11px, panels ~16px, modals ~20px) -- was 1.125rem
+     (18px), which put rounded-2xl (glass-card's radius) at 26px, much
+     softer/rounder than the mockup calls for. */
+  --radius: 0.4375rem;
 }
 
 .dark {
-  /* Dark mode — same blue/orange brand, navy-black base kept as a legitimate
-     second theme (2026-07-16 reskin) */
-  --background: #0a0e1a;
-  --background-alt: #0d1530;
-  --foreground: #f5f6fa;
-  --foreground-muted: #8a93a8;
-  --card: #111828;
-  --card-foreground: #f5f6fa;
-  --card-border: #2a3348;
-  --popover: #111828;
-  --popover-foreground: #f5f6fa;
-  --primary: #3b82f6;
-  --primary-foreground: #ffffff;
-  --accent-orange: #fb923c;
-  --accent-orange-foreground: #0a0e1a;
-  --gold-solid: #3b82f6;
-  --gold-grad-from: #3b82f6;
-  --gold-grad-via: #60a5fa;
-  --gold-grad-to: #2563eb;
+  /* Dark mode — navy/gold (2026-07-27 reskin, ported from the Claude Design
+     mockup "Tizimly Dashboard.dc.html"). */
+  --background: #0a101e;
+  --background-alt: #101a2e;
+  --foreground: #eaf0fa;
+  --foreground-muted: #8b98ae;
+  --card: #101a2e;
+  --card-foreground: #eaf0fa;
+  --card-border: rgba(148, 163, 184, 0.14);
+  --popover: #101a2e;
+  --popover-foreground: #eaf0fa;
+  --primary: #60a5fa;
+  --primary-foreground: #0a101e;
+  --accent-orange: #e8b429;
+  --accent-orange-foreground: #0a101e;
+  --gold-solid: #e8b429;
+  --gold-grad-from: #f3cb6b;
+  --gold-grad-via: #e8b429;
+  --gold-grad-to: #b8860b;
   --secondary: #4c6fff;
-  --secondary-foreground: #f5f6fa;
-  --muted: rgba(42, 51, 72, 0.5);
-  --muted-foreground: #8a93a8;
-  --accent: rgba(42, 51, 72, 0.4);
-  --accent-foreground: #f5f6fa;
-  --destructive: #ef4444;
-  --destructive-foreground: #f5f6fa;
-  --success: #10b981;
-  --danger: #ef4444;
+  --secondary-foreground: #eaf0fa;
+  --muted: rgba(148, 163, 184, 0.12);
+  --muted-foreground: #8b98ae;
+  --accent: #16213a;
+  --accent-foreground: #eaf0fa;
+  --destructive: #f87171;
+  --destructive-foreground: #eaf0fa;
+  --success: #34d399;
+  --danger: #f87171;
   --warning: #f59e0b;
-  --border: #2a3348;
-  --input-bg: #111828;
+  --border: rgba(148, 163, 184, 0.14);
+  --input-bg: #101a2e;
   --switch-background: #2a3348;
-  --ring: #3b82f6;
+  --ring: #60a5fa;
 }
 
 @theme inline {
@@ -117,6 +123,16 @@
   --radius-md: calc(var(--radius) - 4px);
   --radius-sm: calc(var(--radius) - 8px);
   --radius-xl: calc(var(--radius) + 4px);
+  /* 2xl/3xl added 2026-07-27 -- a bare `@theme` radius namespace in Tailwind
+     v4 only generates utilities for the keys it actually lists (no implicit
+     fallback to the framework default scale), so omitting these silently
+     broke every `rounded-2xl`/`rounded-3xl` use (incl. the pre-existing
+     `.glass-card`'s `@apply ... rounded-2xl ...`) -- confirmed live via the
+     dev server's own Vite error overlay ("Cannot apply unknown utility class
+     `rounded-2xl`"). Keep this list matching whatever `rounded-*` sizes are
+     actually used in `src/` (`grep -rohE "rounded-(t-|b-|l-|r-)?(2xl|3xl)"`). */
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 14px);
 
   --font-heading: "Manrope", "Inter", sans-serif;
   --font-body: "Inter", sans-serif;
@@ -176,6 +192,19 @@
      "soft shadows, subtle glassmorphism, high whitespace" instead. */
   .glass-card {
     @apply bg-card/95 border-card-border rounded-2xl border shadow-sm backdrop-blur-md;
+  }
+
+  /* Hides the native OS scrollbar (Windows' arrow-button scrollbar showed up
+     on the collapsed 68px desktop sidebar rail, which has no room for it and
+     doesn't match the mockup's chrome-free nav) while keeping the element
+     scrollable via wheel/touch/keyboard. */
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
   }
 
   .dark .glass-card {

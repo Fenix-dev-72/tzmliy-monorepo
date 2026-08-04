@@ -9,7 +9,11 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        gold: "gold-gradient-bg text-[#0A0E1A] shadow-[0_8px_28px_rgba(212,175,55,0.35)] hover:opacity-90",
+        // Flat solid accent fill, matching the mockup's CTA button recipe
+        // (background:var(--accent), hover:filter:brightness(1.08)) -- the
+        // gradient (gold-gradient-bg) stays reserved for landing-page hero
+        // moments per its own doc comment in theme.css, not everyday buttons.
+        gold: "bg-accent-orange text-accent-orange-foreground shadow-[0_6px_18px_rgba(232,180,41,0.35)] hover:brightness-[1.08]",
         outline:
           "border border-card-border bg-transparent text-foreground-muted hover:bg-accent",
         ghost: "text-foreground-muted hover:bg-accent hover:text-foreground",
