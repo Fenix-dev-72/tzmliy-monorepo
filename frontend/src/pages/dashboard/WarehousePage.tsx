@@ -11,6 +11,7 @@ import { formatMoney } from "@/lib/format/money";
 import { stockStatus } from "@/lib/format/stock";
 import { ProductPhoto } from "@/components/shared/ProductPhoto";
 import { Button } from "@/components/ui/button";
+import { DashboardPageContainer } from "@/components/shared/DashboardPageContainer";
 
 const content = {
   uz: {
@@ -238,7 +239,7 @@ export function WarehousePage() {
   }, [sorted, filter]);
 
   return (
-    <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10">
+    <DashboardPageContainer>
       <div className="mb-6 flex items-center gap-2.5">
         <Warehouse size={22} className="text-primary" />
         <div>
@@ -333,7 +334,7 @@ export function WarehousePage() {
                 key={f}
                 onClick={() => setFilter(f)}
                 className={`rounded-xl px-4 py-2 text-sm font-semibold transition-colors ${
-                  filter === f ? "bg-primary text-primary-foreground" : "glass-card text-foreground-muted hover:text-foreground"
+                  filter === f ? "bg-accent-orange text-accent-orange-foreground" : "glass-card text-foreground-muted hover:text-foreground"
                 }`}
               >
                 {f === "all" ? t.filterAll : f === "critical" ? t.filterCritical : t.filterLow}
@@ -415,6 +416,6 @@ export function WarehousePage() {
           }}
         />
       )}
-    </main>
+    </DashboardPageContainer>
   );
 }

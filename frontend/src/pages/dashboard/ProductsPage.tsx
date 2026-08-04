@@ -25,6 +25,7 @@ import { stockStatus } from "@/lib/format/stock";
 import { ProductPhoto } from "@/components/shared/ProductPhoto";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
+import { DashboardPageContainer } from "@/components/shared/DashboardPageContainer";
 
 const content = {
   uz: {
@@ -207,7 +208,7 @@ function CategoryTreeItem({
     <div>
       <div
         className={`group flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm ${
-          selectedId === node.id ? "bg-primary/10 text-primary font-semibold" : "text-foreground hover:bg-accent"
+          selectedId === node.id ? "bg-accent-orange/10 text-accent-orange font-semibold" : "text-foreground hover:bg-accent"
         }`}
       >
         <button onClick={() => onSelect(node.id)} className="min-w-0 flex-1 truncate text-left">
@@ -565,7 +566,7 @@ export function ProductsPage() {
   const totalCount = products?.length ?? 0;
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10">
+    <DashboardPageContainer>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="font-heading mb-1 text-xl font-extrabold text-foreground sm:text-2xl">{t.title}</h1>
@@ -617,7 +618,7 @@ export function ProductsPage() {
             <button
               onClick={() => setSelectedCategoryId(null)}
               className={`mb-1 flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm ${
-                selectedCategoryId === null ? "bg-primary/10 text-primary font-semibold" : "text-foreground hover:bg-accent"
+                selectedCategoryId === null ? "bg-accent-orange/10 text-accent-orange font-semibold" : "text-foreground hover:bg-accent"
               }`}
             >
               <Layers size={13} className="shrink-0" />
@@ -785,6 +786,6 @@ export function ProductsPage() {
         onConfirm={handleDeleteProduct}
         onCancel={() => setDeleteTarget(null)}
       />
-    </main>
+    </DashboardPageContainer>
   );
 }
