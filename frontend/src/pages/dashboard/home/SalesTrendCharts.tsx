@@ -1,12 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown } from "lucide-react";
-import { Area, AreaChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { useEffect, useMemo, useState } from "react";
+import { Bar, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useLang } from "@/lib/i18n/LangContext";
 import { useThemeContext } from "@/lib/theme/ThemeContext";
 import * as analyticsApi from "@/lib/api/analytics";
 import type { RevenueBucket, RevenuePeriod } from "@/lib/api/analytics";
 import { formatMoney } from "@/lib/format/money";
-import { categoricalPalette, CHART_AXIS_DARK, CHART_AXIS_LIGHT, CHART_GRID_DARK, CHART_GRID_LIGHT } from "@/lib/format/chartColors";
+import { CHART_AXIS_DARK, CHART_AXIS_LIGHT, CHART_GRID_DARK, CHART_GRID_LIGHT } from "@/lib/format/chartColors";
 
 const content = {
   uz: {
@@ -37,7 +36,10 @@ function formatBucketTick(iso: string, period: RevenuePeriod, lang: "uz" | "ru")
     : d.toLocaleDateString(locale, { day: "2-digit", month: "2-digit" });
 }
 
-function PeriodDropdown({
+// Always-visible 3-way segmented control (2026-07-27 redesign) -- replaces
+// the previous single-button+dropdown menu to match the new mockup, where
+// Kunlik/Haftalik/Oylik sit side by side with the active one gold-filled.
+function PeriodSegmented({
   period,
   onChange,
   options,
@@ -46,47 +48,19 @@ function PeriodDropdown({
   onChange: (p: RevenuePeriod) => void;
   options: { value: RevenuePeriod; label: string }[];
 }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function onClickOutside(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", onClickOutside);
-    return () => document.removeEventListener("mousedown", onClickOutside);
-  }, [open]);
-
-  const current = options.find((o) => o.value === period);
-
   return (
-    <div className="relative shrink-0" ref={ref}>
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className="bg-primary text-primary-foreground flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold"
-      >
-        {current?.label}
-        <ChevronDown size={13} className={`transition-transform ${open ? "rotate-180" : ""}`} />
-      </button>
-      {open && (
-        <div className="glass-card absolute top-full right-0 z-10 mt-1 w-32 overflow-hidden p-1">
-          {options.map((opt) => (
-            <button
-              key={opt.value}
-              onClick={() => {
-                onChange(opt.value);
-                setOpen(false);
-              }}
-              className={`w-full rounded-lg px-3 py-1.5 text-left text-xs font-medium transition-colors ${
-                opt.value === period ? "bg-primary/12 text-primary" : "text-foreground hover:bg-accent"
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-      )}
+    <div className="bg-accent border-card-border flex shrink-0 items-center gap-0.5 rounded-lg border p-0.5">
+      {options.map((opt) => (
+        <button
+          key={opt.value}
+          onClick={() => onChange(opt.value)}
+          className={`rounded-md px-2.5 py-1 text-xs font-semibold whitespace-nowrap transition-colors ${
+            opt.value === period ? "bg-accent-orange text-accent-orange-foreground" : "text-foreground-muted hover:text-foreground"
+          }`}
+        >
+          {opt.label}
+        </button>
+      ))}
     </div>
   );
 }
@@ -113,7 +87,6 @@ function CurrencyChartCard({ accessToken, currency, delayMs }: { accessToken: st
       }));
   }, [timeseries, currency, period, lang]);
 
-  const palette = categoricalPalette(isDark);
   const axisColor = isDark ? CHART_AXIS_DARK : CHART_AXIS_LIGHT;
   const gridColor = isDark ? CHART_GRID_DARK : CHART_GRID_LIGHT;
 
@@ -129,7 +102,7 @@ function CurrencyChartCard({ accessToken, currency, delayMs }: { accessToken: st
         <h3 className="text-sm font-semibold text-foreground">
           {currency} {t.salesDynamics}
         </h3>
-        <PeriodDropdown period={period} onChange={setPeriod} options={periodOptions} />
+        <PeriodSegmented period={period} onChange={setPeriod} options={periodOptions} />
       </div>
 
       {timeseries !== null && data.length === 0 ? (
@@ -138,18 +111,18 @@ function CurrencyChartCard({ accessToken, currency, delayMs }: { accessToken: st
         </div>
       ) : (
         <ResponsiveContainer width="100%" height={220}>
-          <AreaChart data={data} margin={{ left: 0, right: 16, top: 8, bottom: 4 }}>
+          <ComposedChart data={data} margin={{ left: 0, right: 16, top: 8, bottom: 4 }}>
             <defs>
-              <linearGradient id={`salesGrad-${currency}`} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={palette[0]} stopOpacity={0.35} />
-                <stop offset="100%" stopColor={palette[0]} stopOpacity={0} />
-              </linearGradient>
-              <linearGradient id={`collectedGrad-${currency}`} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={palette[1]} stopOpacity={0.3} />
-                <stop offset="100%" stopColor={palette[1]} stopOpacity={0} />
+              {/* Gold bar fill fading toward the baseline + a soft green glow
+                  under the collected line -- matches the mockup's bar+line
+                  combo chart recipe exactly (accent bars, green line/dots),
+                  not a generic two-series area chart. */}
+              <linearGradient id={`salesBarGrad-${currency}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="var(--accent-orange)" stopOpacity={0.95} />
+                <stop offset="100%" stopColor="var(--accent-orange)" stopOpacity={0.15} />
               </linearGradient>
             </defs>
-            <CartesianGrid vertical={false} stroke={gridColor} />
+            <CartesianGrid vertical={false} stroke={gridColor} strokeDasharray="3 6" />
             <XAxis
               dataKey="label"
               tick={{ fill: axisColor, fontSize: 11 }}
@@ -174,27 +147,17 @@ function CurrencyChartCard({ accessToken, currency, delayMs }: { accessToken: st
               formatter={(value) => formatMoney(Number(value), currency)}
             />
             <Legend wrapperStyle={{ fontSize: 12, color: axisColor }} />
-            <Area
-              type="monotone"
-              dataKey="sales"
-              name={t.seriesSales}
-              stroke={palette[0]}
-              fill={`url(#salesGrad-${currency})`}
-              strokeWidth={2}
-              dot={{ r: 2 }}
-              activeDot={{ r: 4 }}
-            />
-            <Area
+            <Bar dataKey="sales" name={t.seriesSales} fill={`url(#salesBarGrad-${currency})`} radius={[6, 6, 0, 0]} maxBarSize={36} />
+            <Line
               type="monotone"
               dataKey="collected"
               name={t.seriesCollected}
-              stroke={palette[1]}
-              fill={`url(#collectedGrad-${currency})`}
-              strokeWidth={2}
-              dot={{ r: 2 }}
-              activeDot={{ r: 4 }}
+              stroke="var(--success)"
+              strokeWidth={2.5}
+              dot={{ r: 3, fill: "var(--success)", strokeWidth: 0 }}
+              activeDot={{ r: 5 }}
             />
-          </AreaChart>
+          </ComposedChart>
         </ResponsiveContainer>
       )}
     </div>

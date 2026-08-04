@@ -62,10 +62,12 @@ export function ActiveEmployeesCard() {
 
   useEffect(() => {
     if (!accessToken || !canView) return;
-    Promise.all([attendanceApi.listAttendance(accessToken), usersApi.listUsers(accessToken, USERS_DROPDOWN_LIMIT)])
+    // limit=200 -- this widget needs every currently-open record tenant-wide
+    // to know who's actively checked in, not a paginated recent-history page.
+    Promise.all([attendanceApi.listAttendance(accessToken, undefined, 200), usersApi.listUsers(accessToken, USERS_DROPDOWN_LIMIT)])
       .then(([records, usersData]) => {
-        setOpenRecords(records.filter((r) => r.check_out_at === null));
-        setUsers(usersData);
+        setOpenRecords(records.items.filter((r) => r.check_out_at === null));
+        setUsers(usersData.items);
       })
       .catch(() => {
         setOpenRecords([]);

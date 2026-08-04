@@ -50,8 +50,14 @@ export function LatestOrdersTable({ accessToken }: { accessToken: string }) {
   const [customers, setCustomers] = useState<Customer[]>([]);
 
   useEffect(() => {
-    salesApi.listSales(accessToken, LATEST_ORDERS_LIMIT).then(setSales).catch(() => setSales([]));
-    customersApi.listCustomers(accessToken, CUSTOMER_LOOKUP_LIMIT).then(setCustomers).catch(() => {});
+    salesApi
+      .listSales(accessToken, LATEST_ORDERS_LIMIT)
+      .then((r) => setSales(r.items))
+      .catch(() => setSales([]));
+    customersApi
+      .listCustomers(accessToken, CUSTOMER_LOOKUP_LIMIT)
+      .then((r) => setCustomers(r.items))
+      .catch(() => {});
   }, [accessToken]);
 
   const customerName = useMemo(() => {

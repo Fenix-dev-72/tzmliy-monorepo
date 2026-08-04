@@ -105,7 +105,7 @@ export function TopProductsCard({ accessToken }: { accessToken: string }) {
             type="button"
             onClick={() => setPeriod(p.value)}
             className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors ${
-              period === p.value ? "bg-primary/12 text-primary" : "text-foreground-muted hover:bg-accent"
+              period === p.value ? "bg-accent-orange/12 text-accent-orange" : "text-foreground-muted hover:bg-accent"
             }`}
           >
             {p.label}
@@ -130,9 +130,15 @@ export function TopProductsCard({ accessToken }: { accessToken: string }) {
                   data={slices}
                   dataKey="units"
                   nameKey="name"
-                  innerRadius="62%"
+                  innerRadius="60%"
                   outerRadius="100%"
-                  paddingAngle={2}
+                  // A single slice (common on a fresh/demo tenant with one
+                  // product) still gets its own start/end gap from
+                  // paddingAngle even with nothing adjacent to pad against --
+                  // that leaves a visible sliver missing from the ring
+                  // instead of a fully closed "donut". Only pad when there's
+                  // more than one slice to actually separate.
+                  paddingAngle={slices.length > 1 ? 2 : 0}
                   startAngle={90}
                   endAngle={-270}
                   stroke="none"
