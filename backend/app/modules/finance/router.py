@@ -4,6 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 
 from app.core.deps import AuthContext, get_pool, require_permission
+from app.core.pagination import Paginated
 from app.modules.auth.permissions import FINANCE_APPROVE, FINANCE_MANAGE, FINANCE_VIEW, FINANCE_VIEW_ALL, SALES_MANAGE
 from app.modules.finance import service
 from app.modules.finance.schemas import (
@@ -253,7 +254,7 @@ async def get_payroll_job(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Payroll job not found")
 
 
-@router.get("/payroll", response_model=list[PayrollEntryOut])
+@router.get("/payroll", response_model=Paginated[PayrollEntryOut])
 async def list_payroll_entries(
     user_id: UUID | None = None,
     limit: int = Query(50, ge=1, le=200),
@@ -262,7 +263,10 @@ async def list_payroll_entries(
     auth: AuthContext = Depends(require_permission(FINANCE_VIEW)),
 ):
     can_view_all = FINANCE_VIEW_ALL in auth.permissions
-    return await service.list_payroll_entries(pool, auth.tenant_id, user_id, auth.user_id, can_view_all, limit, offset)
+    items, total = await service.list_payroll_entries(
+        pool, auth.tenant_id, user_id, auth.user_id, can_view_all, limit, offset
+    )
+    return Paginated(items=items, total=total)
 
 
 @router.get("/profit-summary", response_model=list[ProfitSummaryEntryOut])

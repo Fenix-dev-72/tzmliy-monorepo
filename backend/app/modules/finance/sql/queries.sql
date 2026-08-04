@@ -207,6 +207,13 @@ WHERE (:can_view_all AND (:user_id::uuid IS NULL OR user_id = :user_id)) OR (NOT
 ORDER BY period_start DESC
 LIMIT :limit OFFSET :offset;
 
+-- name: count_payroll_entries^
+-- Same WHERE as list_payroll_entries, no LIMIT/OFFSET -- backs numbered-
+-- pagination total-page count (2026-07-28).
+SELECT COUNT(*) AS count
+FROM payroll_entries
+WHERE (:can_view_all AND (:user_id::uuid IS NULL OR user_id = :user_id)) OR (NOT :can_view_all AND user_id = :caller_id);
+
 -- name: insert_payroll_job^
 INSERT INTO payroll_calculation_jobs (tenant_id, period_start, period_end, user_id, requested_by_user_id)
 VALUES (:tenant_id, :period_start, :period_end, :user_id, :requested_by_user_id)

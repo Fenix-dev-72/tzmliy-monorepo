@@ -356,6 +356,13 @@ async def list_payroll_entries(
     return [dict(r) for r in rows]
 
 
+async def count_payroll_entries(
+    conn: asyncpg.Connection, user_id: UUID | None, caller_id: UUID, can_view_all: bool
+) -> int:
+    row = await _queries.count_payroll_entries(conn, user_id=user_id, caller_id=caller_id, can_view_all=can_view_all)
+    return row["count"]
+
+
 async def insert_payroll_job(
     conn: asyncpg.Connection,
     tenant_id: UUID,

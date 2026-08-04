@@ -218,20 +218,26 @@ async def reverse_payment(pool: asyncpg.Pool, tenant_id: UUID, actor_user_id: UU
     adjustment_requests/refund approval workflow -- this is for the actor's
     own data-entry mistake, not a customer-facing refund dispute, so it's
     gated the same as recording the payment in the first place
-    (finance.manage), not finance.approve."""
+    (finance.manage), not finance.approve.
+
+    Client-found bug (2026-07-28): reversing the payment that had auto-
+    completed a sale (finance.record_payment's "balance hits 0 -> completed"
+    logic) left the sale stuck 'completed' with a balance owed again --
+    reopening it here is the symmetric counterpart, gated on the row lock the
+    same way record_payment locks it before completing."""
     async with tenant_connection(pool, tenant_id) as conn:
         payment = await repository.get_payment_by_id(conn, payment_id)
         if payment is None:
             raise PaymentNotFoundError
         if payment["reversed_at"] is not None:
             raise PaymentAlreadyReversedError
-        sale = await repository.get_sale_summary(conn, payment["sale_id"])
+        sale = await repository.get_sale_summary_for_update(conn, payment["sale_id"])
         if sale is None:
             raise SaleNotFoundError
         marked = await repository.mark_payment_reversed(conn, payment_id)
         if marked is None:
             raise PaymentAlreadyReversedError
-        return await repository.insert_ledger_entry(
+        entry = await repository.insert_ledger_entry(
             conn,
             tenant_id,
             payment["sale_id"],
@@ -244,6 +250,20 @@ async def reverse_payment(pool: asyncpg.Pool, tenant_id: UUID, actor_user_id: UU
             "Payment reversal (mistaken entry)",
             actor_user_id,
         )
+        if sale["status"] == "completed":
+            balance = await repository.get_ledger_balance_by_sale(conn, payment["sale_id"])
+            if balance > 0:
+                reopened = await sales_repository.mark_sale_active(conn, payment["sale_id"])
+                if reopened is not None:
+                    await sales_repository.insert_sale_change(
+                        conn,
+                        tenant_id,
+                        payment["sale_id"],
+                        actor_user_id,
+                        {"status": {"old": "completed", "new": "active"}},
+                        "auto: to'lov bekor qilindi, qarz qayta ochildi",
+                    )
+        return entry
 
 
 def _assert_sale_owned_or_view_all(sale: dict, caller_id: UUID, can_view_all: bool) -> None:
@@ -669,6 +689,8 @@ async def list_payroll_entries(
     can_view_all: bool,
     limit: int = 50,
     offset: int = 0,
-) -> list[dict]:
+) -> tuple[list[dict], int]:
     async with tenant_connection(pool, tenant_id) as conn:
-        return await repository.list_payroll_entries(conn, user_id, caller_id, can_view_all, limit, offset)
+        items = await repository.list_payroll_entries(conn, user_id, caller_id, can_view_all, limit, offset)
+        total = await repository.count_payroll_entries(conn, user_id, caller_id, can_view_all)
+    return items, total
