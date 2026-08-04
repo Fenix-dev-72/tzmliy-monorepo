@@ -24,8 +24,8 @@ const content = {
     ],
     useful: "Foydali havolalar",
     usefulLinks: [
-      { label: "Maxfiylik siyosati", href: "#" },
-      { label: "Foydalanish shartlari", href: "#" },
+      { label: "Maxfiylik siyosati", href: "/privacy" },
+      { label: "Foydalanish shartlari", href: "/terms" },
       { label: "Yordam markazi", href: "#" },
     ],
     social: "Ijtimoiy tarmoqlar",
@@ -46,8 +46,8 @@ const content = {
     ],
     useful: "Полезные ссылки",
     usefulLinks: [
-      { label: "Политика конфиденциальности", href: "#" },
-      { label: "Условия использования", href: "#" },
+      { label: "Политика конфиденциальности", href: "/privacy" },
+      { label: "Условия использования", href: "/terms" },
       { label: "Центр поддержки", href: "#" },
     ],
     social: "Соцсети",

@@ -23,6 +23,21 @@ import { RouteErrorBoundary } from "@/components/shared/RouteErrorBoundary";
 export const router = createBrowserRouter([
   { path: "/", element: <LandingPage />, errorElement: <RouteErrorBoundary /> },
   {
+    path: "/privacy",
+    errorElement: <RouteErrorBoundary />,
+    lazy: () => import("@/pages/legal/LegalPage").then((m) => ({ Component: m.PrivacyPage })),
+  },
+  {
+    path: "/terms",
+    errorElement: <RouteErrorBoundary />,
+    lazy: () => import("@/pages/legal/LegalPage").then((m) => ({ Component: m.TermsPage })),
+  },
+  {
+    path: "/data-deletion",
+    errorElement: <RouteErrorBoundary />,
+    lazy: () => import("@/pages/legal/LegalPage").then((m) => ({ Component: m.DataDeletionPage })),
+  },
+  {
     path: "/tv",
     errorElement: <RouteErrorBoundary />,
     lazy: () => import("@/pages/kiosk/DashboardKioskPage").then((m) => ({ Component: m.DashboardKioskPage })),
