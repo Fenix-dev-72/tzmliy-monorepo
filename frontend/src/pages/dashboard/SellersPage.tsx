@@ -13,6 +13,8 @@ import { ApiError } from "@/lib/api/client";
 import { formatMoney } from "@/lib/format/money";
 import { CHART_AXIS_DARK, CHART_AXIS_LIGHT, CHART_GRID_DARK, CHART_GRID_LIGHT } from "@/lib/format/chartColors";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { DashboardPageContainer } from "@/components/shared/DashboardPageContainer";
+import { EntityListCard, EntityListRow } from "@/components/shared/EntityListCard";
 import { SellerSummaryDialog } from "./SellerSummaryDialog";
 import { SellerKpiDashboard } from "./SellerKpiDashboard";
 
@@ -54,7 +56,7 @@ export function SellersPage() {
           usersApi.listUsers(accessToken, USERS_DROPDOWN_LIMIT),
         ]);
         setEntries(leaderboardData);
-        setUsers(usersData);
+        setUsers(usersData.items);
       } catch (err) {
         setError(err instanceof ApiError ? err.detail : t.loadError);
       }
@@ -83,7 +85,7 @@ export function SellersPage() {
   const gridColor = isDark ? CHART_GRID_DARK : CHART_GRID_LIGHT;
 
   return (
-    <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-10">
+    <DashboardPageContainer>
       <div className="mb-6 sm:mb-8">
         <h1 className="font-heading mb-1 text-xl font-extrabold text-foreground sm:text-2xl">{t.title}</h1>
         <p className="text-sm text-foreground-muted">{t.sub}</p>
@@ -157,17 +159,15 @@ export function SellersPage() {
       )}
 
       {!error && entries !== null && entries.length > 0 && (
-        <div className="glass-card overflow-hidden p-0">
+        <EntityListCard>
           {entries.map((entry, i) => {
             const roleName = usersById.get(entry.user_id)?.role_name;
             return (
-              <button
+              <EntityListRow
                 key={`${entry.user_id}-${entry.currency}`}
-                type="button"
+                as="button"
+                isLast={i === entries.length - 1}
                 onClick={() => setSummarySeller({ userId: entry.user_id, name: entry.user_email, roleName })}
-                className={`hover:bg-accent/40 flex w-full items-center justify-between gap-3 p-4 text-left transition-colors sm:p-5 ${
-                  i < entries.length - 1 ? "border-b border-card-border/60" : ""
-                }`}
               >
                 <div className="flex min-w-0 items-center gap-3">
                   <div
@@ -186,17 +186,17 @@ export function SellersPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="text-right">
-                    <div className="font-mono text-sm font-bold text-primary">
+                    <div className="font-mono text-sm font-bold text-accent-orange">
                       {formatMoney(entry.total_amount, entry.currency)}
                     </div>
                     <div className="text-xs text-foreground-muted">{entry.sales_count}</div>
                   </div>
                   <ChevronRight size={16} className="text-foreground-muted shrink-0" />
                 </div>
-              </button>
+              </EntityListRow>
             );
           })}
-        </div>
+        </EntityListCard>
       )}
 
       {summarySeller && (
@@ -217,6 +217,6 @@ export function SellersPage() {
           {detailSeller && <SellerKpiDashboard userId={detailSeller.userId} sellerName={detailSeller.name} />}
         </DialogContent>
       </Dialog>
-    </main>
+    </DashboardPageContainer>
   );
 }

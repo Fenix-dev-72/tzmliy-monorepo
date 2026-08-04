@@ -25,6 +25,7 @@ import { Button } from "@/components/ui/button";
 import { IntegrationCard } from "@/components/shared/IntegrationCard";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
+import { DashboardPageContainer } from "@/components/shared/DashboardPageContainer";
 
 const content = {
   uz: {
@@ -293,11 +294,11 @@ export function NotificationsPage() {
       if (canManage) {
         usersApi
           .listUsers(accessToken, USERS_DROPDOWN_LIMIT)
-          .then(setTenantUsers)
+          .then((r) => setTenantUsers(r.items))
           .catch(() => {});
         rolesApi
-          .listRoles(accessToken)
-          .then(setRoles)
+          .listRoles(accessToken, 200)
+          .then((r) => setRoles(r.items))
           .catch(() => {});
         catalogApi
           .listCategories(accessToken)
@@ -548,7 +549,7 @@ export function NotificationsPage() {
   }
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-8 sm:px-6 sm:py-10">
+    <DashboardPageContainer>
       <div className="mb-6 sm:mb-8">
         <h1 className="font-heading mb-1 text-xl font-extrabold text-foreground sm:text-2xl">{t.title}</h1>
         <p className="text-sm text-foreground-muted">{t.sub}</p>
@@ -664,11 +665,18 @@ export function NotificationsPage() {
               there's something to show -- an empty list here would just be
               a second "nothing yet" message duplicating noMappings below. */}
           {mappings.length > 0 && (
-            <div className="glass-card mb-6 p-5 sm:p-6">
-              <h2 className="mb-1 text-sm font-bold text-foreground">{t.connectedGroupsTitle}</h2>
-              <div className="divide-card-border/60 mt-3 flex flex-col divide-y">
+            <div className="mb-6">
+              <h2 className="mb-3 text-sm font-bold text-foreground">{t.connectedGroupsTitle}</h2>
+              {/* Each connected group is its own spaced card (2026-07-28,
+                  reskin-plan follow-up), matching the individually-spaced
+                  card convention every other list in the app already uses --
+                  not the old single continuous divide-y list. */}
+              <div className="flex flex-col gap-2">
                 {mappings.map((m) => (
-                  <div key={m.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
+                  <div
+                    key={m.id}
+                    className="bg-card/95 border-card-border flex flex-wrap items-center justify-between gap-3 rounded-[14px] border p-3.5 shadow-sm"
+                  >
                     <div className="min-w-0">
                       <div className="truncate text-sm font-medium text-foreground">{m.resolved_title || m.label}</div>
                       <div className="truncate font-mono text-xs text-foreground-muted">{m.telegram_chat_id}</div>
@@ -795,12 +803,18 @@ export function NotificationsPage() {
           ) : messages.length === 0 ? (
             <p className="glass-card py-10 text-center text-sm text-foreground-muted">{t.noMessages}</p>
           ) : (
-            <div className="glass-card overflow-hidden p-0">
-              {messages.map((msg, i) => (
-                <div key={msg.id} className={i < messages.length - 1 ? "border-b border-card-border/60" : ""}>
+            /* Each outbox message is its own spaced card (2026-07-28,
+               reskin-plan follow-up), matching the individually-spaced card
+               convention every other list in the app already uses -- not
+               the old single continuous divide-y list. rounded-[14px]
+               overflow-hidden keeps the expand button/log panel clipped to
+               the same rounded corners as the card. */
+            <div className="flex flex-col gap-2">
+              {messages.map((msg) => (
+                <div key={msg.id} className="bg-card/95 border-card-border overflow-hidden rounded-[14px] border shadow-sm">
                   <button
                     onClick={() => handleExpand(msg)}
-                    className="hover:bg-accent/40 flex w-full items-center justify-between gap-3 p-4 text-left transition-colors"
+                    className="hover:bg-accent/40 flex w-full items-center justify-between gap-3 p-3.5 text-left transition-colors"
                   >
                     <span className="truncate text-sm text-foreground">
                       {msg.text_body ?? msg.document_filename ?? "—"}
@@ -808,7 +822,7 @@ export function NotificationsPage() {
                     <StatusBadge status={msg.status} label={statusLabels[msg.status] ?? msg.status} />
                   </button>
                   {expandedId === msg.id && (
-                    <div className="bg-background/40 px-4 pb-4">
+                    <div className="bg-background/40 border-card-border/60 border-t px-3.5 py-3">
                       {(deliveryLogs[msg.id] ?? []).length === 0 ? (
                         <Loader2 size={14} className="text-primary animate-spin" />
                       ) : (
@@ -1033,6 +1047,6 @@ export function NotificationsPage() {
         onConfirm={handleDeleteSchedule}
         onCancel={() => setScheduleDeleteTarget(null)}
       />
-    </main>
+    </DashboardPageContainer>
   );
 }

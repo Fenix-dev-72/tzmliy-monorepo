@@ -13,6 +13,9 @@ import { FormField } from "@/components/auth/FormField";
 import { PasswordStrengthMeter } from "@/components/auth/PasswordStrengthMeter";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
+import { DashboardPageContainer } from "@/components/shared/DashboardPageContainer";
+import { SearchFilterBar } from "@/components/shared/SearchFilterBar";
+import { PaginationBar } from "@/components/shared/PaginationBar";
 
 const content = {
   uz: {
@@ -45,6 +48,7 @@ const content = {
     name: "Ism",
     save: "Saqlash",
     profileUpdated: "Profil yangilandi",
+    searchPlaceholder: "Ism, email yoki telefon bo'yicha qidirish...",
   },
   ru: {
     title: "Пользователи",
@@ -76,6 +80,7 @@ const content = {
     name: "Имя",
     save: "Сохранить",
     profileUpdated: "Профиль обновлён",
+    searchPlaceholder: "Поиск по имени, email или телефону...",
   },
 };
 
@@ -93,11 +98,12 @@ export function UsersPage() {
   const has2fa = Boolean(user?.totp_enabled);
 
   const [users, setUsers] = useState<TenantUserRow[] | null>(null);
-  const [hasMoreUsers, setHasMoreUsers] = useState(false);
-  const [loadingMoreUsers, setLoadingMoreUsers] = useState(false);
+  const [usersTotal, setUsersTotal] = useState(0);
+  const [usersPage, setUsersPage] = useState(1);
   const [roles, setRoles] = useState<Role[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -114,42 +120,28 @@ export function UsersPage() {
   const [editPhone, setEditPhone] = useState("");
   const [savingProfile, setSavingProfile] = useState(false);
 
-  async function load() {
+  async function load(targetPage: number) {
     if (!accessToken) return;
     setError(null);
     try {
-      const page = await usersApi.listUsers(accessToken);
-      setUsers(page);
-      setHasMoreUsers(page.length === USERS_PAGE_SIZE);
+      const result = await usersApi.listUsers(accessToken, USERS_PAGE_SIZE, (targetPage - 1) * USERS_PAGE_SIZE);
+      setUsers(result.items);
+      setUsersTotal(result.total);
     } catch (err) {
       setError(err instanceof ApiError ? err.detail : t.loadError);
       return;
     }
     try {
-      setRoles(await rolesApi.listRoles(accessToken));
+      setRoles((await rolesApi.listRoles(accessToken, 200)).items);
     } catch {
       // roles list is only needed for the role picker -- users still render without it
     }
   }
 
-  async function loadMoreUsers() {
-    if (!accessToken || !users) return;
-    setLoadingMoreUsers(true);
-    try {
-      const page = await usersApi.listUsers(accessToken, USERS_PAGE_SIZE, users.length);
-      setUsers([...users, ...page]);
-      setHasMoreUsers(page.length === USERS_PAGE_SIZE);
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.detail : t.loadError);
-    } finally {
-      setLoadingMoreUsers(false);
-    }
-  }
-
   useEffect(() => {
-    if (accessToken) load();
+    if (accessToken) load(usersPage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accessToken]);
+  }, [accessToken, usersPage]);
 
   async function handleCreate() {
     if (!accessToken) return;
@@ -167,7 +159,7 @@ export function UsersPage() {
       setPhone("");
       setRoleId("");
       setFormOpen(false);
-      await load();
+      await load(usersPage);
     } catch (err) {
       if (err instanceof ApiError && err.status === 403) {
         toast.error(t.need2fa);
@@ -191,7 +183,7 @@ export function UsersPage() {
       await usersApi.updateUserRole(accessToken, userId, newRoleId);
       toast.success(t.roleUpdated);
       setRoleEditFor(null);
-      await load();
+      await load(usersPage);
     } catch (err) {
       if (err instanceof ApiError && err.status === 403) {
         toast.error(t.need2fa);
@@ -210,7 +202,7 @@ export function UsersPage() {
       await usersApi.deactivateUser(accessToken, deactivateTarget.id);
       toast.success(t.deactivated);
       setDeactivateTarget(null);
-      await load();
+      await load(usersPage);
     } catch (err) {
       toast.error(err instanceof ApiError && err.status === 403 ? t.need2fa : t.genericError);
     } finally {
@@ -234,7 +226,7 @@ export function UsersPage() {
       });
       toast.success(t.profileUpdated);
       setProfileEditTarget(null);
-      await load();
+      await load(usersPage);
     } catch (err) {
       if (err instanceof ApiError && err.status === 403) toast.error(t.need2fa);
       else if (err instanceof ApiError && err.status === 409) toast.error(t.phoneTaken);
@@ -252,11 +244,19 @@ export function UsersPage() {
   const canSubmit = email.trim().length > 0 && password.length >= 8 && roleId.length > 0;
   const sortedUsers = useMemo(() => {
     if (!users) return null;
-    return [...users].sort((a, b) => Number(a.is_active === b.is_active ? 0 : a.is_active ? -1 : 1));
-  }, [users]);
+    const sorted = [...users].sort((a, b) => Number(a.is_active === b.is_active ? 0 : a.is_active ? -1 : 1));
+    if (!searchQuery.trim()) return sorted;
+    const q = searchQuery.trim().toLowerCase();
+    return sorted.filter(
+      (u) =>
+        (u.full_name ?? "").toLowerCase().includes(q) ||
+        (u.email ?? "").toLowerCase().includes(q) ||
+        (u.phone ?? "").toLowerCase().includes(q),
+    );
+  }, [users, searchQuery]);
 
   return (
-    <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10">
+    <DashboardPageContainer>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3 sm:mb-8">
         <div>
           <h1 className="font-heading mb-1 text-xl font-extrabold text-foreground sm:text-2xl">{t.title}</h1>
@@ -333,17 +333,25 @@ export function UsersPage() {
       )}
 
       {!error && sortedUsers !== null && sortedUsers.length > 0 && (
-        <div className="glass-card overflow-hidden p-0">
-          {sortedUsers.map((u, i) => {
+        <SearchFilterBar searchValue={searchQuery} onSearchChange={setSearchQuery} searchPlaceholder={t.searchPlaceholder} />
+      )}
+
+      {!error && sortedUsers !== null && sortedUsers.length > 0 && (
+        // Each user is its own spaced card, not one continuous divided list
+        // (explicit feedback: rows read as "stuck together" in the shared
+        // divided-row pattern) -- same row content/classes as EntityListRow,
+        // just individually wrapped instead of sharing one EntityListCard.
+        <div className="flex flex-col gap-3">
+          {sortedUsers.map((u) => {
             const primaryLabel = u.full_name ?? u.email ?? u.phone ?? "?";
             const label = primaryLabel[0]?.toUpperCase() ?? "?";
             const color = colorForRole(u.role_name);
             return (
               <div
                 key={u.id}
-                className={`flex flex-wrap items-center justify-between gap-3 p-4 sm:p-5 ${
-                  i < sortedUsers.length - 1 ? "border-b border-card-border/60" : ""
-                } ${!u.is_active ? "opacity-50" : ""}`}
+                className={`bg-card/95 border-card-border flex flex-wrap items-center justify-between gap-3 rounded-[14px] border p-4 shadow-sm sm:p-5 ${
+                  !u.is_active ? "opacity-50" : ""
+                }`}
               >
                 <div className="flex min-w-0 items-center gap-3">
                   <div className="bg-accent flex size-9 shrink-0 items-center justify-center rounded-full text-xs font-bold text-foreground-muted">
@@ -410,13 +418,8 @@ export function UsersPage() {
         </div>
       )}
 
-      {!error && sortedUsers !== null && sortedUsers.length > 0 && hasMoreUsers && (
-        <div className="mt-4 flex justify-center">
-          <Button variant="outline" disabled={loadingMoreUsers} onClick={loadMoreUsers}>
-            {loadingMoreUsers && <Loader2 size={16} className="animate-spin" />}
-            {t.loadMore}
-          </Button>
-        </div>
+      {!error && sortedUsers !== null && sortedUsers.length > 0 && (
+        <PaginationBar page={usersPage} totalPages={Math.ceil(usersTotal / USERS_PAGE_SIZE)} onChange={setUsersPage} />
       )}
 
       <ConfirmDialog
@@ -449,6 +452,6 @@ export function UsersPage() {
       {!has2fa && (
         <p className="mt-6 text-center text-xs text-foreground-muted">{t.need2fa}</p>
       )}
-    </main>
+    </DashboardPageContainer>
   );
 }

@@ -4,12 +4,15 @@ import { AlertCircle, Loader2, LogIn, LogOut } from "lucide-react";
 import { useLang } from "@/lib/i18n/LangContext";
 import { useTenantAuth } from "@/lib/auth/tenantAuthStore";
 import * as attendanceApi from "@/lib/api/attendance";
+import { ATTENDANCE_PAGE_SIZE } from "@/lib/api/attendance";
 import type { AttendanceRecord } from "@/lib/api/attendance";
 import * as usersApi from "@/lib/api/users";
 import { USERS_DROPDOWN_LIMIT } from "@/lib/api/users";
 import type { TenantUserRow } from "@/lib/api/users";
 import { ApiError } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
+import { DashboardPageContainer } from "@/components/shared/DashboardPageContainer";
+import { PaginationBar } from "@/components/shared/PaginationBar";
 
 const content = {
   uz: {
@@ -68,15 +71,31 @@ export function AttendancePage() {
   const [toggling, setToggling] = useState(false);
 
   const [team, setTeam] = useState<AttendanceRecord[] | null>(null);
+  const [teamTotal, setTeamTotal] = useState(0);
+  const [teamPage, setTeamPage] = useState(1);
   const [users, setUsers] = useState<TenantUserRow[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  async function loadTeam(targetPage: number) {
+    if (!accessToken) return;
+    try {
+      const result = await attendanceApi.listAttendance(accessToken, undefined, ATTENDANCE_PAGE_SIZE, (targetPage - 1) * ATTENDANCE_PAGE_SIZE);
+      setTeam(result.items);
+      setTeamTotal(result.total);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.detail : t.loadError);
+    }
+  }
 
   useEffect(() => {
     if (!accessToken || !user) return;
     (async () => {
       try {
-        const own = await attendanceApi.listAttendance(accessToken, user.id);
-        const open = own.find((r) => r.check_out_at === null) ?? null;
+        // At most one open record ever exists per user (unique partial
+        // index on check_out_at IS NULL) and it's always the newest row --
+        // limit=1 is enough to know current status.
+        const own = await attendanceApi.listAttendance(accessToken, user.id, 1);
+        const open = own.items.find((r) => r.check_out_at === null) ?? null;
         setMyRecord(open);
       } catch {
         // no attendance.view -- initial state unknown, button defaults to check-in
@@ -86,19 +105,20 @@ export function AttendancePage() {
 
       if (canView) {
         try {
-          const [teamData, usersData] = await Promise.all([
-            attendanceApi.listAttendance(accessToken),
-            usersApi.listUsers(accessToken, USERS_DROPDOWN_LIMIT),
-          ]);
-          setTeam(teamData);
-          setUsers(usersData);
-        } catch (err) {
-          setError(err instanceof ApiError ? err.detail : t.loadError);
+          const usersData = await usersApi.listUsers(accessToken, USERS_DROPDOWN_LIMIT);
+          setUsers(usersData.items);
+        } catch {
+          // role dropdown lookup is best-effort -- team list still renders without names
         }
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken, user?.id]);
+
+  useEffect(() => {
+    if (accessToken && canView) loadTeam(teamPage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessToken, canView, teamPage]);
 
   async function handleToggle() {
     if (!accessToken) return;
@@ -113,9 +133,7 @@ export function AttendancePage() {
         setMyRecord(record);
         toast.success(t.checkedIn);
       }
-      if (canView && accessToken) {
-        attendanceApi.listAttendance(accessToken).then(setTeam).catch(() => {});
-      }
+      if (canView && accessToken) loadTeam(teamPage);
     } catch {
       toast.error(t.genericError);
     } finally {
@@ -126,7 +144,7 @@ export function AttendancePage() {
   const usersById = new Map(users.map((u) => [u.id, u]));
 
   return (
-    <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-10">
+    <DashboardPageContainer>
       <div className="mb-6 sm:mb-8">
         <h1 className="font-heading mb-1 text-xl font-extrabold text-foreground sm:text-2xl">{t.title}</h1>
         <p className="text-sm text-foreground-muted">{t.sub}</p>
@@ -179,40 +197,44 @@ export function AttendancePage() {
           )}
 
           {!error && team !== null && team.length > 0 && (
-            <div className="glass-card overflow-hidden p-0">
-              {team.map((r, i) => {
-                const worked = r.check_out_at
-                  ? formatDuration(new Date(r.check_out_at).getTime() - new Date(r.check_in_at).getTime())
-                  : null;
-                return (
-                  <div
-                    key={r.id}
-                    className={`flex flex-wrap items-center justify-between gap-3 p-4 sm:p-5 ${
-                      i < team.length - 1 ? "border-b border-card-border/60" : ""
-                    }`}
-                  >
-                    <span className="text-sm font-semibold text-foreground">
-                      {usersById.get(r.user_id)?.full_name ??
-                        usersById.get(r.user_id)?.email ??
-                        usersById.get(r.user_id)?.phone ??
-                        r.user_id.slice(0, 8)}
-                    </span>
-                    <div className="flex items-center gap-4 text-xs text-foreground-muted">
-                      <span>
-                        {t.checkInTime}: {new Date(r.check_in_at).toLocaleString()}
+            <>
+              {/* Each attendance record is its own spaced card, not one
+                  continuous divided list (same "bo'laklarga bo'l" feedback
+                  as Users/Sales/Customers/Calls/Roles). */}
+              <div className="flex flex-col gap-3">
+                {team.map((r) => {
+                  const worked = r.check_out_at
+                    ? formatDuration(new Date(r.check_out_at).getTime() - new Date(r.check_in_at).getTime())
+                    : null;
+                  return (
+                    <div
+                      key={r.id}
+                      className="bg-card/95 border-card-border flex flex-wrap items-center justify-between gap-3 rounded-[14px] border p-4 shadow-sm sm:p-5"
+                    >
+                      <span className="text-sm font-semibold text-foreground">
+                        {usersById.get(r.user_id)?.full_name ??
+                          usersById.get(r.user_id)?.email ??
+                          usersById.get(r.user_id)?.phone ??
+                          r.user_id.slice(0, 8)}
                       </span>
-                      <span>
-                        {t.checkOutTime}: {r.check_out_at ? new Date(r.check_out_at).toLocaleString() : "—"}
-                      </span>
-                      <span className="font-mono text-foreground">{worked ?? t.inProgress}</span>
+                      <div className="flex items-center gap-4 text-xs text-foreground-muted">
+                        <span>
+                          {t.checkInTime}: {new Date(r.check_in_at).toLocaleString()}
+                        </span>
+                        <span>
+                          {t.checkOutTime}: {r.check_out_at ? new Date(r.check_out_at).toLocaleString() : "—"}
+                        </span>
+                        <span className="font-mono text-foreground">{worked ?? t.inProgress}</span>
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+              <PaginationBar page={teamPage} totalPages={Math.ceil(teamTotal / ATTENDANCE_PAGE_SIZE)} onChange={setTeamPage} />
+            </>
           )}
         </>
       )}
-    </main>
+    </DashboardPageContainer>
   );
 }

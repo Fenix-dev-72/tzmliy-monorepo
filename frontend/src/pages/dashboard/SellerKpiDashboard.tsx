@@ -193,8 +193,8 @@ export function SellerKpiDashboard({ userId, sellerName: sellerNameProp }: { use
     if (sellerNameProp || !accessToken || !userId) return;
     usersApi
       .listUsers(accessToken, USERS_DROPDOWN_LIMIT)
-      .then((users) => {
-        const u = users.find((x) => x.id === userId);
+      .then((result) => {
+        const u = result.items.find((x) => x.id === userId);
         if (u) setSellerName(u.full_name ?? u.email ?? u.phone ?? userId);
       })
       .catch(() => {});

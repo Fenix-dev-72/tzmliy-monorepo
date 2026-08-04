@@ -8,7 +8,14 @@ import type { AdCampaign, CrmIntegration, CrmLeadSync, ManagerCandidate, OAuthPr
 import { ApiError } from "@/lib/api/client";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { Button } from "@/components/ui/button";
-import { FormField } from "@/components/auth/FormField";
+import { DashboardPageContainer } from "@/components/shared/DashboardPageContainer";
+import { PaginationBar } from "@/components/shared/PaginationBar";
+import { AD_CAMPAIGNS_PAGE_SIZE } from "@/lib/api/crm";
+
+// Leads come from a live SSE feed (server caps it at 100 most-recent rows,
+// not a paginated endpoint) -- 7 per "page" is client-side windowing over
+// that already-bounded array, not a server round trip.
+const LEADS_PAGE_SIZE = 7;
 
 const content = {
   uz: {
@@ -25,7 +32,7 @@ const content = {
     need2fa: "Integratsiya sozlash uchun 2FA yoqilgan bo'lishi kerak.",
     genericError: "Xatolik yuz berdi",
     connectedToast: "Integratsiya ulandi",
-    oneClickConnect: "1 tugma bilan ulash",
+    oneClickConnect: "Ulash",
     oneClickDomainPlaceholder: "subdomen (masalan: mycompany)",
     oneClickNotConfigured: "Bu integratsiya uchun OAuth hali sozlanmagan",
     oneClickDomainRequired: "Iltimos, subdomenni kiriting",
@@ -55,7 +62,7 @@ const content = {
     need2fa: "Для настройки интеграции требуется включённая 2FA.",
     genericError: "Произошла ошибка",
     connectedToast: "Интеграция подключена",
-    oneClickConnect: "Подключить в 1 клик",
+    oneClickConnect: "Подключить",
     oneClickDomainPlaceholder: "поддомен (например: mycompany)",
     oneClickNotConfigured: "OAuth для этой интеграции ещё не настроен",
     oneClickDomainRequired: "Пожалуйста, введите поддомен",
@@ -93,14 +100,13 @@ function OneClickConnectRow({
   domainPlaceholder: string;
 }) {
   return (
-    <div className="mt-2 flex items-center gap-2" data-provider={provider}>
+    <div className="mt-3 flex items-center gap-1.5" data-provider={provider}>
       {needsDomain && (
-        <FormField
-          label=""
+        <input
           value={domain}
           onChange={(e) => onDomainChange(e.target.value)}
           placeholder={domainPlaceholder}
-          className="mb-0 flex-1"
+          className="border-card-border bg-input-background text-foreground placeholder:text-foreground-muted h-9 min-w-0 flex-1 rounded-lg border px-3 text-xs outline-none"
         />
       )}
       <Button variant="outline" size="sm" disabled={connecting} onClick={onConnect} className="shrink-0">
@@ -201,7 +207,13 @@ export function IntegrationsPage() {
 
   const [integrations, setIntegrations] = useState<CrmIntegration[]>([]);
   const [leads, setLeads] = useState<CrmLeadSync[] | null>(null);
+  // Leads come from a live SSE feed (server caps it at 100 most-recent rows,
+  // not a paginated endpoint), so pagination here is client-side windowing
+  // over that already-bounded array, not a server round trip.
+  const [leadsPage, setLeadsPage] = useState(1);
   const [campaigns, setCampaigns] = useState<AdCampaign[] | null>(null);
+  const [campaignsTotal, setCampaignsTotal] = useState(0);
+  const [campaignsPage, setCampaignsPage] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [oauthDomain, setOauthDomain] = useState<Record<string, string>>({});
   const [oauthConnecting, setOauthConnecting] = useState<OAuthProvider | null>(null);
@@ -228,25 +240,26 @@ export function IntegrationsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function load() {
+  async function load(targetCampaignsPage: number) {
     if (!accessToken || !canView) return;
     setError(null);
     try {
       const [integrationsData, campaignsData] = await Promise.all([
         crmApi.listIntegrations(accessToken),
-        crmApi.listAdCampaigns(accessToken),
+        crmApi.listAdCampaigns(accessToken, AD_CAMPAIGNS_PAGE_SIZE, (targetCampaignsPage - 1) * AD_CAMPAIGNS_PAGE_SIZE),
       ]);
       setIntegrations(integrationsData);
-      setCampaigns(campaignsData);
+      setCampaigns(campaignsData.items);
+      setCampaignsTotal(campaignsData.total);
     } catch (err) {
       setError(err instanceof ApiError ? err.detail : t.loadError);
     }
   }
 
   useEffect(() => {
-    load();
+    load(campaignsPage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accessToken]);
+  }, [accessToken, campaignsPage]);
 
   // Live-updating leads list (2026-07-17) -- a webhook-pushed lead used to
   // stay invisible on this page until a manual reload, since listLeads was
@@ -301,7 +314,7 @@ export function IntegrationsPage() {
       await crmApi.disconnectIntegration(accessToken, disconnectTarget);
       toast.success(t.disconnected);
       setDisconnectTarget(null);
-      await load();
+      await load(campaignsPage);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.detail : t.genericError);
     } finally {
@@ -310,7 +323,7 @@ export function IntegrationsPage() {
   }
 
   return (
-    <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10">
+    <DashboardPageContainer>
       <div className="mb-6 sm:mb-8">
         <h1 className="font-heading mb-1 text-xl font-extrabold text-foreground sm:text-2xl">{t.title}</h1>
         <p className="text-sm text-foreground-muted">{t.sub}</p>
@@ -331,7 +344,7 @@ export function IntegrationsPage() {
               and the backend's OAuth callback + sync_amocrm_leads worker
               handle everything else automatically from there. */}
           <div className="glass-card p-5 transition-all hover:-translate-y-1">
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <div
                 className="flex size-10 shrink-0 items-center justify-center rounded-xl"
                 style={{ background: "#2FBF7118", color: "#2FBF71" }}
@@ -339,13 +352,13 @@ export function IntegrationsPage() {
                 <Workflow size={20} />
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-sm font-bold text-foreground">AmoCRM</div>
+                <div className="truncate text-sm font-bold text-foreground">AmoCRM</div>
                 <div className="flex items-center gap-1.5 text-xs text-foreground-muted">
                   <span
-                    className="size-1.5 rounded-full"
+                    className="size-1.5 shrink-0 rounded-full"
                     style={{ background: amocrmConnected ? "#2FBF71" : "var(--card-border)" }}
                   />
-                  {amocrmConnected ? t.connected : "—"}
+                  <span className="truncate">{amocrmConnected ? t.connected : "—"}</span>
                 </div>
               </div>
               {canManage && amocrmConnected && (
@@ -492,20 +505,22 @@ export function IntegrationsPage() {
                 ) : leads.length === 0 ? (
                   <p className="glass-card py-8 text-center text-sm text-foreground-muted">{t.noLeads}</p>
                 ) : (
-                  <div className="glass-card overflow-hidden p-0">
-                    {leads.map((lead, i) => (
-                      <div
-                        key={lead.id}
-                        className={`flex items-center justify-between gap-3 p-3.5 text-sm ${
-                          i < leads.length - 1 ? "border-b border-card-border/60" : ""
-                        }`}
-                      >
-                        <span className="text-foreground-muted capitalize">{lead.provider}</span>
-                        <span className="text-foreground-muted text-xs">{lead.direction}</span>
-                        <span className="text-xs text-foreground-muted">{new Date(lead.synced_at).toLocaleString()}</span>
-                      </div>
-                    ))}
-                  </div>
+                  <>
+                    {/* Each lead is its own spaced card, not one continuous
+                        divided list. Client-side pagination -- leads is a
+                        live SSE feed already capped at 100 rows server-side,
+                        not a paginated endpoint. */}
+                    <div className="flex flex-col gap-2">
+                      {leads.slice((leadsPage - 1) * LEADS_PAGE_SIZE, leadsPage * LEADS_PAGE_SIZE).map((lead) => (
+                        <div key={lead.id} className="bg-card/95 border-card-border flex items-center justify-between gap-3 rounded-[14px] border p-3.5 text-sm shadow-sm">
+                          <span className="text-foreground-muted capitalize">{lead.provider}</span>
+                          <span className="text-foreground-muted text-xs">{lead.direction}</span>
+                          <span className="text-xs text-foreground-muted">{new Date(lead.synced_at).toLocaleString()}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <PaginationBar page={leadsPage} totalPages={Math.ceil(leads.length / LEADS_PAGE_SIZE)} onChange={setLeadsPage} />
+                  </>
                 )}
               </div>
 
@@ -518,25 +533,29 @@ export function IntegrationsPage() {
                 ) : campaigns.length === 0 ? (
                   <p className="glass-card py-8 text-center text-sm text-foreground-muted">{t.noCampaigns}</p>
                 ) : (
-                  <div className="glass-card overflow-hidden p-0">
-                    {campaigns.map((c, i) => (
-                      <div
-                        key={c.id}
-                        className={`flex items-center justify-between gap-3 p-3.5 text-sm ${
-                          i < campaigns.length - 1 ? "border-b border-card-border/60" : ""
-                        }`}
-                      >
-                        <span className="truncate text-foreground">{c.name}</span>
-                        <span className="text-xs text-foreground-muted capitalize">{c.status}</span>
-                      </div>
-                    ))}
-                  </div>
+                  <>
+                    {/* Each campaign is its own spaced card, not one
+                        continuous divided list. */}
+                    <div className="flex flex-col gap-2">
+                      {campaigns.map((c) => (
+                        <div key={c.id} className="bg-card/95 border-card-border flex items-center justify-between gap-3 rounded-[14px] border p-3.5 text-sm shadow-sm">
+                          <span className="truncate text-foreground">{c.name}</span>
+                          <span className="text-xs text-foreground-muted capitalize">{c.status}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <PaginationBar
+                      page={campaignsPage}
+                      totalPages={Math.ceil(campaignsTotal / AD_CAMPAIGNS_PAGE_SIZE)}
+                      onChange={setCampaignsPage}
+                    />
+                  </>
                 )}
               </div>
             </div>
           )}
         </>
       )}
-    </main>
+    </DashboardPageContainer>
   );
 }

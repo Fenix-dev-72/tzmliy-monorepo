@@ -15,6 +15,9 @@ import { FormField } from "@/components/auth/FormField";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
+import { DashboardPageContainer } from "@/components/shared/DashboardPageContainer";
+import { EntityListCard, EntityListRow } from "@/components/shared/EntityListCard";
+import { PaginationBar } from "@/components/shared/PaginationBar";
 
 const content = {
   uz: {
@@ -167,8 +170,8 @@ export function FinancePage() {
   const [categories, setCategories] = useState<{ id: string; label: string }[]>([]);
   const [plans, setPlans] = useState<BonusPlan[] | null>(null);
   const [payroll, setPayroll] = useState<PayrollEntry[] | null>(null);
-  const [hasMorePayroll, setHasMorePayroll] = useState(false);
-  const [loadingMorePayroll, setLoadingMorePayroll] = useState(false);
+  const [payrollTotal, setPayrollTotal] = useState(0);
+  const [payrollPage, setPayrollPage] = useState(1);
   const [adjustments, setAdjustments] = useState<AdjustmentRequest[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -198,7 +201,7 @@ export function FinancePage() {
   const [profitSummary, setProfitSummary] = useState<ProfitSummaryEntry[] | null>(null);
   const [calculatingProfit, setCalculatingProfit] = useState(false);
 
-  async function load() {
+  async function load(targetPayrollPage: number) {
     if (!accessToken) return;
     setError(null);
     try {
@@ -206,14 +209,14 @@ export function FinancePage() {
         financeApi.listBonusPlans(accessToken),
         financeApi.listAdjustmentRequests(accessToken),
         financeApi.listRolesForSelect(accessToken),
-        financeApi.listPayrollEntries(accessToken),
+        financeApi.listPayrollEntries(accessToken, undefined, PAYROLL_ENTRIES_PAGE_SIZE, (targetPayrollPage - 1) * PAYROLL_ENTRIES_PAGE_SIZE),
         catalogApi.listCategories(accessToken),
       ]);
       setPlans(plansData);
       setAdjustments(adjustmentsData);
       setRoles(rolesData);
-      setPayroll(payrollData);
-      setHasMorePayroll(payrollData.length === PAYROLL_ENTRIES_PAGE_SIZE);
+      setPayroll(payrollData.items);
+      setPayrollTotal(payrollData.total);
       setCategories(flattenCategories(categoriesTree));
     } catch (err) {
       setError(err instanceof ApiError ? err.detail : t.loadError);
@@ -221,9 +224,9 @@ export function FinancePage() {
   }
 
   useEffect(() => {
-    if (accessToken) load();
+    if (accessToken) load(payrollPage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accessToken]);
+  }, [accessToken, payrollPage]);
 
   async function handleCreatePlan() {
     if (!accessToken) return;
@@ -252,7 +255,7 @@ export function FinancePage() {
       setPlanFixedAmount("");
       setPlanCategoryId("");
       setPlanFormOpen(false);
-      await load();
+      await load(payrollPage);
     } catch (err) {
       toast.error(err instanceof ApiError && err.status === 403 ? t.need2fa : t.genericError);
     } finally {
@@ -283,28 +286,15 @@ export function FinancePage() {
         toast.error(jobError || t.genericError);
         return;
       }
-      const entries = await financeApi.listPayrollEntries(accessToken);
-      setPayroll(entries);
-      setHasMorePayroll(entries.length === PAYROLL_ENTRIES_PAGE_SIZE);
+      setPayrollPage(1);
+      const entries = await financeApi.listPayrollEntries(accessToken, undefined, PAYROLL_ENTRIES_PAGE_SIZE, 0);
+      setPayroll(entries.items);
+      setPayrollTotal(entries.total);
       toast.success(t.updated);
     } catch (err) {
       toast.error(err instanceof ApiError && err.status === 403 ? t.need2fa : t.genericError);
     } finally {
       setCalculating(false);
-    }
-  }
-
-  async function loadMorePayroll() {
-    if (!accessToken || !payroll) return;
-    setLoadingMorePayroll(true);
-    try {
-      const page = await financeApi.listPayrollEntries(accessToken, undefined, PAYROLL_ENTRIES_PAGE_SIZE, payroll.length);
-      setPayroll([...payroll, ...page]);
-      setHasMorePayroll(page.length === PAYROLL_ENTRIES_PAGE_SIZE);
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.detail : t.loadError);
-    } finally {
-      setLoadingMorePayroll(false);
     }
   }
 
@@ -321,7 +311,7 @@ export function FinancePage() {
       toast.success(t.updated);
       setReviewTarget(null);
       setReviewReason("");
-      await load();
+      await load(payrollPage);
     } catch (err) {
       toast.error(err instanceof ApiError && err.status === 403 ? t.need2fa : t.genericError);
     } finally {
@@ -352,7 +342,7 @@ export function FinancePage() {
     (planBonusType === "percent" ? planCommission.trim().length > 0 : planFixedAmount.trim().length > 0);
 
   return (
-    <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10">
+    <DashboardPageContainer>
       <div className="mb-6 sm:mb-8">
         <h1 className="font-heading mb-1 text-xl font-extrabold text-foreground sm:text-2xl">{t.title}</h1>
         <p className="text-sm text-foreground-muted">{t.sub}</p>
@@ -564,12 +554,9 @@ export function FinancePage() {
             ) : payroll.length === 0 ? (
               <p className="glass-card py-10 text-center text-sm text-foreground-muted">{t.noPayroll}</p>
             ) : (
-              <div className="glass-card overflow-hidden p-0">
+              <EntityListCard>
                 {payroll.map((entry, i) => (
-                  <div
-                    key={entry.id}
-                    className={`flex items-center justify-between gap-3 p-4 ${i < payroll.length - 1 ? "border-b border-card-border/60" : ""}`}
-                  >
+                  <EntityListRow key={entry.id} isLast={i === payroll.length - 1}>
                     <span className="font-mono text-xs text-foreground-muted">{entry.user_id.slice(0, 8)}</span>
                     <div className="flex items-center gap-4 text-sm">
                       <span className="text-foreground-muted">
@@ -578,22 +565,17 @@ export function FinancePage() {
                       <span className="text-foreground-muted">
                         {t.bonus}: <span className="font-mono text-success">{formatMoney(entry.bonus_amount, entry.currency)}</span>
                       </span>
-                      <span className="font-mono text-primary font-bold">
+                      <span className="font-mono text-foreground font-bold">
                         {formatMoney(entry.base_amount + entry.bonus_amount, entry.currency)}
                       </span>
                     </div>
-                  </div>
+                  </EntityListRow>
                 ))}
-              </div>
+              </EntityListCard>
             )}
 
-            {payroll !== null && payroll.length > 0 && hasMorePayroll && (
-              <div className="mt-4 flex justify-center">
-                <Button variant="outline" disabled={loadingMorePayroll} onClick={loadMorePayroll}>
-                  {loadingMorePayroll && <Loader2 size={16} className="animate-spin" />}
-                  {t.loadMore}
-                </Button>
-              </div>
+            {payroll !== null && payroll.length > 0 && (
+              <PaginationBar page={payrollPage} totalPages={Math.ceil(payrollTotal / PAYROLL_ENTRIES_PAGE_SIZE)} onChange={setPayrollPage} />
             )}
           </TabsContent>
 
@@ -605,14 +587,9 @@ export function FinancePage() {
             ) : adjustments.length === 0 ? (
               <p className="glass-card py-10 text-center text-sm text-foreground-muted">{t.noAdjustments}</p>
             ) : (
-              <div className="glass-card overflow-hidden p-0">
+              <EntityListCard>
                 {adjustments.map((req, i) => (
-                  <div
-                    key={req.id}
-                    className={`flex flex-wrap items-center justify-between gap-3 p-4 ${
-                      i < adjustments.length - 1 ? "border-b border-card-border/60" : ""
-                    }`}
-                  >
+                  <EntityListRow key={req.id} isLast={i === adjustments.length - 1}>
                     <div>
                       <span className="text-sm font-semibold text-foreground">{req.type === "refund" ? "Refund" : "Tariff change"}</span>
                       <div className="text-xs text-foreground-muted">{new Date(req.created_at).toLocaleString()}</div>
@@ -647,9 +624,9 @@ export function FinancePage() {
                         </>
                       )}
                     </div>
-                  </div>
+                  </EntityListRow>
                 ))}
-              </div>
+              </EntityListCard>
             )}
           </TabsContent>
 
@@ -724,6 +701,6 @@ export function FinancePage() {
       >
         <FormField label={t.reason} value={reviewReason} onChange={(e) => setReviewReason(e.target.value)} />
       </ConfirmDialog>
-    </main>
+    </DashboardPageContainer>
   );
 }

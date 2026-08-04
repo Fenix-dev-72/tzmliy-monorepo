@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { AlertCircle, ArrowDownLeft, ArrowUpRight, Loader2, Phone, PhoneCall, Settings2 } from "lucide-react";
 import { useLang } from "@/lib/i18n/LangContext";
@@ -16,6 +16,10 @@ import { StatusBadge } from "@/components/shared/StatusBadge";
 import { IntegrationCard } from "@/components/shared/IntegrationCard";
 import { CopyBox } from "@/components/shared/CopyBox";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
+import { DashboardPageContainer } from "@/components/shared/DashboardPageContainer";
+import { EntityListCard, EntityListRow } from "@/components/shared/EntityListCard";
+import { SearchFilterBar } from "@/components/shared/SearchFilterBar";
+import { PaginationBar } from "@/components/shared/PaginationBar";
 
 const content = {
   uz: {
@@ -26,6 +30,7 @@ const content = {
     empty: "Hali qo'ng'iroqlar yo'q",
     emptyDesc: "Integratsiya ulanganda qo'ng'iroqlar shu yerda paydo bo'ladi.",
     all: "Barchasi",
+    searchPlaceholder: "Telefon raqami bo'yicha qidirish...",
     listenError: "Yozuvni yuklab bo'lmadi",
     noRecording: "Yozuv mavjud emas",
     listen: "Tinglash",
@@ -70,6 +75,7 @@ const content = {
     empty: "Звонков пока нет",
     emptyDesc: "Звонки появятся здесь после подключения интеграции.",
     all: "Все",
+    searchPlaceholder: "Поиск по номеру телефона...",
     listenError: "Не удалось загрузить запись",
     noRecording: "Запись недоступна",
     listen: "Слушать",
@@ -122,10 +128,20 @@ export function CallsPage() {
   const canManage = (user?.permissions ?? []).includes("calls.manage");
 
   const [calls, setCalls] = useState<Call[] | null>(null);
-  const [hasMoreCalls, setHasMoreCalls] = useState(false);
-  const [loadingMoreCalls, setLoadingMoreCalls] = useState(false);
+  const [callsTotal, setCallsTotal] = useState(0);
+  const [callsPage, setCallsPage] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  // Debounced separately from searchQuery so the API isn't hit on every
+  // keystroke -- the effect below fires the actual request.
+  const [searchTerm, setSearchTerm] = useState("");
+  // Populated once from the first unfiltered load and kept stable after that
+  // -- filtering is now server-side (2026-07-28, fixes pagination showing
+  // the *unfiltered* total page count while a status tab hid almost every
+  // row), so recomputing this from the current filtered page would make the
+  // tabs themselves disappear once a filter narrows the result set.
+  const [availableStatuses, setAvailableStatuses] = useState<string[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [recordingUrls, setRecordingUrls] = useState<Record<string, string | null>>({});
 
@@ -138,13 +154,26 @@ export function CallsPage() {
   const [mappingSaving, setMappingSaving] = useState(false);
   const [webhookInfo, setWebhookInfo] = useState<Record<string, { webhook_url: string; webhook_secret: string } | null>>({});
 
-  async function load() {
+  async function load(targetPage: number) {
     if (!accessToken) return;
     setError(null);
     try {
-      const page = await callsApi.listCalls(accessToken);
-      setCalls(page);
-      setHasMoreCalls(page.length === CALLS_PAGE_SIZE);
+      const result = await callsApi.listCalls(
+        accessToken,
+        undefined,
+        CALLS_PAGE_SIZE,
+        (targetPage - 1) * CALLS_PAGE_SIZE,
+        statusFilter === "all" ? undefined : statusFilter,
+        searchTerm.trim() || undefined,
+      );
+      setCalls(result.items);
+      setCallsTotal(result.total);
+      if (statusFilter === "all" && !searchTerm.trim()) {
+        setAvailableStatuses((prev) => {
+          const merged = new Set([...prev, ...result.items.map((c) => c.status)]);
+          return [...merged];
+        });
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.detail : t.loadError);
       return;
@@ -158,31 +187,31 @@ export function CallsPage() {
         ]);
         setIntegrations(integrationsData);
         setMappings(mappingsData);
-        setUsers(usersData);
+        setUsers(usersData.items);
       } catch {
         // settings section is optional -- call log still renders without it
       }
     }
   }
 
+  // Debounce the search box -- fires the actual request 350ms after typing
+  // stops, not on every keystroke.
   useEffect(() => {
-    if (accessToken) load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accessToken]);
+    const id = setTimeout(() => setSearchTerm(searchQuery), 350);
+    return () => clearTimeout(id);
+  }, [searchQuery]);
 
-  async function loadMoreCalls() {
-    if (!accessToken || !calls) return;
-    setLoadingMoreCalls(true);
-    try {
-      const page = await callsApi.listCalls(accessToken, undefined, CALLS_PAGE_SIZE, calls.length);
-      setCalls([...calls, ...page]);
-      setHasMoreCalls(page.length === CALLS_PAGE_SIZE);
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.detail : t.loadError);
-    } finally {
-      setLoadingMoreCalls(false);
-    }
-  }
+  // Any filter/search change starts back at page 1 -- staying on e.g. page 14
+  // after narrowing the result set would just show an empty page.
+  useEffect(() => {
+    setCallsPage(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter, searchTerm]);
+
+  useEffect(() => {
+    if (accessToken) load(callsPage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessToken, callsPage, statusFilter, searchTerm]);
 
   async function handleExpand(call: Call) {
     if (expandedId === call.id) {
@@ -216,7 +245,7 @@ export function CallsPage() {
         password: values.password,
       });
       toast.success(t.integrationSaved);
-      await load();
+      await load(callsPage);
     } catch (err) {
       if (err instanceof ApiError && err.status === 403) {
         toast.error(t.need2fa);
@@ -241,7 +270,7 @@ export function CallsPage() {
         api_key: values.api_key,
       });
       toast.success(t.integrationSaved);
-      await load();
+      await load(callsPage);
     } catch (err) {
       if (err instanceof ApiError && err.status === 403) {
         toast.error(t.need2fa);
@@ -267,7 +296,7 @@ export function CallsPage() {
       await callsApi.disconnectIntegration(accessToken, disconnectTarget);
       toast.success(t.disconnected);
       setDisconnectTarget(null);
-      await load();
+      await load(callsPage);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.detail : t.genericError);
     } finally {
@@ -305,7 +334,7 @@ export function CallsPage() {
       toast.success(t.mappingSaved);
       setMappingAgentId("");
       setMappingUserId("");
-      await load();
+      await load(callsPage);
     } catch (err) {
       toast.error(err instanceof ApiError && err.status === 403 ? t.need2fa : t.genericError);
     } finally {
@@ -313,20 +342,13 @@ export function CallsPage() {
     }
   }
 
-  const statuses = useMemo(() => {
-    if (!calls) return [];
-    return [...new Set(calls.map((c) => c.status))];
-  }, [calls]);
-
-  const filteredCalls = useMemo(() => {
-    if (!calls) return null;
-    return statusFilter === "all" ? calls : calls.filter((c) => c.status === statusFilter);
-  }, [calls, statusFilter]);
+  const hasActiveFilter = statusFilter !== "all" || searchTerm.trim().length > 0;
+  const noResultsAtAll = calls !== null && calls.length === 0 && !hasActiveFilter;
 
   const usersById = new Map(users.map((u) => [u.id, u]));
 
   return (
-    <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10">
+    <DashboardPageContainer>
       <div className="mb-6 sm:mb-8">
         <h1 className="font-heading mb-1 text-xl font-extrabold text-foreground sm:text-2xl">{t.title}</h1>
         <p className="text-sm text-foreground-muted">{t.sub}</p>
@@ -345,7 +367,7 @@ export function CallsPage() {
         </div>
       )}
 
-      {!error && calls !== null && calls.length === 0 && (
+      {!error && noResultsAtAll && (
         <div className="glass-card flex flex-col items-center gap-3 p-10 text-center sm:p-14">
           <Phone size={32} className="text-foreground-muted" />
           <h2 className="font-heading text-lg font-bold text-foreground">{t.empty}</h2>
@@ -353,38 +375,34 @@ export function CallsPage() {
         </div>
       )}
 
-      {!error && calls !== null && calls.length > 0 && (
+      {!error && calls !== null && !noResultsAtAll && (
         <>
-          {statuses.length > 1 && (
-            <div className="mb-4 flex flex-wrap gap-2">
-              <button
-                onClick={() => setStatusFilter("all")}
-                className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
-                  statusFilter === "all" ? "border-primary/40 bg-primary/12 text-primary" : "border-card-border text-foreground-muted"
-                }`}
-              >
-                {t.all}
-              </button>
-              {statuses.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => setStatusFilter(s)}
-                  className={`rounded-full border px-3 py-1.5 text-xs font-semibold capitalize transition-colors ${
-                    statusFilter === s ? "border-primary/40 bg-primary/12 text-primary" : "border-card-border text-foreground-muted"
-                  }`}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
+          <SearchFilterBar
+            searchValue={searchQuery}
+            onSearchChange={setSearchQuery}
+            searchPlaceholder={t.searchPlaceholder}
+            filters={
+              availableStatuses.length > 1
+                ? [{ value: "all", label: t.all }, ...availableStatuses.map((s) => ({ value: s, label: s }))]
+                : undefined
+            }
+            activeFilter={statusFilter}
+            onFilterChange={setStatusFilter}
+          />
+
+          {calls.length === 0 && (
+            <p className="glass-card py-10 text-center text-sm text-foreground-muted">{t.empty}</p>
           )}
 
-          <div className="glass-card overflow-hidden p-0">
-            {filteredCalls!.map((call, i) => {
+          {/* Each call is its own spaced card, not one continuous divided
+              list (same "bo'laklarga bo'l" feedback as Users/Sales/
+              Customers/Roles). */}
+          <div className="flex flex-col gap-3">
+            {calls.map((call) => {
               const otherNumber = call.direction === "inbound" ? call.from_number : call.to_number;
               const expanded = expandedId === call.id;
               return (
-                <div key={call.id} className={i < filteredCalls!.length - 1 ? "border-b border-card-border/60" : ""}>
+                <div key={call.id} className="bg-card/95 border-card-border overflow-hidden rounded-[14px] border shadow-sm">
                   <button
                     onClick={() => handleExpand(call)}
                     className="hover:bg-accent/40 flex w-full items-center justify-between gap-3 p-4 text-left transition-colors sm:p-5"
@@ -428,14 +446,7 @@ export function CallsPage() {
             })}
           </div>
 
-          {hasMoreCalls && (
-            <div className="mt-4 flex justify-center">
-              <Button variant="outline" disabled={loadingMoreCalls} onClick={loadMoreCalls}>
-                {loadingMoreCalls && <Loader2 size={16} className="animate-spin" />}
-                {t.loadMore}
-              </Button>
-            </div>
-          )}
+          <PaginationBar page={callsPage} totalPages={Math.ceil(callsTotal / CALLS_PAGE_SIZE)} onChange={setCallsPage} />
         </>
       )}
 
@@ -581,21 +592,21 @@ export function CallsPage() {
             </Button>
 
             {mappings.length > 0 && (
-              <div className="mt-5 flex flex-col gap-2">
-                {mappings.map((m) => (
-                  <div key={m.id} className="flex items-center justify-between gap-3 text-sm">
+              <EntityListCard className="mt-5">
+                {mappings.map((m, i) => (
+                  <EntityListRow key={m.id} isLast={i === mappings.length - 1} className="p-3 text-sm">
                     <span className="text-foreground-muted">
                       {m.provider} · {m.external_agent_id}
                     </span>
                     <span className="text-foreground">{usersById.get(m.user_id)?.email ?? m.user_id.slice(0, 8)}</span>
-                  </div>
+                  </EntityListRow>
                 ))}
-              </div>
+              </EntityListCard>
             )}
             {mappings.length === 0 && <p className="mt-4 text-xs text-foreground-muted">{t.noMappings}</p>}
           </div>
         </div>
       )}
-    </main>
+    </DashboardPageContainer>
   );
 }

@@ -39,6 +39,9 @@ import { ApiError } from "@/lib/api/client";
 import { formatMoney } from "@/lib/format/money";
 import { FormField } from "@/components/auth/FormField";
 import { Button } from "@/components/ui/button";
+import { DashboardPageContainer } from "@/components/shared/DashboardPageContainer";
+import { SearchFilterBar } from "@/components/shared/SearchFilterBar";
+import { PaginationBar } from "@/components/shared/PaginationBar";
 
 const content = {
   uz: {
@@ -78,6 +81,8 @@ const content = {
     useExistingCustomer: "Shu mijozni tanlash",
     customerAdded: "Mijoz qo'shildi",
     statuses: { active: "Faol", completed: "Yakunlangan", cancelled: "Bekor qilingan" } as Record<SaleStatus, string>,
+    all: "Barchasi",
+    searchPlaceholder: "Mijoz nomi bo'yicha qidirish...",
     balance: "Qoldiq",
     fullyPaid: "To'liq to'langan",
     recordPayment: "To'lov qabul qilish",
@@ -150,6 +155,8 @@ const content = {
     useExistingCustomer: "Выбрать этого клиента",
     customerAdded: "Клиент добавлен",
     statuses: { active: "Активна", completed: "Завершена", cancelled: "Отменена" } as Record<SaleStatus, string>,
+    all: "Все",
+    searchPlaceholder: "Поиск по имени клиента...",
     balance: "Остаток",
     fullyPaid: "Полностью оплачено",
     recordPayment: "Принять платёж",
@@ -219,7 +226,7 @@ function SaleRow({
   accessToken,
   has2fa,
   t,
-  isLast,
+  onSaleUpdated,
 }: {
   sale: Sale;
   customerName: string;
@@ -227,7 +234,13 @@ function SaleRow({
   accessToken: string;
   has2fa: boolean;
   t: SalesContent;
-  isLast: boolean;
+  // Recording/reversing a payment here can flip the sale's own status
+  // server-side (finance.record_payment auto-completes once the balance
+  // hits 0) -- this row only had loadLedger() to refresh the ledger sub-view,
+  // never the `sale` prop itself (owned by the parent's `sales` list), so a
+  // fully-paid sale kept showing "Faol" until an unrelated page reload. Call
+  // this after any payment change so the parent re-fetches the list.
+  onSaleUpdated: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [ledger, setLedger] = useState<SaleLedger | null>(null);
@@ -284,6 +297,7 @@ function SaleRow({
       setAmount("");
       setFormOpen(false);
       await loadLedger();
+      onSaleUpdated();
     } catch (err) {
       if (err instanceof ApiError && err.status === 403) {
         toast.error(t.need2fa);
@@ -301,6 +315,7 @@ function SaleRow({
       await financeApi.reversePayment(accessToken, paymentId);
       toast.success(t.paymentReversed);
       await loadLedger();
+      onSaleUpdated();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.detail : t.genericError);
     } finally {
@@ -309,7 +324,7 @@ function SaleRow({
   }
 
   return (
-    <div className={isLast ? "" : "border-b border-card-border/60"}>
+    <div className="bg-card/95 border-card-border overflow-hidden rounded-[14px] border shadow-sm">
       <button className="flex w-full items-center justify-between gap-3 p-4 text-left sm:p-5" onClick={toggle}>
         <div className="min-w-0">
           <div className="truncate text-sm font-semibold text-foreground">{customerName}</div>
@@ -468,13 +483,15 @@ export function SalesPage() {
   const has2fa = Boolean(user?.totp_enabled);
 
   const [sales, setSales] = useState<Sale[] | null>(null);
-  const [hasMoreSales, setHasMoreSales] = useState(false);
-  const [loadingMoreSales, setLoadingMoreSales] = useState(false);
+  const [salesTotal, setSalesTotal] = useState(0);
+  const [salesPage, setSalesPage] = useState(1);
   const [customers, setCustomers] = useState<Customer[] | null>(null);
   const [users, setUsers] = useState<TenantUserRow[] | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<SaleStatus | "all">("all");
 
   const [step, setStep] = useState<FormStep>("customer");
   const [customerId, setCustomerId] = useState("");
@@ -500,22 +517,32 @@ export function SalesPage() {
     return (customerId: string) => map.get(customerId) ?? "—";
   }, [customers]);
 
+  const visibleSales = useMemo(() => {
+    let list = sales ?? [];
+    if (statusFilter !== "all") list = list.filter((s) => s.status === statusFilter);
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      list = list.filter((s) => customerName(s.customer_id).toLowerCase().includes(q));
+    }
+    return list;
+  }, [sales, statusFilter, searchQuery, customerName]);
+
   const sellerName = useMemo(() => {
     const map = new Map((users ?? []).map((u) => [u.id, u.full_name || u.email || u.phone || "—"]));
     return (userId: string) => map.get(userId) ?? "—";
   }, [users]);
 
-  async function load() {
+  async function load(targetPage: number) {
     if (!accessToken) return;
     setError(null);
     try {
       const [salesData, customersData] = await Promise.all([
-        salesApi.listSales(accessToken),
+        salesApi.listSales(accessToken, SALES_PAGE_SIZE, (targetPage - 1) * SALES_PAGE_SIZE),
         customersApi.listCustomers(accessToken, CUSTOMER_DROPDOWN_LIMIT),
       ]);
-      setSales(salesData);
-      setHasMoreSales(salesData.length === SALES_PAGE_SIZE);
-      setCustomers(customersData);
+      setSales(salesData.items);
+      setSalesTotal(salesData.total);
+      setCustomers(customersData.items);
     } catch (err) {
       setError(err instanceof ApiError ? err.detail : t.loadError);
       return;
@@ -528,30 +555,16 @@ export function SalesPage() {
     try {
       // Only admin/manager/finance roles carry users.view by default -- an
       // agent without it just keeps the hardcoded "self" behavior below.
-      setUsers(await usersApi.listUsers(accessToken, USERS_DROPDOWN_LIMIT));
+      setUsers((await usersApi.listUsers(accessToken, USERS_DROPDOWN_LIMIT)).items);
     } catch {
       setUsers(null);
     }
   }
 
   useEffect(() => {
-    if (accessToken) load();
+    if (accessToken) load(salesPage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accessToken]);
-
-  async function loadMoreSales() {
-    if (!accessToken || !sales) return;
-    setLoadingMoreSales(true);
-    try {
-      const page = await salesApi.listSales(accessToken, SALES_PAGE_SIZE, sales.length);
-      setSales([...sales, ...page]);
-      setHasMoreSales(page.length === SALES_PAGE_SIZE);
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.detail : t.loadError);
-    } finally {
-      setLoadingMoreSales(false);
-    }
-  }
+  }, [accessToken, salesPage]);
 
   function resetForm() {
     setStep("customer");
@@ -684,7 +697,7 @@ export function SalesPage() {
       });
       toast.success(t.paymentRecorded);
       closeForm();
-      await load();
+      await load(salesPage);
     } catch (err) {
       toast.error(err instanceof ApiError && err.status === 403 ? t.need2fa : t.genericError);
     } finally {
@@ -756,7 +769,7 @@ export function SalesPage() {
       }
       toast.success(createdCount > 1 ? `${createdCount} ${t.createdMultiple}` : t.created);
       closeForm();
-      await load();
+      await load(salesPage);
     } catch (err) {
       toast.error(err instanceof ApiError && err.status === 409 ? t.insufficientStock : t.genericError);
     } finally {
@@ -768,7 +781,7 @@ export function SalesPage() {
     deadline.length > 0 && items.some((it) => it.price.trim().length > 0 && Number(it.price) >= 0);
 
   return (
-    <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10">
+    <DashboardPageContainer>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3 sm:mb-8">
         <div>
           <h1 className="font-heading mb-1 text-xl font-extrabold text-foreground sm:text-2xl">{t.title}</h1>
@@ -1136,9 +1149,28 @@ export function SalesPage() {
         </div>
       )}
 
+      {!error && sales !== null && sales.length > 0 && (
+        <SearchFilterBar
+          searchValue={searchQuery}
+          onSearchChange={setSearchQuery}
+          searchPlaceholder={t.searchPlaceholder}
+          filters={[
+            { value: "all", label: t.all },
+            { value: "active", label: t.statuses.active },
+            { value: "completed", label: t.statuses.completed },
+            { value: "cancelled", label: t.statuses.cancelled },
+          ]}
+          activeFilter={statusFilter}
+          onFilterChange={setStatusFilter}
+        />
+      )}
+
       {!error && sales !== null && sales.length > 0 && accessToken && (
-        <div className="glass-card overflow-hidden p-0">
-          {sales.map((s, i) => (
+        // Each sale is its own spaced card, not one continuous divided list
+        // (same "stuck together" feedback as Users) -- SaleRow renders its
+        // own bg-card/rounded-[14px]/border/shadow shell now.
+        <div className="flex flex-col gap-3">
+          {visibleSales.map((s) => (
             <SaleRow
               key={s.id}
               sale={s}
@@ -1147,20 +1179,15 @@ export function SalesPage() {
               accessToken={accessToken}
               has2fa={has2fa}
               t={t}
-              isLast={i === sales.length - 1}
+              onSaleUpdated={() => load(salesPage)}
             />
           ))}
         </div>
       )}
 
-      {!error && sales !== null && sales.length > 0 && hasMoreSales && (
-        <div className="mt-4 flex justify-center">
-          <Button variant="outline" disabled={loadingMoreSales} onClick={loadMoreSales}>
-            {loadingMoreSales && <Loader2 size={16} className="animate-spin" />}
-            {t.loadMore}
-          </Button>
-        </div>
+      {!error && sales !== null && sales.length > 0 && (
+        <PaginationBar page={salesPage} totalPages={Math.ceil(salesTotal / SALES_PAGE_SIZE)} onChange={setSalesPage} />
       )}
-    </main>
+    </DashboardPageContainer>
   );
 }

@@ -4,10 +4,13 @@ import { AlertCircle, Loader2, Lock, Plus, ShieldCheck, X } from "lucide-react";
 import { useLang } from "@/lib/i18n/LangContext";
 import { useTenantAuth } from "@/lib/auth/tenantAuthStore";
 import * as rolesApi from "@/lib/api/roles";
+import { ROLES_PAGE_SIZE } from "@/lib/api/roles";
 import type { Role } from "@/lib/api/roles";
 import { ApiError } from "@/lib/api/client";
 import { FormField } from "@/components/auth/FormField";
 import { Button } from "@/components/ui/button";
+import { DashboardPageContainer } from "@/components/shared/DashboardPageContainer";
+import { PaginationBar } from "@/components/shared/PaginationBar";
 
 const content = {
   uz: {
@@ -26,6 +29,54 @@ const content = {
     created: "Rol yaratildi",
     updated: "Ruxsatlar yangilandi",
     empty: "Rollar topilmadi",
+    moduleLabels: {
+      users: "Foydalanuvchilar",
+      roles: "Rollar",
+      catalog: "Mahsulotlar",
+      customers: "Mijozlar",
+      sales: "Savdolar",
+      finance: "Moliya",
+      calls: "Qo'ng'iroqlar",
+      attendance: "Davomat",
+      billing: "To'lovlar",
+      notifications: "Bildirishnomalar",
+      analytics: "Analitika",
+      crm: "Integratsiyalar",
+      reports: "Hisobotlar",
+    } as Record<string, string>,
+    permissionLabels: {
+      "users.view": "Foydalanuvchilarni ko'rish",
+      "users.manage": "Foydalanuvchilarni boshqarish",
+      "roles.view": "Rollarni ko'rish",
+      "roles.manage": "Rollarni boshqarish",
+      "catalog.view": "Mahsulotlarni ko'rish",
+      "catalog.manage": "Mahsulotlarni boshqarish",
+      "customers.view": "Mijozlarni ko'rish",
+      "customers.view_all": "Barcha mijozlarni ko'rish",
+      "customers.manage": "Mijozlarni boshqarish",
+      "sales.view": "Savdolarni ko'rish",
+      "sales.view_all": "Barcha savdolarni ko'rish",
+      "sales.manage": "Savdolarni boshqarish",
+      "finance.view": "Moliyani ko'rish",
+      "finance.view_all": "Barcha moliyani ko'rish",
+      "finance.manage": "Moliyani boshqarish",
+      "finance.approve": "Moliyaviy so'rovlarni tasdiqlash",
+      "calls.view": "Qo'ng'iroqlarni ko'rish",
+      "calls.view_all": "Barcha qo'ng'iroqlarni ko'rish",
+      "calls.manage": "Qo'ng'iroqlarni boshqarish",
+      "attendance.view": "Davomatni ko'rish",
+      "attendance.manage": "Davomatni boshqarish",
+      "billing.view": "To'lovlarni ko'rish",
+      "billing.manage": "To'lovlarni boshqarish",
+      "notifications.view": "Bildirishnomalarni ko'rish",
+      "notifications.manage": "Bildirishnomalarni boshqarish",
+      "analytics.view": "Analitikani ko'rish",
+      "analytics.manage": "Analitikani boshqarish",
+      "crm.view": "Integratsiyalarni ko'rish",
+      "crm.manage": "Integratsiyalarni boshqarish",
+      "reports.view": "Hisobotlarni ko'rish",
+      "reports.export": "Hisobotlarni eksport qilish",
+    } as Record<string, string>,
   },
   ru: {
     title: "Роли",
@@ -43,6 +94,54 @@ const content = {
     created: "Роль создана",
     updated: "Права обновлены",
     empty: "Роли не найдены",
+    moduleLabels: {
+      users: "Пользователи",
+      roles: "Роли",
+      catalog: "Товары",
+      customers: "Клиенты",
+      sales: "Продажи",
+      finance: "Финансы",
+      calls: "Звонки",
+      attendance: "Посещаемость",
+      billing: "Платежи",
+      notifications: "Уведомления",
+      analytics: "Аналитика",
+      crm: "Интеграции",
+      reports: "Отчёты",
+    } as Record<string, string>,
+    permissionLabels: {
+      "users.view": "Просмотр пользователей",
+      "users.manage": "Управление пользователями",
+      "roles.view": "Просмотр ролей",
+      "roles.manage": "Управление ролями",
+      "catalog.view": "Просмотр товаров",
+      "catalog.manage": "Управление товарами",
+      "customers.view": "Просмотр клиентов",
+      "customers.view_all": "Просмотр всех клиентов",
+      "customers.manage": "Управление клиентами",
+      "sales.view": "Просмотр продаж",
+      "sales.view_all": "Просмотр всех продаж",
+      "sales.manage": "Управление продажами",
+      "finance.view": "Просмотр финансов",
+      "finance.view_all": "Просмотр всех финансов",
+      "finance.manage": "Управление финансами",
+      "finance.approve": "Одобрение финансовых заявок",
+      "calls.view": "Просмотр звонков",
+      "calls.view_all": "Просмотр всех звонков",
+      "calls.manage": "Управление звонками",
+      "attendance.view": "Просмотр посещаемости",
+      "attendance.manage": "Управление посещаемостью",
+      "billing.view": "Просмотр платежей",
+      "billing.manage": "Управление платежами",
+      "notifications.view": "Просмотр уведомлений",
+      "notifications.manage": "Управление уведомлениями",
+      "analytics.view": "Просмотр аналитики",
+      "analytics.manage": "Управление аналитикой",
+      "crm.view": "Просмотр интеграций",
+      "crm.manage": "Управление интеграциями",
+      "reports.view": "Просмотр отчётов",
+      "reports.export": "Экспорт отчётов",
+    } as Record<string, string>,
   },
 };
 
@@ -63,6 +162,8 @@ export function RolesPage() {
   const has2fa = Boolean(user?.totp_enabled);
 
   const [roles, setRoles] = useState<Role[] | null>(null);
+  const [rolesTotal, setRolesTotal] = useState(0);
+  const [rolesPage, setRolesPage] = useState(1);
   const [allPermissions, setAllPermissions] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -73,26 +174,27 @@ export function RolesPage() {
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
 
-  async function load() {
+  async function load(targetPage: number) {
     if (!accessToken) return;
     setError(null);
     try {
-      const [rolesData, permsData] = await Promise.all([
-        rolesApi.listRoles(accessToken),
+      const [rolesResult, permsData] = await Promise.all([
+        rolesApi.listRoles(accessToken, ROLES_PAGE_SIZE, (targetPage - 1) * ROLES_PAGE_SIZE),
         rolesApi.listPermissions(accessToken),
       ]);
-      setRoles(rolesData);
+      setRoles(rolesResult.items);
+      setRolesTotal(rolesResult.total);
       setAllPermissions(permsData);
-      setSelectedId((prev) => prev ?? rolesData[0]?.id ?? null);
+      setSelectedId((prev) => prev ?? rolesResult.items[0]?.id ?? null);
     } catch (err) {
       setError(err instanceof ApiError ? err.detail : t.loadError);
     }
   }
 
   useEffect(() => {
-    if (accessToken) load();
+    if (accessToken) load(rolesPage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accessToken]);
+  }, [accessToken, rolesPage]);
 
   const selectedRole = roles?.find((r) => r.id === selectedId) ?? null;
 
@@ -136,8 +238,11 @@ export function RolesPage() {
       toast.success(t.created);
       setNewName("");
       setFormOpen(false);
-      setRoles((prev) => [...(prev ?? []), role]);
       setSelectedId(role.id);
+      // New roles sort first (ORDER BY created_at DESC) -- reload page 1 so
+      // the just-created role is actually visible on the page it landed on.
+      if (rolesPage === 1) await load(1);
+      else setRolesPage(1);
     } catch (err) {
       if (err instanceof ApiError && err.status === 403) toast.error(t.need2fa);
       else if (err instanceof ApiError && err.status === 409) toast.error(t.nameTaken);
@@ -148,7 +253,7 @@ export function RolesPage() {
   }
 
   return (
-    <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10">
+    <DashboardPageContainer>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3 sm:mb-8">
         <div>
           <h1 className="font-heading mb-1 text-xl font-extrabold text-foreground sm:text-2xl">{t.title}</h1>
@@ -195,19 +300,22 @@ export function RolesPage() {
 
       {!error && roles !== null && roles.length > 0 && (
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-[220px_1fr]">
-          <div className="glass-card flex flex-col gap-1 p-2">
+          <div className="flex flex-col gap-2">
+            {/* Each role is its own spaced card, not one tight list (same
+                "bo'laklarga bo'l" feedback as Users/Sales/Customers). */}
             {roles.map((r) => (
               <button
                 key={r.id}
                 onClick={() => setSelectedId(r.id)}
-                className={`flex items-center justify-between gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition-colors ${
-                  selectedId === r.id ? "bg-primary/12 text-primary" : "text-foreground-muted hover:bg-accent hover:text-foreground"
+                className={`bg-card/95 border-card-border flex items-center justify-between gap-2 rounded-[14px] border px-3 py-2.5 text-left text-sm font-medium shadow-sm transition-colors ${
+                  selectedId === r.id ? "border-accent-orange/40 bg-accent-orange/12 text-accent-orange" : "text-foreground-muted hover:bg-accent hover:text-foreground"
                 }`}
               >
                 {r.name}
                 {r.is_system && <Lock size={12} className="shrink-0 opacity-60" />}
               </button>
             ))}
+            <PaginationBar page={rolesPage} totalPages={Math.ceil(rolesTotal / ROLES_PAGE_SIZE)} onChange={setRolesPage} />
           </div>
 
           {selectedRole && (
@@ -228,7 +336,9 @@ export function RolesPage() {
               <div className="flex flex-col gap-5">
                 {groupedPermissions.map(([module, keys]) => (
                   <div key={module}>
-                    <h3 className="mb-2 text-xs font-bold tracking-wide text-foreground-muted uppercase">{module}</h3>
+                    <h3 className="mb-2 text-xs font-bold tracking-wide text-foreground-muted uppercase">
+                      {t.moduleLabels[module] ?? module}
+                    </h3>
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                       {keys.map((key) => (
                         <label
@@ -244,7 +354,7 @@ export function RolesPage() {
                             onChange={() => togglePermission(key)}
                             className="accent-primary size-4"
                           />
-                          <span className="font-mono text-foreground">{key}</span>
+                          <span className="text-foreground">{t.permissionLabels[key] ?? key}</span>
                         </label>
                       ))}
                     </div>
@@ -257,6 +367,6 @@ export function RolesPage() {
       )}
 
       {!has2fa && <p className="mt-6 text-center text-xs text-foreground-muted">{t.need2fa}</p>}
-    </main>
+    </DashboardPageContainer>
   );
 }
