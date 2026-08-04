@@ -28,9 +28,14 @@ async def check_out(conn: asyncpg.Connection, user_id: UUID) -> dict | None:
     return _row(row)
 
 
-async def list_attendance(conn: asyncpg.Connection, user_id: UUID | None) -> list[dict]:
-    rows = [row async for row in _queries.list_attendance(conn, user_id=user_id)]
+async def list_attendance(conn: asyncpg.Connection, user_id: UUID | None, limit: int, offset: int) -> list[dict]:
+    rows = [row async for row in _queries.list_attendance(conn, user_id=user_id, limit=limit, offset=offset)]
     return [dict(r) for r in rows]
+
+
+async def count_attendance(conn: asyncpg.Connection, user_id: UUID | None) -> int:
+    row = await _queries.count_attendance(conn, user_id=user_id)
+    return row["count"]
 
 
 async def user_exists(conn: asyncpg.Connection, user_id: UUID) -> bool:

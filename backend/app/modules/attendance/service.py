@@ -45,6 +45,10 @@ async def push_attendance(pool: asyncpg.Pool, tenant_id: UUID, user_id: UUID, ch
             raise AlreadyCheckedInError from exc
 
 
-async def list_attendance(pool: asyncpg.Pool, tenant_id: UUID, user_id: UUID | None) -> list[dict]:
+async def list_attendance(
+    pool: asyncpg.Pool, tenant_id: UUID, user_id: UUID | None, limit: int = 50, offset: int = 0
+) -> tuple[list[dict], int]:
     async with tenant_connection(pool, tenant_id) as conn:
-        return await repository.list_attendance(conn, user_id)
+        items = await repository.list_attendance(conn, user_id, limit, offset)
+        total = await repository.count_attendance(conn, user_id)
+    return items, total

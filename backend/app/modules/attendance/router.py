@@ -1,8 +1,9 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.core.deps import AuthContext, get_current_user, get_pool, require_permission
+from app.core.pagination import Paginated
 from app.modules.attendance import service
 from app.modules.attendance.schemas import AttendanceOut, AttendancePush
 from app.modules.auth.permissions import ATTENDANCE_MANAGE, ATTENDANCE_VIEW
@@ -40,10 +41,13 @@ async def push_attendance(
         raise HTTPException(status.HTTP_409_CONFLICT, "User already has an open attendance record")
 
 
-@router.get("", response_model=list[AttendanceOut])
+@router.get("", response_model=Paginated[AttendanceOut])
 async def list_attendance(
     user_id: UUID | None = None,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
     pool=Depends(get_pool),
     auth: AuthContext = Depends(require_permission(ATTENDANCE_VIEW)),
 ):
-    return await service.list_attendance(pool, auth.tenant_id, user_id)
+    items, total = await service.list_attendance(pool, auth.tenant_id, user_id, limit, offset)
+    return Paginated(items=items, total=total)
