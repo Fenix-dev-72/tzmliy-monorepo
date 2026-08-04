@@ -56,7 +56,7 @@ class ParsedLeadEvent:
     # separate entity; Bitrix24: PHONE is present but this dataclass treats
     # it as optional either way now that both go through the same pull-based
     # ingest path) -- None means "backfill via a follow-up API call if the
-    # provider supports one" (AmoCrmProvider.fetch_lead_phone) or "sync
+    # provider supports one" (AmoCrmProvider.fetch_lead_contact_details) or "sync
     # without a phone" otherwise, never a hard failure.
     phone: str | None
     email: str | None
@@ -91,13 +91,26 @@ class CRMProvider(Protocol):
 def _first_multi_value(field) -> str | None:
     """Bitrix24's own multi-value field shape (PHONE/EMAIL) is a list of
     {VALUE, VALUE_TYPE} dicts, not a bare string -- takes the first value,
-    same "first value wins" simplification AmoCrmProvider.fetch_lead_phone
-    already uses for its own contact lookup. Defensively also accepts a bare
+    same "first value wins" simplification AmoCrmProvider's own
+    _amocrm_custom_field_value already uses for its own contact lookup.
+    Defensively also accepts a bare
     string, in case a future Bitrix24 response shape ever flattens it."""
     if isinstance(field, list) and field:
         return field[0].get("VALUE")
     if isinstance(field, str):
         return field or None
+    return None
+
+
+def _amocrm_custom_field_value(entity: dict, field_code: str) -> str | None:
+    """AmoCRM's own custom-field shape (custom_fields_values: [{field_code,
+    values: [{value}]}]) -- shared by AmoCrmProvider's PHONE and EMAIL
+    lookups, which both live in exactly this same array on a Contact."""
+    for field in entity.get("custom_fields_values") or []:
+        if field.get("field_code") == field_code:
+            values = field.get("values") or []
+            if values:
+                return values[0].get("value")
     return None
 
 
@@ -189,7 +202,7 @@ class AmoCrmProvider:
         _AMOCRM_WON_STATUS_ID/_AMOCRM_LOST_STATUS_ID a safe cross-tenant
         constant. phone is always None here (a lead's own fields never carry
         contact info) -- crm/service.py's ingest_amocrm_lead backfills it via
-        fetch_lead_phone below, same as the old webhook path did."""
+        fetch_lead_contact_details below, same as the old webhook path did."""
         subdomain = credential["external_account_id"]
         headers = {"Authorization": f"Bearer {credential['api_key_encrypted']}"}
         since_ts = int(since.timestamp())
@@ -221,14 +234,37 @@ class AmoCrmProvider:
             page += 1
         return leads
 
-    async def fetch_lead_phone(self, credential: dict, external_lead_id: str) -> str | None:
+    async def fetch_lead_contact_details(self, credential: dict, external_lead_id: str) -> dict:
         """Backfills the phone a lead never carries inline (see list_leads'
-        docstring above) -- fetches the lead's first linked contact, then
-        that contact's first PHONE field value. Returns None (not an error)
-        if the lead has no linked contact or the contact
-        has no phone -- ingest_amocrm_lead treats that as "can't sync this
-        one", same graceful-degradation shape as everywhere else in this
-        module."""
+        docstring above), plus email and name (2026-07-28, audit follow-up:
+        AmoCRM's EMAIL field lives in the exact same place as PHONE --
+        custom_fields_values on the linked Contact, field_code "EMAIL",
+        confirmed against amocrm.ru/developers/content/crm_platform/
+        contacts-api -- so one contact fetch backfills all three at once).
+        Also returns the contact's own name, since a lead's `name` is
+        really the deal's title (often generic, e.g. "Qo'ng'iroq"), not the
+        person's name. Every value is None (not an error) when the lead has
+        no linked contact or the contact lacks that field -- ingest_amocrm_lead
+        treats that as "can't backfill this one", same graceful-degradation
+        shape as everywhere else in this module. A transient API failure
+        (network hiccup, deleted contact, rate limit) degrades the same way
+        rather than aborting the whole lead sync -- same try/except shape as
+        fetch_loss_reason below; the lead still syncs with whatever data
+        list_leads already gave it, and a later poll tick retries the
+        backfill."""
+        try:
+            contact = await self._fetch_lead_contact(credential, external_lead_id)
+        except CrmApiError:
+            return {"phone": None, "email": None, "name": None}
+        if contact is None:
+            return {"phone": None, "email": None, "name": None}
+        return {
+            "phone": _amocrm_custom_field_value(contact, "PHONE"),
+            "email": _amocrm_custom_field_value(contact, "EMAIL"),
+            "name": contact.get("name") or None,
+        }
+
+    async def _fetch_lead_contact(self, credential: dict, external_lead_id: str) -> dict | None:
         subdomain = credential["external_account_id"]
         headers = {"Authorization": f"Bearer {credential['api_key_encrypted']}"}
         lead = await to_thread(
@@ -237,15 +273,40 @@ class AmoCrmProvider:
         contacts = lead.get("_embedded", {}).get("contacts", [])
         if not contacts:
             return None
-        contact = await to_thread(
+        return await to_thread(
             _get_json_sync, f"https://{subdomain}.amocrm.ru/api/v4/contacts/{contacts[0]['id']}", headers
         )
-        for field in contact.get("custom_fields_values") or []:
-            if field.get("field_code") == "PHONE":
-                values = field.get("values") or []
-                if values:
-                    return values[0].get("value")
-        return None
+
+    async def fetch_lead_company_name(self, credential: dict, external_lead_id: str) -> str | None:
+        """Company name backfill (2026-07-28, audit follow-up): a lead's own
+        payload only ever carries `_embedded.companies` with the company's
+        id (confirmed against amocrm.ru/developers/content/crm_platform/
+        leads-api -- "always 1 element"), never its name -- one follow-up
+        GET resolves it, same "backfill via a follow-up API call" shape as
+        fetch_lead_contact_details. Returns None (not an error) if the lead has no
+        linked company -- AmoCRM has no standard ADDRESS field on Companies
+        (confirmed against companies-api: only `name` is a real built-in
+        field, everything else is a per-account custom field with no
+        guaranteed field_code), so address is deliberately not fetched
+        here -- there's no reliable way to find it across different
+        tenants' AmoCRM accounts. A transient API failure degrades the same
+        way as a missing company (returns None) rather than aborting the
+        whole lead sync -- see fetch_lead_contact_details' matching note."""
+        subdomain = credential["external_account_id"]
+        headers = {"Authorization": f"Bearer {credential['api_key_encrypted']}"}
+        try:
+            lead = await to_thread(
+                _get_json_sync, f"https://{subdomain}.amocrm.ru/api/v4/leads/{external_lead_id}?with=companies", headers
+            )
+            companies = lead.get("_embedded", {}).get("companies", [])
+            if not companies:
+                return None
+            company = await to_thread(
+                _get_json_sync, f"https://{subdomain}.amocrm.ru/api/v4/companies/{companies[0]['id']}", headers
+            )
+        except CrmApiError:
+            return None
+        return company.get("name") or None
 
     async def fetch_loss_reason(self, credential: dict, external_lead_id: str) -> str | None:
         """Seller/lead analytics (2026-07-15): AmoCRM records why a lost
@@ -552,7 +613,7 @@ class Bitrix24Provider:
         linked Contact entity, not inline -- CONTACT_ID is resolved via one
         follow-up crm.contact.get call per deal that has one, same
         "backfill via a follow-up API call" shape as AmoCrmProvider's own
-        fetch_lead_phone."""
+        fetch_lead_contact_details."""
         since_iso = since.strftime("%Y-%m-%dT%H:%M:%S")
         deals: list[ParsedLeadEvent] = []
         start = 0

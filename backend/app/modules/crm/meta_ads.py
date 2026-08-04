@@ -74,8 +74,8 @@ def _list_ad_accounts_sync(access_token: str) -> list[dict]:
 
 async def list_ad_accounts(access_token: str) -> list[dict]:
     """Auto-discovery for the OAuth connect flow (2026-07-24) -- so a tenant
-    no longer has to know/type their own act_{id}. Requires ads_read/
-    ads_management scope (already requested in build_authorize_url). Returns
+    no longer has to know/type their own act_{id}. Requires the ads_read
+    scope (requested in build_authorize_url). Returns
     [] for a real, valid token with zero ad accounts linked to the Facebook
     account -- that's a legitimate state (confirmed live against the user's
     own test token), not an error; callers must handle an empty list rather

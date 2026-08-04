@@ -172,9 +172,14 @@ async def upsert_ad_campaign(
     return _row(row)
 
 
-async def list_ad_campaigns(conn: asyncpg.Connection) -> list[dict]:
-    rows = [row async for row in _queries.list_ad_campaigns(conn)]
+async def list_ad_campaigns(conn: asyncpg.Connection, limit: int, offset: int) -> list[dict]:
+    rows = [row async for row in _queries.list_ad_campaigns(conn, limit=limit, offset=offset)]
     return _rows(rows)
+
+
+async def count_ad_campaigns(conn: asyncpg.Connection) -> int:
+    row = await _queries.count_ad_campaigns(conn)
+    return row["count"]
 
 
 async def upsert_ad_insight(

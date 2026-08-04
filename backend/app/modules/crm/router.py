@@ -8,6 +8,7 @@ from fastapi.responses import RedirectResponse, StreamingResponse
 
 from app.core.config import Settings, get_settings
 from app.core.deps import AuthContext, get_current_user, get_pool, get_redis, require_permission
+from app.core.pagination import Paginated
 from app.modules.auth.permissions import CRM_MANAGE, CRM_VIEW
 from app.modules.crm import service
 from app.modules.crm.providers import CrmApiError, UnknownProviderError
@@ -234,9 +235,15 @@ async def list_manager_mappings(pool=Depends(get_pool), auth: AuthContext = Depe
     return await service.list_manager_mappings(pool, auth.tenant_id)
 
 
-@router.get("/ad-campaigns", response_model=list[AdCampaignOut])
-async def list_ad_campaigns(pool=Depends(get_pool), auth: AuthContext = Depends(require_permission(CRM_VIEW))):
-    return await service.list_ad_campaigns(pool, auth.tenant_id)
+@router.get("/ad-campaigns", response_model=Paginated[AdCampaignOut])
+async def list_ad_campaigns(
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    pool=Depends(get_pool),
+    auth: AuthContext = Depends(require_permission(CRM_VIEW)),
+):
+    items, total = await service.list_ad_campaigns(pool, auth.tenant_id, limit, offset)
+    return Paginated(items=items, total=total)
 
 
 @router.get("/ad-insights", response_model=list[AdInsightOut])

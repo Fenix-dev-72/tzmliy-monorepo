@@ -29,7 +29,7 @@ from app.modules.crm.providers import CrmApiError, _get_json_sync, _post_json_sy
 
 OAuthProvider = Literal["amocrm", "bitrix24", "meta_ads"]
 
-_META_ADS_API_VERSION = "v19.0"
+_META_ADS_API_VERSION = "v21.0"
 
 
 class UnknownOAuthProviderError(Exception):
@@ -67,7 +67,13 @@ def build_authorize_url(provider: OAuthProvider, client_id: str, redirect_uri: s
             "client_id": client_id,
             "redirect_uri": redirect_uri,
             "state": state,
-            "scope": "ads_read,ads_management",
+            # ads_read only (2026-07-27): the Meta app is registered with the
+            # "track ad performance" use case, which grants ads_read alone.
+            # meta_ads.py is pull-only (adaccounts/campaigns/insights GETs), so
+            # ads_management was never actually used -- requesting it would make
+            # OAuth fail (app can't grant a scope it doesn't have) and needlessly
+            # complicate App Review (a write permission).
+            "scope": "ads_read",
         }
         return f"https://www.facebook.com/{_META_ADS_API_VERSION}/dialog/oauth?{urllib.parse.urlencode(params)}"
     raise UnknownOAuthProviderError(provider)

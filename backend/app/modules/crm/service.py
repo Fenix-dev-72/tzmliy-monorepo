@@ -361,19 +361,31 @@ async def ingest_amocrm_lead(pool: asyncpg.Pool, tenant_id: UUID, provider, even
     customer-by-phone and sale-by-idempotency-key lookups below, same
     idempotency shape as calls' insert_call ON CONFLICT DO NOTHING."""
     phone = event.phone
-    if phone is None and hasattr(provider, "fetch_lead_phone"):
+    email = event.email
+    full_name = event.full_name
+    company = None
+    if phone is None and hasattr(provider, "fetch_lead_contact_details"):
         fresh_credential = await get_valid_credential_for_sync(pool, tenant_id, "amocrm")
         if fresh_credential is not None:
             decrypted_credential = dict(fresh_credential)
             if fresh_credential["api_key_encrypted"]:
                 decrypted_credential["api_key_encrypted"] = decrypt_secret(fresh_credential["api_key_encrypted"])
-            phone = await provider.fetch_lead_phone(decrypted_credential, event.external_lead_id)
+            # Contact carries phone/email/name in one shot (audit follow-up,
+            # 2026-07-28 -- see providers.py's fetch_lead_contact_details) --
+            # the lead's own `name` is really the deal title (often generic),
+            # so a real contact name always wins when one exists.
+            contact_details = await provider.fetch_lead_contact_details(decrypted_credential, event.external_lead_id)
+            phone = contact_details["phone"]
+            email = email or contact_details["email"]
+            full_name = contact_details["name"] or full_name
+            if hasattr(provider, "fetch_lead_company_name"):
+                company = await provider.fetch_lead_company_name(decrypted_credential, event.external_lead_id)
 
     async with tenant_connection(pool, tenant_id) as conn:
         customer = await customers_repository.get_customer_by_phone(conn, phone) if phone else None
         if customer is None:
             customer = await customers_repository.insert_customer(
-                conn, tenant_id, event.full_name, phone, responsible_user_id, "lead", "amocrm"
+                conn, tenant_id, full_name, phone, responsible_user_id, "lead", "amocrm", email=email, company=company
             )
             if customer is None:
                 customer = await customers_repository.get_customer_by_phone(conn, phone)
@@ -385,7 +397,7 @@ async def ingest_amocrm_lead(pool: asyncpg.Pool, tenant_id: UUID, provider, even
             "amocrm",
             event.external_lead_id,
             "inbound",
-            {"full_name": event.full_name, "phone": phone, "email": event.email},
+            {"full_name": full_name, "phone": phone, "email": email, "company": company},
         )
 
     if event.status_id == _AMOCRM_LOST_STATUS_ID:
@@ -467,7 +479,7 @@ async def ingest_bitrix24_lead(pool: asyncpg.Pool, tenant_id: UUID, event, respo
     status-id constants it checked against never matched Bitrix24 events.
 
     Phone comes directly from Bitrix24Provider.list_leads (no separate
-    fetch_lead_phone follow-up call needed, unlike AmoCRM) -- Bitrix24's
+    fetch_lead_contact_details follow-up call needed, unlike AmoCRM) -- Bitrix24's
     crm.lead.list response carries PHONE inline. No webhook_events dedup
     needed either, same reasoning as ingest_amocrm_lead: customer-by-phone
     and sale-by-idempotency-key lookups below already make re-processing the
@@ -476,7 +488,7 @@ async def ingest_bitrix24_lead(pool: asyncpg.Pool, tenant_id: UUID, event, respo
         customer = await customers_repository.get_customer_by_phone(conn, event.phone) if event.phone else None
         if customer is None:
             customer = await customers_repository.insert_customer(
-                conn, tenant_id, event.full_name, event.phone, responsible_user_id, "lead", "bitrix24"
+                conn, tenant_id, event.full_name, event.phone, responsible_user_id, "lead", "bitrix24", email=event.email
             )
             if customer is None:
                 customer = await customers_repository.get_customer_by_phone(conn, event.phone)
@@ -669,9 +681,13 @@ async def get_seller_followup_stats(
     return {"total": len(tasks), "on_time": on_time, "pct": round(on_time / len(tasks) * 100, 1)}
 
 
-async def list_ad_campaigns(pool: asyncpg.Pool, tenant_id: UUID) -> list[dict]:
+async def list_ad_campaigns(
+    pool: asyncpg.Pool, tenant_id: UUID, limit: int = 50, offset: int = 0
+) -> tuple[list[dict], int]:
     async with tenant_connection(pool, tenant_id) as conn:
-        return await repository.list_ad_campaigns(conn)
+        items = await repository.list_ad_campaigns(conn, limit, offset)
+        total = await repository.count_ad_campaigns(conn)
+    return items, total
 
 
 async def list_ad_insights(pool: asyncpg.Pool, tenant_id: UUID, campaign_id: UUID | None) -> list[dict]:

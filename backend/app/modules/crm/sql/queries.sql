@@ -116,9 +116,14 @@ DO UPDATE SET name = EXCLUDED.name, status = EXCLUDED.status, updated_at = now()
 RETURNING id, tenant_id, provider, external_campaign_id, name, status, created_at, updated_at;
 
 -- name: list_ad_campaigns
+-- Real numbered pagination (2026-07-28) -- was unbounded before this.
 SELECT id, tenant_id, provider, external_campaign_id, name, status, created_at, updated_at
 FROM ad_campaigns
-ORDER BY name;
+ORDER BY name
+LIMIT :limit OFFSET :offset;
+
+-- name: count_ad_campaigns^
+SELECT COUNT(*) AS count FROM ad_campaigns;
 
 -- name: upsert_ad_insight^
 INSERT INTO ad_insights (tenant_id, campaign_id, insight_date, impressions, clicks, spend_amount, currency)
