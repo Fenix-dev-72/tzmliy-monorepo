@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { NavLink } from "react-router";
 import {
   Bell,
@@ -18,11 +19,9 @@ import {
   Users,
   Wallet,
   Warehouse,
-  X,
 } from "lucide-react";
 import { useLang } from "@/lib/i18n/LangContext";
 import { useTenantAuth } from "@/lib/auth/tenantAuthStore";
-import { TizimlyLogo, TizimlyWordmark } from "@/components/layout/TizimlyLogo";
 
 const content = {
   uz: {
@@ -65,7 +64,11 @@ const content = {
   },
 };
 
-function useNavItems() {
+// Single source of truth for the nav item list, ordered to match the design
+// mockup's `navDef` array exactly -- DashboardSidebar (desktop, full list),
+// DashboardBottomNav (first 4), and DashboardMoreSheet (the rest) all derive
+// from this same hook so the three surfaces can never drift out of sync.
+export function useNavItems() {
   const { lang } = useLang();
   const { user } = useTenantAuth();
   const t = content[lang];
@@ -74,13 +77,7 @@ function useNavItems() {
   return [
     { to: "/dashboard", end: true, icon: LayoutDashboard, label: t.home, show: true },
     { to: "/dashboard/sales", end: false, icon: ShoppingCart, label: t.sales, show: permissions.has("sales.view") },
-    {
-      to: "/dashboard/customers",
-      end: false,
-      icon: Users,
-      label: t.customers,
-      show: permissions.has("customers.view"),
-    },
+    { to: "/dashboard/customers", end: false, icon: Users, label: t.customers, show: permissions.has("customers.view") },
     { to: "/dashboard/finance", end: false, icon: Wallet, label: t.finance, show: permissions.has("finance.view") },
     {
       to: "/dashboard/sellers",
@@ -93,13 +90,7 @@ function useNavItems() {
     { to: "/dashboard/roles", end: false, icon: ShieldCheck, label: t.roles, show: permissions.has("roles.view") },
     { to: "/dashboard/calls", end: false, icon: Phone, label: t.calls, show: permissions.has("calls.view") },
     { to: "/dashboard/attendance", end: false, icon: CalendarCheck, label: t.attendance, show: true },
-    {
-      to: "/dashboard/integrations",
-      end: false,
-      icon: Plug,
-      label: t.integrations,
-      show: permissions.has("crm.view"),
-    },
+    { to: "/dashboard/integrations", end: false, icon: Plug, label: t.integrations, show: permissions.has("crm.view") },
     {
       to: "/dashboard/notifications",
       end: false,
@@ -116,96 +107,59 @@ function useNavItems() {
       label: t.courseSales,
       show: permissions.has("analytics.view"),
     },
-    {
-      to: "/dashboard/reports",
-      end: false,
-      icon: FileBarChart,
-      label: t.reports,
-      show: permissions.has("reports.view"),
-    },
+    { to: "/dashboard/reports", end: false, icon: FileBarChart, label: t.reports, show: permissions.has("reports.view") },
     { to: "/dashboard/support", end: false, icon: LifeBuoy, label: t.support, show: true },
+    {
+      to: "/dashboard/settings/2fa",
+      end: false,
+      icon: Settings,
+      label: t.settings,
+      show: true,
+      warn: !user?.totp_enabled,
+    },
   ].filter((item) => item.show);
 }
 
-function NavItems({ onNavigate }: { onNavigate?: () => void }) {
-  const items = useNavItems();
-  const { user } = useTenantAuth();
-  const { lang } = useLang();
-  const t = content[lang];
-
-  return (
-    <nav className="flex flex-col gap-1 px-3">
-      {items.map((item) => (
-        <NavLink
-          key={item.to}
-          to={item.to}
-          end={item.end}
-          onClick={onNavigate}
-          className={({ isActive }) =>
-            `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
-              isActive
-                ? "bg-accent-orange/12 text-accent-orange"
-                : "text-foreground-muted hover:translate-x-0.5 hover:bg-accent hover:text-foreground"
-            }`
-          }
-        >
-          <item.icon size={18} />
-          {item.label}
-        </NavLink>
-      ))}
-
-      <div className="border-card-border my-2 border-t" />
-
-      <NavLink
-        to="/dashboard/settings/2fa"
-        onClick={onNavigate}
-        className={({ isActive }) =>
-          `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
-            isActive
-              ? "bg-accent-orange/12 text-accent-orange"
-              : "text-foreground-muted hover:translate-x-0.5 hover:bg-accent hover:text-foreground"
-          }`
-        }
-      >
-        <Settings size={18} />
-        {t.settings}
-        {!user?.totp_enabled && <ShieldAlert size={14} className="text-warning ml-auto" />}
-      </NavLink>
-    </nav>
-  );
-}
-
+// Desktop-only (lg:+) hover-to-expand icon rail -- collapsed at 68px (icons
+// only), expands to 236px with labels on hover, matching the mockup exactly
+// (mobile/tablet below the lg cutoff get DashboardBottomNav + the "Boshqa"
+// sheet instead, never this rail).
 export function DashboardSidebar() {
-  return (
-    <aside className="border-card-border bg-background/60 hidden w-[280px] shrink-0 border-r lg:block">
-      <div className="sticky top-16 py-6">
-        <NavItems />
-      </div>
-    </aside>
-  );
-}
+  const items = useNavItems();
+  const [expanded, setExpanded] = useState(false);
 
-export function DashboardMobileDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
-  if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 lg:hidden">
-      <div className="bg-background/80 absolute inset-0 backdrop-blur-sm" onClick={onClose} />
-      <div className="bg-background border-card-border relative flex h-full w-72 flex-col border-r pt-5 pb-6">
-        <div className="mb-6 flex items-center justify-between px-4">
-          <div className="flex items-center gap-2">
-            <TizimlyLogo size={26} />
-            <TizimlyWordmark className="text-base" />
-          </div>
-          <button
-            onClick={onClose}
-            className="text-foreground-muted flex size-8 items-center justify-center rounded-lg"
-            aria-label="Close menu"
+    <>
+      <div aria-hidden className="hidden lg:block lg:w-[68px] lg:shrink-0" />
+      <aside
+        onMouseEnter={() => setExpanded(true)}
+        onMouseLeave={() => setExpanded(false)}
+        className={`border-card-border bg-background no-scrollbar fixed top-16 left-0 z-35 hidden h-[calc(100vh-4rem)] flex-col gap-0.5 overflow-x-hidden overflow-y-auto border-r py-4 transition-[width] duration-200 ease-out lg:flex ${
+          expanded ? "w-[236px] px-3" : "w-[68px] px-2.5"
+        }`}
+      >
+        {items.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.end}
+            title={item.label}
+            className={({ isActive }) =>
+              `relative flex items-center rounded-xl py-2.5 text-[13.5px] font-semibold whitespace-nowrap transition-colors ${
+                expanded ? "justify-start gap-2.5 px-3" : "justify-center px-0"
+              } ${isActive ? "bg-accent-orange/13 text-accent-orange" : "text-foreground-muted hover:bg-accent hover:text-foreground"}`
+            }
           >
-            <X size={18} />
-          </button>
-        </div>
-        <NavItems onNavigate={onClose} />
-      </div>
-    </div>
+            <item.icon size={18} className="shrink-0" />
+            <span
+              className={`overflow-hidden transition-opacity duration-150 ${expanded ? "w-auto opacity-100" : "w-0 opacity-0"}`}
+            >
+              {item.label}
+            </span>
+            {item.warn && expanded && <ShieldAlert size={13} className="text-warning ml-auto shrink-0" />}
+          </NavLink>
+        ))}
+      </aside>
+    </>
   );
 }

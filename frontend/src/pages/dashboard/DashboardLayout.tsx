@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router";
 import { useTenantAuth } from "@/lib/auth/tenantAuthStore";
 import { DashboardHeader } from "./DashboardHeader";
-import { DashboardSidebar, DashboardMobileDrawer } from "./DashboardSidebar";
+import { DashboardSidebar } from "./DashboardSidebar";
 import { DashboardBottomNav } from "./DashboardBottomNav";
 import { FloatingActionButton } from "./FloatingActionButton";
 
@@ -31,11 +31,19 @@ export function DashboardLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const { status, user } = useTenantAuth();
-  const [drawerOpen, setDrawerOpen] = useState(false);
 
   useEffect(() => {
     if (status === "anonymous") navigate("/login", { replace: true });
   }, [status, navigate]);
+
+  // Mockup uses Manrope for all UI text (Inter stays the default `font-body`
+  // for landing/auth, unaffected) -- toggled on <body> rather than a wrapper
+  // div because Radix Dialog/Popover content portals straight to <body>,
+  // escaping any class placed on this component's own root element.
+  useEffect(() => {
+    document.body.classList.add("font-heading");
+    return () => document.body.classList.remove("font-heading");
+  }, []);
 
   // Client requirement (2026-07-11): an employee must finish self-linking
   // Telegram/UTEL before using the rest of the dashboard -- a hard redirect
@@ -57,11 +65,10 @@ export function DashboardLayout() {
 
   return (
     <div className="min-h-screen bg-background">
-      <DashboardHeader onMenuClick={() => setDrawerOpen(true)} />
-      <DashboardMobileDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
+      <DashboardHeader />
       <div className="mx-auto flex max-w-[1440px]">
         <DashboardSidebar />
-        <div className="min-w-0 flex-1 pb-20 lg:pb-0">
+        <div className="min-w-0 flex-1 pb-24 lg:pb-10">
           <Outlet />
         </div>
       </div>

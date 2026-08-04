@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
-import { Bell, LogOut, Menu, Settings } from "lucide-react";
+import { Bell, LogOut, Settings } from "lucide-react";
 import { useLang } from "@/lib/i18n/LangContext";
 import { useTenantAuth } from "@/lib/auth/tenantAuthStore";
 import { TizimlyLogo, TizimlyWordmark } from "@/components/layout/TizimlyLogo";
@@ -12,7 +12,7 @@ const content = {
   ru: { logout: "Выйти", settings: "Настройки", notifications: "Уведомления" },
 };
 
-export function DashboardHeader({ onMenuClick }: { onMenuClick?: () => void }) {
+export function DashboardHeader() {
   const { lang } = useLang();
   const t = content[lang];
   const { user, logout } = useTenantAuth();
@@ -35,15 +35,6 @@ export function DashboardHeader({ onMenuClick }: { onMenuClick?: () => void }) {
     <header className="border-card-border bg-background/80 sticky top-0 z-20 border-b backdrop-blur-xl">
       <div className="mx-auto flex h-20 max-w-[1440px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
         <div className="flex shrink-0 items-center gap-2.5">
-          {onMenuClick && (
-            <button
-              onClick={onMenuClick}
-              className="border-card-border text-foreground-muted mr-1 flex size-9 items-center justify-center rounded-lg border lg:hidden"
-              aria-label="Menu"
-            >
-              <Menu size={16} />
-            </button>
-          )}
           <TizimlyLogo size={30} />
           <TizimlyWordmark className="hidden text-lg sm:inline" />
         </div>
@@ -65,7 +56,7 @@ export function DashboardHeader({ onMenuClick }: { onMenuClick?: () => void }) {
               onClick={() => setProfileOpen((o) => !o)}
               className="hover:bg-accent flex items-center gap-2.5 rounded-xl py-1 pr-1 pl-1 transition-colors sm:pr-2.5"
             >
-              <span className="bg-primary/12 text-primary flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-bold">
+              <span className="bg-accent-orange/12 text-accent-orange flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-bold">
                 {initial}
               </span>
               <span className="hidden text-left sm:block">

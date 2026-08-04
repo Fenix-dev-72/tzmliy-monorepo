@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
-import { Activity, AlertCircle, ArrowRight, HandCoins, ShoppingCart, TrendingUp, Users } from "lucide-react";
+import { Activity, AlertCircle, ArrowRight, HandCoins, Plus, ShoppingCart, TrendingUp, Users } from "lucide-react";
 import { useLang } from "@/lib/i18n/LangContext";
 import { useTenantAuth } from "@/lib/auth/tenantAuthStore";
 import * as analyticsApi from "@/lib/api/analytics";
@@ -30,6 +30,7 @@ const content = {
     noData: "Bugun uchun ma'lumot yo'q",
     emptyStateDesc: "Sizning tenant'ingizda hali savdo yozuvlari mavjud emas. Birinchi savdoni qo'shing.",
     addSale: "Savdo qo'shish",
+    newSale: "Yangi savdo",
     loadError: "Ma'lumotlarni yuklab bo'lmadi",
     retry: "Qayta urinish",
     debtOverdue: "muddati o'tgan",
@@ -45,11 +46,17 @@ const content = {
     noData: "Нет данных за сегодня",
     emptyStateDesc: "В вашем тенанте пока нет записей о продажах. Добавьте первую продажу.",
     addSale: "Добавить продажу",
+    newSale: "Новая продажа",
     loadError: "Не удалось загрузить данные",
     retry: "Повторить",
     debtOverdue: "просрочено",
   },
 };
+
+function formatTodayLabel(lang: "uz" | "ru"): string {
+  const locale = lang === "ru" ? "ru-RU" : "uz-UZ";
+  return new Date().toLocaleDateString(locale, { day: "numeric", month: "long", weekday: "long" });
+}
 
 function monthToDateRange(): { start: string; end: string } {
   const now = new Date();
@@ -158,8 +165,17 @@ export function DashboardPage() {
           <h1 className="font-heading mb-1 text-xl font-extrabold break-words text-foreground sm:text-2xl">
             {t.greeting}{user?.full_name ? `, ${user.full_name}` : ""} 👋
           </h1>
-          <p className="text-sm text-foreground-muted">{t.todayLabel}</p>
+          <p className="text-sm text-foreground-muted">
+            {t.todayLabel} · {formatTodayLabel(lang)}
+          </p>
         </div>
+        <Link
+          to="/dashboard/sales"
+          className="bg-accent-orange text-accent-orange-foreground flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold shadow-sm transition-opacity hover:opacity-90"
+        >
+          <Plus size={16} />
+          {t.newSale}
+        </Link>
       </div>
 
       {loading && (
@@ -231,7 +247,7 @@ export function DashboardPage() {
 
             <KpiCard
               icon={HandCoins}
-              iconColor="#F97316"
+              iconColor="#F87171"
               label={t.debt}
               delayMs={120}
               value={

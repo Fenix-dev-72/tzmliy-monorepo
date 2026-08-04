@@ -41,7 +41,7 @@ export function FloatingActionButton() {
   ];
 
   return (
-    <div ref={ref} className="fixed right-5 bottom-20 z-30 sm:right-8 sm:bottom-8">
+    <div ref={ref} className="fixed right-5 bottom-20 z-30 lg:right-8 lg:bottom-8">
       {open && (
         <div className="glass-card card-hover-lift absolute right-0 bottom-full mb-3 w-56 overflow-hidden p-1.5">
           {items.map((item) => (
