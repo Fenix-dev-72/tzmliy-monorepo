@@ -1,8 +1,9 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.core.deps import AuthContext, get_current_user, get_pool, require_permission
+from app.core.pagination import Paginated
 from app.modules.auth import roles_service
 from app.modules.auth.permissions import ALL_PERMISSIONS, ROLES_MANAGE, ROLES_VIEW
 from app.modules.auth.roles_schemas import RoleCreate, RoleOut, RolePermissionsUpdate
@@ -27,9 +28,15 @@ async def create_role(
         raise HTTPException(status.HTTP_409_CONFLICT, "Role name already in use")
 
 
-@router.get("/roles", response_model=list[RoleOut])
-async def list_roles(pool=Depends(get_pool), auth: AuthContext = Depends(require_permission(ROLES_VIEW))):
-    return await roles_service.list_roles(pool, auth.tenant_id)
+@router.get("/roles", response_model=Paginated[RoleOut])
+async def list_roles(
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    pool=Depends(get_pool),
+    auth: AuthContext = Depends(require_permission(ROLES_VIEW)),
+):
+    items, total = await roles_service.list_roles(pool, auth.tenant_id, limit, offset)
+    return Paginated(items=items, total=total)
 
 
 @router.patch("/roles/{role_id}/permissions", response_model=RoleOut)

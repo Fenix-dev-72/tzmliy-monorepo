@@ -20,11 +20,15 @@ WHERE id = :role_id;
 -- this from scanning/returning an unbounded number of rows (the test tenant
 -- accumulated 5000+ roles from repeated load-test role creation, and this
 -- query's p50 went from ~10ms to ~1.7s once it had that many to return).
--- 500 is far more than any real tenant's role count, just a safety cap.
+-- Real numbered pagination (2026-07-28) replaces the old flat 500-row safety
+-- cap -- same limit/offset shape as customers/sales/calls/users.
 SELECT id, tenant_id, name, is_system, created_at
 FROM roles
 ORDER BY created_at DESC
-LIMIT 500;
+LIMIT :limit OFFSET :offset;
+
+-- name: count_roles^
+SELECT COUNT(*) AS count FROM roles;
 
 -- name: insert_role_permission!
 INSERT INTO role_permissions (role_id, tenant_id, permission_key)

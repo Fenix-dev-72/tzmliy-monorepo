@@ -28,9 +28,14 @@ async def get_role_by_id(conn: asyncpg.Connection, role_id: UUID) -> dict | None
     return _row(row)
 
 
-async def list_roles(conn: asyncpg.Connection) -> list[dict]:
-    rows = [row async for row in _queries.list_roles(conn)]
+async def list_roles(conn: asyncpg.Connection, limit: int, offset: int) -> list[dict]:
+    rows = [row async for row in _queries.list_roles(conn, limit=limit, offset=offset)]
     return [dict(r) for r in rows]
+
+
+async def count_roles(conn: asyncpg.Connection) -> int:
+    row = await _queries.count_roles(conn)
+    return row["count"]
 
 
 async def insert_role_permission(conn: asyncpg.Connection, role_id: UUID, tenant_id: UUID, permission_key: str) -> None:
