@@ -1,19 +1,19 @@
 -- name: insert_customer^
-INSERT INTO customers (tenant_id, full_name, phone, responsible_user_id, stage, source, created_by_user_id)
-VALUES (:tenant_id, :full_name, :phone, :responsible_user_id, :stage, :source, :created_by_user_id)
+INSERT INTO customers (tenant_id, full_name, phone, email, company, address, notes, responsible_user_id, stage, source, created_by_user_id)
+VALUES (:tenant_id, :full_name, :phone, :email, :company, :address, :notes, :responsible_user_id, :stage, :source, :created_by_user_id)
 ON CONFLICT (tenant_id, phone) DO NOTHING
-RETURNING id, tenant_id, full_name, phone, responsible_user_id, stage, source, quality, lost_reason, created_at, updated_at, created_by_user_id;
+RETURNING id, tenant_id, full_name, phone, email, company, address, notes, responsible_user_id, stage, source, quality, lost_reason, created_at, updated_at, created_by_user_id;
 
 -- name: get_customer_by_id^
 -- created_by_user_id is selected purely for the service-layer ownership
 -- check (2026-07-22 own-data scoping) -- CustomerOut doesn't expose it, extra
 -- dict keys are dropped at response_model serialization.
-SELECT id, tenant_id, full_name, phone, responsible_user_id, stage, source, quality, lost_reason, created_at, updated_at, created_by_user_id
+SELECT id, tenant_id, full_name, phone, email, company, address, notes, responsible_user_id, stage, source, quality, lost_reason, created_at, updated_at, created_by_user_id
 FROM customers
 WHERE id = :customer_id;
 
 -- name: get_customer_by_phone^
-SELECT id, tenant_id, full_name, phone, responsible_user_id, stage, source, quality, lost_reason, created_at, updated_at
+SELECT id, tenant_id, full_name, phone, email, company, address, notes, responsible_user_id, stage, source, quality, lost_reason, created_at, updated_at
 FROM customers
 WHERE phone = :phone;
 
@@ -21,17 +21,25 @@ WHERE phone = :phone;
 -- Own-data scoping (2026-07-22): :can_view_all bypasses the filter entirely
 -- (admin/whoever holds customers.view_all); otherwise only rows the caller
 -- is responsible for or created themselves.
-SELECT id, tenant_id, full_name, phone, responsible_user_id, stage, source, quality, lost_reason, created_at, updated_at
+SELECT id, tenant_id, full_name, phone, email, company, address, notes, responsible_user_id, stage, source, quality, lost_reason, created_at, updated_at
 FROM customers
 WHERE (:can_view_all OR responsible_user_id = :caller_id OR created_by_user_id = :caller_id)
 ORDER BY created_at
 LIMIT :limit OFFSET :offset;
 
+-- name: count_customers^
+-- Same WHERE as list_customers (own-data scoping), no LIMIT/OFFSET -- backs
+-- the numbered-pagination total-page count (2026-07-28).
+SELECT COUNT(*) AS count
+FROM customers
+WHERE (:can_view_all OR responsible_user_id = :caller_id OR created_by_user_id = :caller_id);
+
 -- name: update_customer^
 UPDATE customers
-SET full_name = :full_name, phone = :phone, responsible_user_id = :responsible_user_id, stage = :stage, updated_at = now()
+SET full_name = :full_name, phone = :phone, email = :email, company = :company, address = :address, notes = :notes,
+    responsible_user_id = :responsible_user_id, stage = :stage, updated_at = now()
 WHERE id = :customer_id
-RETURNING id, tenant_id, full_name, phone, responsible_user_id, stage, source, quality, lost_reason, created_at, updated_at;
+RETURNING id, tenant_id, full_name, phone, email, company, address, notes, responsible_user_id, stage, source, quality, lost_reason, created_at, updated_at;
 
 -- name: update_customer_crm_outcome!
 -- CRM-driven stage/quality transition (won/lost) -- deliberately separate

@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.core.deps import AuthContext, get_pool, require_permission
+from app.core.pagination import Paginated
 from app.modules.auth.permissions import CUSTOMERS_MANAGE, CUSTOMERS_VIEW, CUSTOMERS_VIEW_ALL
 from app.modules.customers import service
 from app.modules.customers.schemas import (
@@ -31,6 +32,10 @@ async def create_customer(
             body.responsible_user_id,
             body.stage,
             created_by_user_id=auth.user_id,
+            email=body.email,
+            company=body.company,
+            address=body.address,
+            notes=body.notes,
         )
     except service.ResponsibleUserNotFoundError:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "responsible_user_id does not exist in this tenant")
@@ -38,7 +43,7 @@ async def create_customer(
         raise HTTPException(status.HTTP_409_CONFLICT, "A customer with this phone already exists")
 
 
-@router.get("", response_model=list[CustomerOut])
+@router.get("", response_model=Paginated[CustomerOut])
 async def list_customers(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
@@ -46,7 +51,8 @@ async def list_customers(
     auth: AuthContext = Depends(require_permission(CUSTOMERS_VIEW)),
 ):
     can_view_all = CUSTOMERS_VIEW_ALL in auth.permissions
-    return await service.list_customers(pool, auth.tenant_id, auth.user_id, can_view_all, limit, offset)
+    items, total = await service.list_customers(pool, auth.tenant_id, auth.user_id, can_view_all, limit, offset)
+    return Paginated(items=items, total=total)
 
 
 @router.get("/by-phone", response_model=CustomerOut)
@@ -94,6 +100,10 @@ async def update_customer(
             body.responsible_user_id,
             body.stage,
             can_view_all,
+            email=body.email,
+            company=body.company,
+            address=body.address,
+            notes=body.notes,
         )
     except service.CustomerNotFoundError:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Customer not found")

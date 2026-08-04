@@ -14,6 +14,10 @@ CustomerQuality = Literal["quality", "low_quality", "unrated"]
 class CustomerCreate(BaseModel):
     full_name: str
     phone: str
+    email: str | None = None
+    company: str | None = None
+    address: str | None = None
+    notes: str | None = None
     responsible_user_id: UUID | None = None
     stage: CustomerStage = "lead"
 
@@ -21,6 +25,10 @@ class CustomerCreate(BaseModel):
 class CustomerUpdate(BaseModel):
     full_name: str
     phone: str
+    email: str | None = None
+    company: str | None = None
+    address: str | None = None
+    notes: str | None = None
     responsible_user_id: UUID | None = None
     stage: CustomerStage
 
@@ -33,6 +41,10 @@ class CustomerOut(BaseModel):
     # number still gets a row here (flagged low-quality), instead of being
     # dropped -- manual creation (CustomerCreate) still requires one.
     phone: str | None
+    email: str | None
+    company: str | None
+    address: str | None
+    notes: str | None
     responsible_user_id: UUID | None
     stage: str
     # NULL = created manually in Tizimly; otherwise which integration this

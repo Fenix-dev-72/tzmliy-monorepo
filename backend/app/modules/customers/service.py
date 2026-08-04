@@ -26,12 +26,26 @@ async def create_customer(
     responsible_user_id: UUID | None,
     stage: str,
     created_by_user_id: UUID | None = None,
+    email: str | None = None,
+    company: str | None = None,
+    address: str | None = None,
+    notes: str | None = None,
 ) -> dict:
     async with tenant_connection(pool, tenant_id) as conn:
         if responsible_user_id is not None and not await repository.user_exists(conn, responsible_user_id):
             raise ResponsibleUserNotFoundError
         row = await repository.insert_customer(
-            conn, tenant_id, full_name, phone, responsible_user_id, stage, created_by_user_id=created_by_user_id
+            conn,
+            tenant_id,
+            full_name,
+            phone,
+            responsible_user_id,
+            stage,
+            created_by_user_id=created_by_user_id,
+            email=email,
+            company=company,
+            address=address,
+            notes=notes,
         )
         if row is None:
             raise DuplicatePhoneError
@@ -79,9 +93,11 @@ async def get_customer_by_phone(pool: asyncpg.Pool, tenant_id: UUID, phone: str)
 
 async def list_customers(
     pool: asyncpg.Pool, tenant_id: UUID, caller_id: UUID, can_view_all: bool, limit: int = 50, offset: int = 0
-) -> list[dict]:
+) -> tuple[list[dict], int]:
     async with tenant_connection(pool, tenant_id) as conn:
-        return await repository.list_customers(conn, limit, offset, caller_id, can_view_all)
+        items = await repository.list_customers(conn, limit, offset, caller_id, can_view_all)
+        total = await repository.count_customers(conn, caller_id, can_view_all)
+    return items, total
 
 
 async def update_customer(
@@ -94,6 +110,10 @@ async def update_customer(
     responsible_user_id: UUID | None,
     stage: str,
     can_view_all: bool,
+    email: str | None = None,
+    company: str | None = None,
+    address: str | None = None,
+    notes: str | None = None,
 ) -> dict:
     async with tenant_connection(pool, tenant_id) as conn:
         existing = await repository.get_customer_by_id(conn, customer_id)
@@ -103,7 +123,18 @@ async def update_customer(
         if responsible_user_id is not None and not await repository.user_exists(conn, responsible_user_id):
             raise ResponsibleUserNotFoundError
         try:
-            updated = await repository.update_customer(conn, customer_id, full_name, phone, responsible_user_id, stage)
+            updated = await repository.update_customer(
+                conn,
+                customer_id,
+                full_name,
+                phone,
+                responsible_user_id,
+                stage,
+                email=email,
+                company=company,
+                address=address,
+                notes=notes,
+            )
         except asyncpg.UniqueViolationError as exc:
             raise DuplicatePhoneError from exc
         if stage != existing["stage"]:

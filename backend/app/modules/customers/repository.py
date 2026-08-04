@@ -22,12 +22,20 @@ async def insert_customer(
     stage: str,
     source: str | None = None,
     created_by_user_id: UUID | None = None,
+    email: str | None = None,
+    company: str | None = None,
+    address: str | None = None,
+    notes: str | None = None,
 ) -> dict | None:
     row = await _queries.insert_customer(
         conn,
         tenant_id=tenant_id,
         full_name=full_name,
         phone=phone,
+        email=email,
+        company=company,
+        address=address,
+        notes=notes,
         responsible_user_id=responsible_user_id,
         stage=stage,
         source=source,
@@ -58,6 +66,11 @@ async def list_customers(
     return [dict(r) for r in rows]
 
 
+async def count_customers(conn: asyncpg.Connection, caller_id: UUID, can_view_all: bool) -> int:
+    row = await _queries.count_customers(conn, caller_id=caller_id, can_view_all=can_view_all)
+    return row["count"]
+
+
 async def update_customer(
     conn: asyncpg.Connection,
     customer_id: UUID,
@@ -65,12 +78,20 @@ async def update_customer(
     phone: str,
     responsible_user_id: UUID | None,
     stage: str,
+    email: str | None = None,
+    company: str | None = None,
+    address: str | None = None,
+    notes: str | None = None,
 ) -> dict | None:
     row = await _queries.update_customer(
         conn,
         customer_id=customer_id,
         full_name=full_name,
         phone=phone,
+        email=email,
+        company=company,
+        address=address,
+        notes=notes,
         responsible_user_id=responsible_user_id,
         stage=stage,
     )
