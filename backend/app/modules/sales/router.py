@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 
 from app.core.deps import AuthContext, get_pool, require_permission
+from app.core.pagination import Paginated
 from app.modules.auth.permissions import SALES_MANAGE, SALES_VIEW, SALES_VIEW_ALL
 from app.modules.finance import service as finance_service
 from app.modules.sales import service
@@ -52,7 +53,7 @@ async def create_sale(
     return sale
 
 
-@router.get("", response_model=list[SaleOut])
+@router.get("", response_model=Paginated[SaleOut])
 async def list_sales(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
@@ -60,7 +61,8 @@ async def list_sales(
     auth: AuthContext = Depends(require_permission(SALES_VIEW)),
 ):
     can_view_all = SALES_VIEW_ALL in auth.permissions
-    return await service.list_sales(pool, auth.tenant_id, auth.user_id, can_view_all, limit, offset)
+    items, total = await service.list_sales(pool, auth.tenant_id, auth.user_id, can_view_all, limit, offset)
+    return Paginated(items=items, total=total)
 
 
 @router.get("/{sale_id}", response_model=SaleOut)

@@ -183,9 +183,11 @@ async def get_sale(pool: asyncpg.Pool, tenant_id: UUID, sale_id: UUID, caller_id
 
 async def list_sales(
     pool: asyncpg.Pool, tenant_id: UUID, caller_id: UUID, can_view_all: bool, limit: int = 50, offset: int = 0
-) -> list[dict]:
+) -> tuple[list[dict], int]:
     async with tenant_connection(pool, tenant_id) as conn:
-        return await repository.list_sales(conn, limit, offset, caller_id, can_view_all)
+        items = await repository.list_sales(conn, limit, offset, caller_id, can_view_all)
+        total = await repository.count_sales(conn, caller_id, can_view_all)
+    return items, total
 
 
 async def list_sale_changes(

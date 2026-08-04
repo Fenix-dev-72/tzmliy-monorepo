@@ -70,6 +70,11 @@ async def list_sales(
     return [dict(r) for r in rows]
 
 
+async def count_sales(conn: asyncpg.Connection, caller_id: UUID, can_view_all: bool) -> int:
+    row = await _queries.count_sales(conn, caller_id=caller_id, can_view_all=can_view_all)
+    return row["count"]
+
+
 async def update_sale(
     conn: asyncpg.Connection,
     sale_id: UUID,
@@ -118,6 +123,11 @@ async def update_sale_status_from_crm(
 
 async def mark_sale_completed(conn: asyncpg.Connection, sale_id: UUID) -> dict | None:
     row = await _queries.mark_sale_completed(conn, sale_id=sale_id)
+    return _row(row)
+
+
+async def mark_sale_active(conn: asyncpg.Connection, sale_id: UUID) -> dict | None:
+    row = await _queries.mark_sale_active(conn, sale_id=sale_id)
     return _row(row)
 
 

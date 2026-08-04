@@ -25,6 +25,13 @@ WHERE (:can_view_all OR responsible_user_id = :caller_id)
 ORDER BY created_at
 LIMIT :limit OFFSET :offset;
 
+-- name: count_sales^
+-- Same WHERE as list_sales, no LIMIT/OFFSET -- backs numbered-pagination
+-- total-page count (2026-07-28).
+SELECT COUNT(*) AS count
+FROM sales
+WHERE (:can_view_all OR responsible_user_id = :caller_id);
+
 -- name: update_sale^
 UPDATE sales
 SET catalog_category_id = :catalog_category_id,
@@ -65,6 +72,18 @@ RETURNING id, tenant_id, customer_id, catalog_category_id, responsible_user_id, 
 UPDATE sales
 SET status = 'completed', version = version + 1, updated_at = now()
 WHERE id = :sale_id AND status = 'active'
+RETURNING id, status, version;
+
+-- name: mark_sale_active^
+-- Symmetric counterpart to mark_sale_completed (2026-07-28, client-found
+-- bug: reversing a payment on a fully-paid sale left it stuck 'completed'
+-- with a balance owed again) -- reversing a payment can undo the very
+-- payment that auto-completed the sale, so it needs to un-complete just as
+-- automatically. Only flips a 'completed' sale back; 'cancelled' is
+-- terminal and never touched by payment reversal.
+UPDATE sales
+SET status = 'active', version = version + 1, updated_at = now()
+WHERE id = :sale_id AND status = 'completed'
 RETURNING id, status, version;
 
 -- name: insert_sale_change^
