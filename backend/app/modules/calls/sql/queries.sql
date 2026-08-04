@@ -156,11 +156,26 @@ WHERE id = :call_id;
 -- the caller via call_manager_mappings (responsible_user_id). Replaces the
 -- old client-supplied :responsible_user_id filter param -- ownership is now
 -- always server-computed from the caller's own session, never a query arg.
+-- :status/:q are now server-side too (2026-07-28) -- filtering only the
+-- current fetched page client-side made the pagination total lie (a status
+-- tab could show 1219 pages built from the *unfiltered* count while only a
+-- couple of rows on the current page actually matched).
 SELECT id, tenant_id, provider, external_call_id, direction, from_number, to_number, responsible_user_id, duration_seconds, recording_object_key, status, started_at, ended_at, created_at
 FROM calls
 WHERE (:can_view_all OR responsible_user_id = :caller_id)
+  AND (:status::text IS NULL OR status = :status)
+  AND (:q::text IS NULL OR from_number ILIKE '%' || :q || '%' OR to_number ILIKE '%' || :q || '%')
 ORDER BY started_at DESC
 LIMIT :limit OFFSET :offset;
+
+-- name: count_calls^
+-- Same WHERE as list_calls, no LIMIT/OFFSET -- backs numbered-pagination
+-- total-page count (2026-07-28).
+SELECT COUNT(*) AS count
+FROM calls
+WHERE (:can_view_all OR responsible_user_id = :caller_id)
+  AND (:status::text IS NULL OR status = :status)
+  AND (:q::text IS NULL OR from_number ILIKE '%' || :q || '%' OR to_number ILIKE '%' || :q || '%');
 
 -- name: customer_has_missed_call^
 -- Seller/lead analytics (2026-07-15): backs the "sifatsiz lid" (low-quality

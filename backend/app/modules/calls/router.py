@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from app.core.deps import AuthContext, get_current_user, get_pool, require_permission
+from app.core.pagination import Paginated
 from app.modules.auth.permissions import CALLS_MANAGE, CALLS_VIEW, CALLS_VIEW_ALL
 from app.modules.calls import service
 from app.modules.calls.providers import UnknownProviderError
@@ -139,15 +140,18 @@ async def create_own_manager_mapping(
     return await service.create_own_manager_mapping(pool, auth.tenant_id, auth.user_id, body.provider, body.external_agent_id)
 
 
-@router.get("/calls", response_model=list[CallOut])
+@router.get("/calls", response_model=Paginated[CallOut])
 async def list_calls(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    status: str | None = Query(None),
+    q: str | None = Query(None),
     pool=Depends(get_pool),
     auth: AuthContext = Depends(require_permission(CALLS_VIEW)),
 ):
     can_view_all = CALLS_VIEW_ALL in auth.permissions
-    return await service.list_calls(pool, auth.tenant_id, auth.user_id, can_view_all, limit, offset)
+    items, total = await service.list_calls(pool, auth.tenant_id, auth.user_id, can_view_all, limit, offset, status, q)
+    return Paginated(items=items, total=total)
 
 
 @router.get("/calls/{call_id}", response_model=CallOut)

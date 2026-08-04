@@ -188,15 +188,28 @@ async def mark_call_recording_failed(conn: asyncpg.Connection, call_id: UUID, ma
 
 
 async def list_calls(
-    conn: asyncpg.Connection, caller_id: UUID, can_view_all: bool, limit: int, offset: int
+    conn: asyncpg.Connection,
+    caller_id: UUID,
+    can_view_all: bool,
+    limit: int,
+    offset: int,
+    status: str | None = None,
+    q: str | None = None,
 ) -> list[dict]:
     rows = [
         row
         async for row in _queries.list_calls(
-            conn, caller_id=caller_id, can_view_all=can_view_all, limit=limit, offset=offset
+            conn, caller_id=caller_id, can_view_all=can_view_all, limit=limit, offset=offset, status=status, q=q
         )
     ]
     return [dict(r) for r in rows]
+
+
+async def count_calls(
+    conn: asyncpg.Connection, caller_id: UUID, can_view_all: bool, status: str | None = None, q: str | None = None
+) -> int:
+    row = await _queries.count_calls(conn, caller_id=caller_id, can_view_all=can_view_all, status=status, q=q)
+    return row["count"]
 
 
 async def customer_has_missed_call(conn: asyncpg.Connection, phone: str) -> bool:

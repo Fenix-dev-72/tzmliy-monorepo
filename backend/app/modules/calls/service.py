@@ -189,10 +189,19 @@ def _assert_owned_or_view_all(call: dict, caller_id: UUID, can_view_all: bool) -
 
 
 async def list_calls(
-    pool: asyncpg.Pool, tenant_id: UUID, caller_id: UUID, can_view_all: bool, limit: int = 50, offset: int = 0
-) -> list[dict]:
+    pool: asyncpg.Pool,
+    tenant_id: UUID,
+    caller_id: UUID,
+    can_view_all: bool,
+    limit: int = 50,
+    offset: int = 0,
+    status: str | None = None,
+    q: str | None = None,
+) -> tuple[list[dict], int]:
     async with tenant_connection(pool, tenant_id) as conn:
-        return await repository.list_calls(conn, caller_id, can_view_all, limit, offset)
+        items = await repository.list_calls(conn, caller_id, can_view_all, limit, offset, status, q)
+        total = await repository.count_calls(conn, caller_id, can_view_all, status, q)
+    return items, total
 
 
 async def get_call(pool: asyncpg.Pool, tenant_id: UUID, call_id: UUID, caller_id: UUID, can_view_all: bool) -> dict:
