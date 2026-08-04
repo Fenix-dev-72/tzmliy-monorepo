@@ -101,6 +101,11 @@ async def list_users(conn: asyncpg.Connection, limit: int, offset: int) -> list[
     return [dict(r) for r in rows]
 
 
+async def count_users(conn: asyncpg.Connection) -> int:
+    row = await _queries.count_users(conn)
+    return row["count"]
+
+
 async def update_user_profile(
     conn: asyncpg.Connection, user_id: UUID, full_name: str | None, phone: str | None
 ) -> dict | None:

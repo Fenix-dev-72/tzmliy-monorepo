@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.core.deps import AuthContext, get_current_user, get_pool, require_permission
+from app.core.pagination import Paginated
 from app.modules.auth import users_service
 from app.modules.auth.permissions import USERS_MANAGE, USERS_VIEW
 from app.modules.auth.users_schemas import UserCreate, UserOut, UserProfileUpdate, UserRoleUpdate
@@ -28,14 +29,15 @@ async def create_user(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cannot assign the owner admin role to an employee")
 
 
-@router.get("", response_model=list[UserOut])
+@router.get("", response_model=Paginated[UserOut])
 async def list_users(
     limit: int = Query(20, ge=1, le=200),
     offset: int = Query(0, ge=0),
     pool=Depends(get_pool),
     auth: AuthContext = Depends(require_permission(USERS_VIEW)),
 ):
-    return await users_service.list_users(pool, auth.tenant_id, limit, offset)
+    items, total = await users_service.list_users(pool, auth.tenant_id, limit, offset)
+    return Paginated(items=items, total=total)
 
 
 @router.patch("/{user_id}/role", status_code=status.HTTP_204_NO_CONTENT)

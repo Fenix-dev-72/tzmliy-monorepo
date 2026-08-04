@@ -74,6 +74,10 @@ FROM users u JOIN roles r ON r.id = u.role_id
 ORDER BY u.created_at
 LIMIT :limit OFFSET :offset;
 
+-- name: count_users^
+-- Backs numbered-pagination total-page count (2026-07-28).
+SELECT COUNT(*) AS count FROM users;
+
 -- name: update_user_profile^
 UPDATE users SET full_name = :full_name, phone = :phone, updated_at = now()
 WHERE id = :user_id

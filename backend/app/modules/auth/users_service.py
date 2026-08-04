@@ -80,9 +80,11 @@ async def create_user(
         return user
 
 
-async def list_users(pool: asyncpg.Pool, tenant_id: UUID, limit: int = 20, offset: int = 0) -> list[dict]:
+async def list_users(pool: asyncpg.Pool, tenant_id: UUID, limit: int = 20, offset: int = 0) -> tuple[list[dict], int]:
     async with tenant_connection(pool, tenant_id) as conn:
-        return await repository.list_users(conn, limit, offset)
+        items = await repository.list_users(conn, limit, offset)
+        total = await repository.count_users(conn)
+    return items, total
 
 
 async def update_user_role(pool: asyncpg.Pool, tenant_id: UUID, user_id: UUID, role_id: UUID) -> None:
