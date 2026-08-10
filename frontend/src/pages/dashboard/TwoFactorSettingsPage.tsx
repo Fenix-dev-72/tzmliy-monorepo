@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { CheckCircle2, Loader2, Mail } from "lucide-react";
 import { useLang } from "@/lib/i18n/LangContext";
 import { useTenantAuth } from "@/lib/auth/tenantAuthStore";
@@ -19,7 +19,9 @@ const content = {
     loading: "Yuklanmoqda...",
     error: "Kod noto'g'ri",
     loadError: "Kod yuborilmadi. Qayta urinib ko'ring",
-    send: "Kodni yuborish",
+    enableTitle: "2FA ni yoqish",
+    enableDesc: "Tugmani bosgach, emailingizga 6 xonali tasdiqlash kodi yuboriladi.",
+    send: "2FA ni yoqish",
     resend: "Kodni qayta yuborish",
     resendWait: (s: number) => `Qayta yuborish (${s}s)`,
     cooldownError: (s: number) => `Kod hozirgina yuborildi. ${s} soniyadan so'ng qayta urinib ko'ring`,
@@ -36,7 +38,9 @@ const content = {
     loading: "Загрузка...",
     error: "Неверный код",
     loadError: "Не удалось отправить код. Попробуйте ещё раз",
-    send: "Отправить код",
+    enableTitle: "Включить 2FA",
+    enableDesc: "После нажатия на вашу почту будет отправлен 6-значный код подтверждения.",
+    send: "Включить 2FA",
     resend: "Отправить код повторно",
     resendWait: (s: number) => `Повторная отправка (${s}с)`,
     cooldownError: (s: number) => `Код только что отправлен. Повторите через ${s} с`,
@@ -59,7 +63,6 @@ export function TwoFactorSettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [justEnabled, setJustEnabled] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
-  const setupRequested = useRef(false);
 
   const alreadyEnabled = Boolean(user?.totp_enabled) || justEnabled;
   const canManageDashboards = (user?.permissions ?? []).includes("analytics.manage");
@@ -88,21 +91,6 @@ export function TwoFactorSettingsPage() {
       setSending(false);
     }
   }
-
-  useEffect(() => {
-    // Must wait for `user` to actually load, not just `accessToken` -- the
-    // auth store sets accessToken synchronously but fetches /auth/me
-    // asynchronously, so there's a render where accessToken is truthy and
-    // user is still null. Without this guard, alreadyEnabled reads false for
-    // an already-2FA-enabled account during that window and this effect
-    // fires /2fa/setup prematurely -- previously a real bug, since the
-    // backend used to reset totp_enabled to false as a side effect of that
-    // call, silently disabling 2FA every time this page was hit early.
-    if (!accessToken || !user || alreadyEnabled || setupRequested.current) return;
-    setupRequested.current = true;
-    void sendCode();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accessToken, user, alreadyEnabled]);
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -191,7 +179,13 @@ export function TwoFactorSettingsPage() {
               <Loader2 size={24} className="text-primary animate-spin" />
             </div>
           ) : (
+            // Idle state: nothing is sent until this button is clicked --
+            // no auto-fire-on-page-load. Enabling 2FA is an explicit action.
             <>
+              <h3 className="font-heading mb-1 text-base font-bold text-foreground">{t.enableTitle}</h3>
+              <p className="mx-auto mb-6 max-w-[320px] text-sm leading-relaxed text-foreground-muted">
+                {t.enableDesc}
+              </p>
               {error && <p className="text-destructive mb-4 text-[13px] font-medium">{error}</p>}
               <Button
                 variant="gold"
