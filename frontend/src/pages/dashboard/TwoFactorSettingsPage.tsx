@@ -217,13 +217,13 @@ export function TwoFactorSettingsPage() {
               </div>
             </div>
           ) : (
-            <button
-              type="button"
+            <Button
+              variant="outline"
+              className="border-destructive/40 text-destructive hover:bg-destructive/10 mt-2"
               onClick={() => setShowDisableForm(true)}
-              className="text-destructive mt-1 text-[13px] font-medium"
             >
               {t.disable}
-            </button>
+            </Button>
           )}
         </div>
       ) : (
