@@ -66,13 +66,17 @@ export function LoginView() {
   const canSubmitPassword = identifier.trim().length > 0 && password.length > 0;
   const canSubmitPhone = phone.trim().length > 0;
 
-  async function handlePasswordLogin() {
+  async function handlePasswordLogin(e: React.FormEvent) {
+    e.preventDefault();
+    if (!canSubmitPassword || loading) return;
     setError(null);
     setLoading(true);
     try {
       const result = await login({ identifier: identifier.trim(), password });
       if (result.requires_2fa) {
-        navigate("/login/2fa", { state: { pendingToken: result.pending_token } });
+        navigate("/login/2fa", {
+          state: { pendingToken: result.pending_token, resendAfterSeconds: result.resend_after_seconds },
+        });
       } else {
         navigate("/dashboard");
       }
@@ -90,7 +94,9 @@ export function LoginView() {
     }
   }
 
-  async function handleSendOtp() {
+  async function handleSendOtp(e: React.FormEvent) {
+    e.preventDefault();
+    if (!canSubmitPhone || loading) return;
     setError(null);
     setLoading(true);
     try {
@@ -107,7 +113,7 @@ export function LoginView() {
   return (
     <AuthCard>
       {mode === "password" ? (
-        <>
+        <form onSubmit={handlePasswordLogin}>
           <FormField
             label={t.identifier}
             type="text"
@@ -146,13 +152,7 @@ export function LoginView() {
             </Link>
           </div>
           {error && <p className="text-destructive mb-4 text-[13px] font-medium">{error}</p>}
-          <Button
-            variant="gold"
-            size="lg"
-            className="w-full"
-            disabled={!canSubmitPassword || loading}
-            onClick={handlePasswordLogin}
-          >
+          <Button type="submit" variant="gold" size="lg" className="w-full" disabled={!canSubmitPassword || loading}>
             {loading ? <Loader2 size={16} className="animate-spin" /> : t.btn}
             {!loading && <ArrowRight size={16} />}
           </Button>
@@ -167,9 +167,9 @@ export function LoginView() {
           >
             <Phone size={13} /> {t.orPhone}
           </button>
-        </>
+        </form>
       ) : (
-        <>
+        <form onSubmit={handleSendOtp}>
           <FormField
             label={t.phone}
             type="tel"
@@ -180,13 +180,7 @@ export function LoginView() {
             leftEl={<Phone size={16} className="text-foreground-muted" />}
           />
           {error && <p className="text-destructive mb-4 text-[13px] font-medium">{error}</p>}
-          <Button
-            variant="gold"
-            size="lg"
-            className="w-full"
-            disabled={!canSubmitPhone || loading}
-            onClick={handleSendOtp}
-          >
+          <Button type="submit" variant="gold" size="lg" className="w-full" disabled={!canSubmitPhone || loading}>
             {loading ? <Loader2 size={16} className="animate-spin" /> : t.sendCode}
             {!loading && <ArrowRight size={16} />}
           </Button>
@@ -200,7 +194,7 @@ export function LoginView() {
           >
             {t.backToPassword}
           </button>
-        </>
+        </form>
       )}
 
       <p className="mt-7 text-center text-[13px] text-foreground-muted">

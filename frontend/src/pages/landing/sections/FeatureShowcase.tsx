@@ -127,7 +127,7 @@ export function FeatureShowcase() {
 
           <ul className="mb-9 space-y-4">
             {t.checklist.map((item) => (
-              <li key={item} className="flex items-start gap-3">
+              <li key={item} className="checklist-item flex items-start gap-3">
                 <span className="bg-primary/15 mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full">
                   <Check size={14} style={{ color: "var(--color-primary)" }} />
                 </span>

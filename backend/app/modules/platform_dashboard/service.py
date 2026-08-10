@@ -45,9 +45,71 @@ async def _get_payments_summary(
     return _merge_payment_totals(results)
 
 
+async def _get_plan_usage(pool: asyncpg.Pool, tenant_ids: list[UUID], plans: list[dict]) -> list[dict]:
+    """tenant_subscriptions is tenant-scoped RLS, so which plan each tenant
+    is on can't be read in one cross-tenant query -- same tenant-loop shape
+    as _get_payments_summary above. Counts are keyed by billing_plan_id then
+    mapped back onto every known plan (not just the ones in use) so a brand
+    new plan with zero subscribers still shows up as 0, not missing."""
+    settings = get_settings()
+    semaphore = asyncio.Semaphore(settings.tenant_loop_max_concurrency)
+
+    async def _one(tenant_id: UUID) -> dict | None:
+        async with semaphore:
+            async with tenant_connection(pool, tenant_id) as conn:
+                return await billing_repository.get_tenant_subscription(conn, tenant_id)
+
+    results = await asyncio.gather(*(_one(tid) for tid in tenant_ids))
+    counts: dict[UUID, int] = {}
+    for sub in results:
+        if sub is None:
+            continue
+        counts[sub["billing_plan_id"]] = counts.get(sub["billing_plan_id"], 0) + 1
+
+    return [
+        {"code": p["code"], "name": p["name"], "is_active": p["is_active"], "tenant_count": counts.get(p["id"], 0)}
+        for p in plans
+    ]
+
+
+async def list_tenant_storage_usage(pool: asyncpg.Pool) -> list[dict]:
+    """Reads each tenant's latest already-computed storage_usage_snapshots
+    row (never recomputes -- that's billing/tasks.py's daily job) and joins
+    it with the tenant's name and the plan it's actually on, so a Platform
+    Admin can see every tenant's usage in one list instead of looking each
+    one up individually. Same tenant-loop shape as _get_plan_usage above.
+    A tenant with no snapshot yet (no subscription, or hasn't been through a
+    daily recalculation cycle) is included with total_bytes=0."""
+    async with platform_connection(pool) as conn:
+        tenants = await tenants_repository.list_tenants(conn)
+        plans_by_id = {p["id"]: p for p in await billing_repository.list_billing_plans(conn)}
+
+    settings = get_settings()
+    semaphore = asyncio.Semaphore(settings.tenant_loop_max_concurrency)
+
+    async def _one(tenant: dict) -> dict:
+        async with semaphore:
+            async with tenant_connection(pool, tenant["id"]) as conn:
+                snapshot = await billing_repository.get_latest_storage_usage_snapshot(conn)
+                subscription = await billing_repository.get_tenant_subscription(conn, tenant["id"])
+        plan = plans_by_id.get(subscription["billing_plan_id"]) if subscription is not None else None
+        return {
+            "tenant_id": tenant["id"],
+            "tenant_name": tenant["name"],
+            "plan_code": plan["code"] if plan is not None else None,
+            "total_bytes": snapshot["total_bytes"] if snapshot is not None else 0,
+            "billable_storage_limit_bytes": snapshot["billable_storage_limit_bytes"] if snapshot is not None else None,
+            "usage_ratio_bps": snapshot["usage_ratio_bps"] if snapshot is not None else 0,
+            "computed_at": snapshot["computed_at"] if snapshot is not None else None,
+        }
+
+    return list(await asyncio.gather(*(_one(t) for t in tenants)))
+
+
 async def get_dashboard_summary(pool: asyncpg.Pool) -> dict:
     async with platform_connection(pool) as conn:
         tenants = await tenants_repository.list_tenants(conn)
+        plans = await billing_repository.list_billing_plans(conn)
 
     now = datetime.now(timezone.utc)
     tenants_by_status: dict[str, int] = {}
@@ -65,14 +127,16 @@ async def get_dashboard_summary(pool: asyncpg.Pool) -> dict:
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
-    payments_today, payments_month = await asyncio.gather(
+    payments_today, payments_month, plans_usage = await asyncio.gather(
         _get_payments_summary(pool, tenant_ids, today_start, now),
         _get_payments_summary(pool, tenant_ids, month_start, now),
+        _get_plan_usage(pool, tenant_ids, plans),
     )
 
     return {
         "total_tenants": len(tenants),
         "tenants_by_status": [{"status": k, "count": v} for k, v in tenants_by_status.items()],
+        "plans_usage": plans_usage,
         "new_tenants_7d": new_7d,
         "new_tenants_30d": new_30d,
         "payments_today": payments_today,

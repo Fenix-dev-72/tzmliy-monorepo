@@ -9,7 +9,71 @@ export interface BillingPlan {
   billing_period_months: number;
   max_users: number;
   max_billable_storage_bytes: number;
+  features_uz: string[];
+  features_ru: string[];
+  feature_keys: string[];
+  is_popular: boolean;
   is_active: boolean;
+  is_trial: boolean;
+  trial_days: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BillingPlanPublic {
+  code: string;
+  name: string;
+  price_amount: number;
+  currency: string;
+  billing_period_months: number;
+  max_users: number;
+  features_uz: string[];
+  features_ru: string[];
+  is_popular: boolean;
+  is_trial: boolean;
+  trial_days: number | null;
+}
+
+export interface BillingPlanCreateParams {
+  code: string;
+  name: string;
+  price_amount: number;
+  currency: string;
+  billing_period_months: number;
+  max_users: number;
+  max_billable_storage_bytes: number;
+  features_uz: string[];
+  features_ru: string[];
+  feature_keys: string[];
+  is_popular: boolean;
+  is_active: boolean;
+  is_trial: boolean;
+  trial_days: number | null;
+  reason: string;
+}
+
+export interface BillingPlanUpdateParams {
+  name?: string;
+  price_amount?: number;
+  currency?: string;
+  max_users?: number;
+  max_billable_storage_bytes?: number;
+  features_uz?: string[];
+  features_ru?: string[];
+  feature_keys?: string[];
+  is_popular?: boolean;
+  is_active?: boolean;
+  is_trial?: boolean;
+  trial_days?: number | null;
+}
+
+export interface BillingEntitlements {
+  plan_code: string | null;
+  plan_name: string | null;
+  max_users: number | null;
+  current_user_count: number;
+  max_billable_storage_bytes: number | null;
+  feature_keys: string[];
 }
 
 export interface TenantSubscription {
@@ -28,6 +92,39 @@ export interface PaymentInitiateResult {
 
 export function listPlans(accessToken: string) {
   return apiFetch<BillingPlan[]>("/api/v1/billing/plans", { accessToken });
+}
+
+// Unauthenticated -- backs the public landing page's pricing section, only
+// returns is_active=true plans, no internal/audit fields.
+export function listPublicPlans() {
+  return apiFetch<BillingPlanPublic[]>("/api/v1/billing/plans/public");
+}
+
+// Platform Admin only, privileged (2FA must already be enabled).
+export function createPlan(accessToken: string, params: BillingPlanCreateParams) {
+  return apiFetch<BillingPlan>("/platform/v1/billing/plans", {
+    method: "POST",
+    accessToken,
+    body: params,
+  });
+}
+
+export function updatePlan(accessToken: string, code: string, params: BillingPlanUpdateParams) {
+  return apiFetch<BillingPlan>(`/platform/v1/billing/plans/${encodeURIComponent(code)}`, {
+    method: "PATCH",
+    accessToken,
+    body: params,
+  });
+}
+
+export function listPlatformPlans(accessToken: string) {
+  return apiFetch<BillingPlan[]>("/platform/v1/billing/plans", { accessToken });
+}
+
+// Single source of truth for what the current tenant's plan allows -- backs
+// the dashboard sidebar's lock/Premium badges and the /dashboard/settings/billing page.
+export function getEntitlements(accessToken: string) {
+  return apiFetch<BillingEntitlements>("/api/v1/billing/entitlements", { accessToken });
 }
 
 // Tenant-self-service: picks the tenant's first plan (or changes it later).

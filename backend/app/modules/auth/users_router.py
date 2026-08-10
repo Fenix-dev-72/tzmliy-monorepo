@@ -27,6 +27,8 @@ async def create_user(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Role does not belong to this tenant")
     except users_service.CannotAssignAdminRoleError:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cannot assign the owner admin role to an employee")
+    except users_service.UserLimitReachedError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, f"Tarif limiti: {exc.max_users} tagacha xodim")
 
 
 @router.get("", response_model=Paginated[UserOut])

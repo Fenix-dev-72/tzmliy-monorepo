@@ -1,5 +1,4 @@
 PyJWT==2.13.0
-PyOTP==2.10.0
 aiofiles==25.1.0
 aiogram==3.29.1
 aiohappyeyeballs==2.7.1
@@ -61,6 +60,8 @@ tzdata==2026.3
 tzlocal==5.4.4
 urllib3==2.7.0
 uvicorn==0.50.2
+uvloop==0.21.0; sys_platform != "win32"
+httptools==0.6.4
 vine==5.1.0
 wcwidth==0.8.2
 yarl==1.24.2

@@ -38,7 +38,9 @@ export function ForgotPasswordView() {
 
   const canSubmit = identifier.trim().length > 0;
 
-  async function handleSubmit() {
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!canSubmit || loading) return;
     setLoading(true);
     try {
       await tenantAuthApi.requestPasswordReset({ identifier: identifier.trim() });
@@ -78,18 +80,20 @@ export function ForgotPasswordView() {
       <h2 className="font-display mb-2 text-[26px] font-bold text-foreground">{t.title}</h2>
       <p className="mb-7 text-sm text-foreground-muted">{t.sub}</p>
 
-      <FormField
-        label={t.identifier}
-        type="text"
-        placeholder="email@company.com / +998 90 123 45 67"
-        value={identifier}
-        onChange={(e) => setIdentifier(e.target.value)}
-      />
+      <form onSubmit={handleSubmit}>
+        <FormField
+          label={t.identifier}
+          type="text"
+          placeholder="email@company.com / +998 90 123 45 67"
+          value={identifier}
+          onChange={(e) => setIdentifier(e.target.value)}
+        />
 
-      <Button variant="gold" size="lg" className="mt-2 w-full" disabled={!canSubmit || loading} onClick={handleSubmit}>
-        {loading && <Loader2 size={16} className="animate-spin" />}
-        {t.btn}
-      </Button>
+        <Button type="submit" variant="gold" size="lg" className="mt-2 w-full" disabled={!canSubmit || loading}>
+          {loading && <Loader2 size={16} className="animate-spin" />}
+          {t.btn}
+        </Button>
+      </form>
     </AuthCard>
   );
 }

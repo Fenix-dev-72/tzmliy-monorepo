@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { NavLink } from "react-router";
-import { ShieldAlert, X } from "lucide-react";
+import { Lock, ShieldAlert, X } from "lucide-react";
 import { useLang } from "@/lib/i18n/LangContext";
 import { useNavItems } from "./DashboardSidebar";
 
@@ -60,6 +60,7 @@ export function DashboardMoreSheet({ open, onClose }: { open: boolean; onClose: 
               <item.icon size={20} />
               <span className="leading-tight">{item.label}</span>
               {item.warn && <ShieldAlert size={12} className="text-warning absolute top-2 right-2" />}
+              {item.locked && <Lock size={12} className="text-primary absolute top-2 right-2" />}
             </NavLink>
           ))}
         </div>

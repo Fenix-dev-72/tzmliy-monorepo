@@ -17,7 +17,8 @@ interface PlatformAuthContextValue {
   totpEnabled: boolean;
   login(params: { email: string; password: string }): Promise<LoginResult>;
   completeLogin(tokens: TokenPair): void;
-  setup2fa(): Promise<{ secret: string; otpauth_uri: string }>;
+  setup2fa(): Promise<{ email_masked: string; resend_after_seconds: number }>;
+  resendSetup2fa(): Promise<{ email_masked: string; resend_after_seconds: number }>;
   confirm2fa(code: string): Promise<void>;
   logout(): Promise<void>;
 }
@@ -168,6 +169,11 @@ export function PlatformAuthProvider({ children }: { children: ReactNode }) {
     return platformAuthApi.setup2fa(accessToken);
   }, [accessToken]);
 
+  const resendSetup2fa = useCallback(() => {
+    if (!accessToken) throw new Error("Not authenticated");
+    return platformAuthApi.resendSetup2fa(accessToken);
+  }, [accessToken]);
+
   const confirm2fa = useCallback(
     async (code: string) => {
       if (!accessToken) throw new Error("Not authenticated");
@@ -183,8 +189,8 @@ export function PlatformAuthProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ status, accessToken, totpEnabled, login, completeLogin, setup2fa, confirm2fa, logout }),
-    [status, accessToken, totpEnabled, login, completeLogin, setup2fa, confirm2fa, logout],
+    () => ({ status, accessToken, totpEnabled, login, completeLogin, setup2fa, resendSetup2fa, confirm2fa, logout }),
+    [status, accessToken, totpEnabled, login, completeLogin, setup2fa, resendSetup2fa, confirm2fa, logout],
   );
 
   return <PlatformAuthContext.Provider value={value}>{children}</PlatformAuthContext.Provider>;

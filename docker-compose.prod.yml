@@ -1,0 +1,201 @@
+services:
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    # Dedicated 8 vCPU / 8GB box (not the old shared 2 vCPU VPS) -- raised
+    # from the default 100 to give headroom for 8 app workers + celery
+    # concurrency all pooling DB_POOL_MAX_SIZE connections each (see app's
+    # DB_POOL_MAX_SIZE below for the budget this is sized against).
+    # shared_buffers ~25% of container RAM, the standard starting point.
+    # 400 (not 700 -- tried and reverted 2026-08-09): raising DB_POOL_MAX_SIZE
+    # 25->40 (so max_connections needed raising too) made ~1000-tenant-scale
+    # success *worse* (64%->45%), not better -- raw unpooled Postgres
+    # backends don't scale linearly with connection count (each is its own
+    # OS process; more of them under contention means more context-switch/
+    # lock overhead, not more throughput). The right fix for that regime is
+    # PgBouncer in transaction-pooling mode (already coded for, see
+    # backend/CLAUDE.md's "Scaling-prep" section) rather than a bigger raw
+    # pool -- not deployed yet, tracked as a follow-up.
+    command: postgres -c max_connections=400 -c shared_buffers=2GB
+    environment:
+      POSTGRES_USER: ${POSTGRES_OWNER_USER:-dashboarduz_owner}
+      POSTGRES_PASSWORD: ${POSTGRES_OWNER_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-dashboarduz}
+    volumes:
+      - dashboarduz_postgres_data:/var/lib/postgresql
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # 2026-08-09: added after load testing showed raw (unpooled) Postgres
+  # connections don't scale with count -- 8 app workers x DB_POOL_MAX_SIZE
+  # each opened its own real backend process on postgres directly, and
+  # *raising* that count made high-concurrency success rate worse, not
+  # better (more OS-process context-switch/lock contention, not more
+  # throughput). PgBouncer sits between app/celery and postgres: they now
+  # open cheap connections to *this*, which multiplexes them onto a small,
+  # fixed number of real postgres backends (DEFAULT_POOL_SIZE below) reused
+  # across requests -- exactly matching backend/CLAUDE.md's "Scaling-prep"
+  # section, which already documents DB_STATEMENT_CACHE_SIZE=0 as the one
+  # asyncpg-side change this requires (its prepared-statement cache is
+  # incompatible with transaction-pooling mode otherwise).
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    restart: unless-stopped
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: app_user
+      DB_PASSWORD: ${APP_DB_PASSWORD}
+      DB_NAME: ${POSTGRES_DB:-dashboarduz}
+      POOL_MODE: transaction
+      # trust is safe here -- pgbouncer is only reachable from other
+      # containers on this compose's own internal docker network (no ports:
+      # published to the host), never from the public internet.
+      AUTH_TYPE: trust
+      MAX_CLIENT_CONN: "3000"
+      DEFAULT_POOL_SIZE: "40"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - dashboarduz_redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${OBJECT_STORAGE_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${OBJECT_STORAGE_SECRET_KEY}
+    volumes:
+      - dashboarduz_minio_data:/data
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+
+  app:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    # 8 workers -- one per vCPU on this dedicated box (was 4, sized for the
+    # old shared 2 vCPU VPS). Each worker runs main.py's lifespan
+    # independently, so the 4 asyncio background workers (crm, payroll,
+    # export, calls) now run x8 in parallel -- safe because each already
+    # claims work via FOR UPDATE SKIP LOCKED / a per-tenant Redis lock (see
+    # backend/CLAUDE.md's performance-hardening section).
+    # 2026-08-09: --loop uvloop (C-based event loop, real win under many
+    # concurrent I/O-bound connections) + --http httptools (faster HTTP
+    # parser than the default h11) -- neither was installed before this
+    # (plain `uvicorn`, no [standard] extras -- see requirements.txt).
+    # --log-level warning drops per-request access logging, which measurably
+    # cuts CPU under high concurrency (confirmed by multiple independent
+    # uvicorn tuning writeups, not just one source).
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 8 --loop uvloop --http httptools --log-level warning
+    env_file:
+      - ./.env
+    environment: &backend-container-env
+      # Through pgbouncer now, not postgres directly -- see the pgbouncer
+      # service's comment above. MIGRATIONS_DATABASE_URL deliberately still
+      # goes straight to postgres (DDL/schema_migrations bookkeeping is
+      # safer outside transaction-pooling, and migrations only run briefly
+      # via a one-off `docker compose run`, not a standing pool).
+      DATABASE_URL: postgresql://app_user:${APP_DB_PASSWORD}@pgbouncer:5432/${POSTGRES_DB:-dashboarduz}
+      MIGRATIONS_DATABASE_URL: postgresql://${POSTGRES_OWNER_USER:-dashboarduz_owner}:${POSTGRES_OWNER_PASSWORD}@postgres:5432/${POSTGRES_DB:-dashboarduz}
+      REDIS_URL: redis://redis:6379/1
+      CELERY_BROKER_URL: redis://redis:6379/2
+      TELEGRAM_OFFSET_REDIS_URL: redis://redis:6379/3
+      CRM_OAUTH_STATE_REDIS_URL: redis://redis:6379/4
+      OBJECT_STORAGE_ENDPOINT_URL: http://minio:9000
+      # Safe to be generous now -- these are cheap client connections into
+      # pgbouncer, not raw postgres backends (pgbouncer's own
+      # DEFAULT_POOL_SIZE=40 above is the real backend-connection budget,
+      # shared/reused across however many client connections arrive).
+      DB_POOL_MIN_SIZE: "5"
+      DB_POOL_MAX_SIZE: "40"
+      # Required for asyncpg through pgbouncer's transaction-pooling mode --
+      # see config.py's own docstring on this setting.
+      DB_STATEMENT_CACHE_SIZE: "0"
+    ports:
+      - "127.0.0.1:8010:8000"
+    # Docker's default container nofile limit (1024) was hit for real under
+    # load testing (2026-08-09, "OSError: [Errno 24] Too many open files" --
+    # 1363 occurrences in one run at ~2700 concurrent clients) once socket
+    # count (client connections + the DB pool's own connections) crossed it.
+    # Raised well above DB_POOL_MAX_SIZE x workers + expected concurrent
+    # client sockets.
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    depends_on:
+      postgres:
+        condition: service_healthy
+      pgbouncer:
+        condition: service_started
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+
+  celery_worker:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    # concurrency=4 (was 2) -- still ample headroom over this module's real
+    # task volume (OTP + Telegram, per backend/CLAUDE.md), just no longer
+    # artificially capped by the old shared box's CPU budget.
+    command: celery -A app.core.celery_app worker --loglevel=info --concurrency=4
+    env_file:
+      - ./.env
+    environment: *backend-container-env
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    depends_on:
+      postgres:
+        condition: service_healthy
+      pgbouncer:
+        condition: service_started
+      redis:
+        condition: service_healthy
+
+  celery_beat:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    command: celery -A app.core.celery_app beat --loglevel=info
+    env_file:
+      - ./.env
+    environment: *backend-container-env
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    depends_on:
+      postgres:
+        condition: service_healthy
+      pgbouncer:
+        condition: service_started
+      redis:
+        condition: service_healthy
+
+volumes:
+  dashboarduz_postgres_data:
+  dashboarduz_redis_data:
+  dashboarduz_minio_data:

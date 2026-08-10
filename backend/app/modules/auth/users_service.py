@@ -5,6 +5,7 @@ import asyncpg
 from app.core.database import platform_connection, tenant_connection
 from app.core.security import hash_password
 from app.modules.auth import repository, roles_repository
+from app.modules.billing import repository as billing_repository
 
 
 class RoleNotInTenantError(Exception):
@@ -25,6 +26,12 @@ class PhoneTakenError(Exception):
 
 class CannotAssignAdminRoleError(Exception):
     pass
+
+
+class UserLimitReachedError(Exception):
+    def __init__(self, max_users: int):
+        self.max_users = max_users
+        super().__init__(f"Plan limit reached: up to {max_users} employees")
 
 
 def _reject_system_admin_role(role: dict | None) -> None:
@@ -68,12 +75,32 @@ async def create_user(
             if await repository.get_login_identifier(conn, phone) is not None:
                 raise PhoneTakenError
 
+    max_users: int | None = None
+    if not allow_admin_role:
+        # allow_admin_role=True is the tenant-bootstrap path (first user
+        # ever, count is always 0) -- only the Users-page "add employee" flow
+        # needs this check. Sequential (not nested) connections, per this
+        # module's own convention (see update_user_profile's phone-uniqueness
+        # check above) -- platform_connection acquires its own pool
+        # connection, never opened from inside an already-open tenant_connection.
+        async with tenant_connection(pool, tenant_id) as conn:
+            subscription = await billing_repository.get_tenant_subscription(conn, tenant_id)
+        if subscription is not None:
+            async with platform_connection(pool) as conn:
+                plan = await billing_repository.get_billing_plan_by_id(conn, subscription["billing_plan_id"])
+            if plan is not None:
+                max_users = plan["max_users"]
+
     async with tenant_connection(pool, tenant_id) as conn:
         role = await roles_repository.get_role_by_id(conn, role_id)
         if role is None:
             raise RoleNotInTenantError
         if not allow_admin_role:
             _reject_system_admin_role(role)
+        if max_users is not None:
+            active_count = await repository.count_active_users(conn)
+            if active_count >= max_users:
+                raise UserLimitReachedError(max_users)
         user = await repository.insert_user_with_identifiers(conn, tenant_id, email, phone, password_hash, role_id)
         if user is None:
             raise EmailTakenError

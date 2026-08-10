@@ -2,6 +2,8 @@ import type { LucideIcon } from "lucide-react";
 import { ShoppingCart, Users, Plug, BarChart3 } from "lucide-react";
 import { useLang } from "@/lib/i18n/LangContext";
 import { Reveal } from "@/components/shared/Reveal";
+import { CardConnector } from "@/components/shared/CardConnector";
+import { useReveal } from "@/lib/hooks/useReveal";
 
 // "Key feature categories" style section (reference: TeamWave/Framer
 // template's 2x2 icon-card grid), rebuilt with Tizimly's own modules and
@@ -82,6 +84,10 @@ const content: Record<"uz" | "ru", { badge: string; title: string; cards: Featur
 export function FeaturesGrid() {
   const { lang } = useLang();
   const t = content[lang];
+  // Separate from each card's own <Reveal delay={i*90}> below -- this one
+  // just times the connector hairlines against the same stagger, see
+  // CardConnector.tsx.
+  const { ref: gridRef, visible: gridVisible } = useReveal<HTMLDivElement>(0.2);
 
   return (
     <section id="features" className="relative overflow-hidden py-20 sm:py-28">
@@ -101,11 +107,13 @@ export function FeaturesGrid() {
           </h2>
         </Reveal>
 
-        <div className="grid gap-5 sm:grid-cols-2">
+        <div ref={gridRef} className="grid gap-5 sm:grid-cols-2">
           {t.cards.map((card, i) => {
             const Icon = card.icon;
+            const isLeftCol = i % 2 === 0;
+            const isTopRow = i < 2;
             return (
-              <Reveal key={card.title} delay={i * 90}>
+              <Reveal key={card.title} delay={i * 90} className="relative">
                 <div className="glass-card card-hover-lift h-full p-8">
                   <div
                     className="mb-5 flex size-12 items-center justify-center rounded-xl"
@@ -116,6 +124,22 @@ export function FeaturesGrid() {
                   <h3 className="mb-3 text-lg font-bold">{card.title}</h3>
                   <p className="text-foreground-muted text-[15px] leading-relaxed">{card.desc}</p>
                 </div>
+                {isLeftCol && (
+                  <CardConnector
+                    orientation="h"
+                    visible={gridVisible}
+                    delay={i * 90 + 60}
+                    className="absolute top-1/2 -right-5 hidden w-5 -translate-y-1/2 sm:block"
+                  />
+                )}
+                {isTopRow && (
+                  <CardConnector
+                    orientation="v"
+                    visible={gridVisible}
+                    delay={i * 90 + 60}
+                    className="absolute left-1/2 -bottom-5 hidden h-5 -translate-x-1/2 sm:block"
+                  />
+                )}
               </Reveal>
             );
           })}

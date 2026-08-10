@@ -30,19 +30,19 @@ WHERE identifier = :identifier;
 
 -- name: get_user_by_email^
 SELECT u.id, u.tenant_id, u.email, u.phone, u.password_hash, u.role_id, r.name AS role_name,
-       u.is_active, u.totp_secret, u.totp_enabled, u.failed_login_attempts, u.locked_until, u.created_at
+       u.is_active, u.totp_enabled, u.failed_login_attempts, u.locked_until, u.created_at
 FROM users u JOIN roles r ON r.id = u.role_id
 WHERE u.tenant_id = :tenant_id AND u.email = :email;
 
 -- name: get_user_by_phone^
 SELECT u.id, u.tenant_id, u.email, u.phone, u.password_hash, u.role_id, r.name AS role_name,
-       u.is_active, u.totp_secret, u.totp_enabled, u.failed_login_attempts, u.locked_until, u.created_at
+       u.is_active, u.totp_enabled, u.failed_login_attempts, u.locked_until, u.created_at
 FROM users u JOIN roles r ON r.id = u.role_id
 WHERE u.tenant_id = :tenant_id AND u.phone = :phone;
 
 -- name: get_user_by_id^
 SELECT u.id, u.tenant_id, u.email, u.phone, u.full_name, u.password_hash, u.role_id, r.name AS role_name,
-       u.is_active, u.totp_secret, u.totp_enabled, u.failed_login_attempts, u.locked_until, u.created_at
+       u.is_active, u.totp_enabled, u.failed_login_attempts, u.locked_until, u.created_at
 FROM users u JOIN roles r ON r.id = u.role_id
 WHERE u.id = :user_id;
 
@@ -78,6 +78,10 @@ LIMIT :limit OFFSET :offset;
 -- Backs numbered-pagination total-page count (2026-07-28).
 SELECT COUNT(*) AS count FROM users;
 
+-- name: count_active_users^
+-- Backs the billing plan max_users limit check (users_service.create_user).
+SELECT COUNT(*)::int AS count FROM users WHERE is_active = true;
+
 -- name: update_user_profile^
 UPDATE users SET full_name = :full_name, phone = :phone, updated_at = now()
 WHERE id = :user_id
@@ -96,13 +100,6 @@ UPDATE users SET is_active = false, updated_at = now() WHERE id = :user_id;
 
 -- name: update_user_password!
 UPDATE users SET password_hash = :password_hash, updated_at = now() WHERE id = :user_id;
-
--- name: set_user_totp_secret!
--- Deliberately does NOT touch totp_enabled -- it must only ever be flipped to
--- true by enable_user_totp (on confirm). A stray/premature call to this query
--- (e.g. a frontend race calling /2fa/setup before it knows the account is
--- already enabled) must never silently disable 2FA.
-UPDATE users SET totp_secret = :totp_secret WHERE id = :user_id;
 
 -- name: enable_user_totp!
 UPDATE users SET totp_enabled = true WHERE id = :user_id;

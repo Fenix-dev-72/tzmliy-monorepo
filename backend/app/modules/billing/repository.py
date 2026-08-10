@@ -31,23 +31,84 @@ async def get_billing_plan_by_id(conn: asyncpg.Connection, billing_plan_id: UUID
     return _row(row)
 
 
+async def list_public_billing_plans(conn: asyncpg.Connection) -> list[dict]:
+    rows = [row async for row in _queries.list_public_billing_plans(conn)]
+    return _rows(rows)
+
+
+async def get_trial_plan(conn: asyncpg.Connection) -> dict | None:
+    row = await _queries.get_trial_plan(conn)
+    return _row(row)
+
+
+async def insert_billing_plan(
+    conn: asyncpg.Connection,
+    code: str,
+    name: str,
+    price_amount: int,
+    currency: str,
+    billing_period_months: int,
+    max_users: int,
+    max_billable_storage_bytes: int,
+    features_uz: list[str],
+    features_ru: list[str],
+    feature_keys: list[str],
+    is_popular: bool,
+    is_active: bool,
+    is_trial: bool,
+    trial_days: int | None,
+) -> dict | None:
+    row = await _queries.insert_billing_plan(
+        conn,
+        code=code,
+        name=name,
+        price_amount=price_amount,
+        currency=currency,
+        billing_period_months=billing_period_months,
+        max_users=max_users,
+        max_billable_storage_bytes=max_billable_storage_bytes,
+        features_uz=features_uz,
+        features_ru=features_ru,
+        feature_keys=feature_keys,
+        is_popular=is_popular,
+        is_active=is_active,
+        is_trial=is_trial,
+        trial_days=trial_days,
+    )
+    return _row(row)
+
+
 async def update_billing_plan(
     conn: asyncpg.Connection,
     code: str,
+    name: str | None,
     price_amount: int | None,
     currency: str | None,
     max_users: int | None,
     max_billable_storage_bytes: int | None,
+    features_uz: list[str] | None,
+    features_ru: list[str] | None,
+    feature_keys: list[str] | None,
+    is_popular: bool | None,
     is_active: bool | None,
+    is_trial: bool | None,
+    trial_days: int | None,
 ) -> dict | None:
     row = await _queries.update_billing_plan(
         conn,
         code=code,
+        name=name,
         price_amount=price_amount,
         currency=currency,
         max_users=max_users,
         max_billable_storage_bytes=max_billable_storage_bytes,
+        features_uz=features_uz,
+        features_ru=features_ru,
+        feature_keys=feature_keys,
+        is_popular=is_popular,
         is_active=is_active,
+        is_trial=is_trial,
+        trial_days=trial_days,
     )
     return _row(row)
 

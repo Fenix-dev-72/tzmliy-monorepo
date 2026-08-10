@@ -7,6 +7,7 @@ from PIL import Image, UnidentifiedImageError
 
 from app.core.database import tenant_connection
 from app.core.storage import presigned_get_url, put_object
+from app.modules.billing import service as billing_service
 from app.modules.products import repository
 
 # Product photos are re-encoded to WebP before storage (2026-07-17, explicit
@@ -140,6 +141,7 @@ async def adjust_stock(pool: asyncpg.Pool, tenant_id: UUID, product_id: UUID, de
 
 
 async def upload_photo(pool: asyncpg.Pool, tenant_id: UUID, product_id: UUID, data: bytes) -> None:
+    await billing_service.enforce_storage_not_exceeded(pool, tenant_id)
     webp_data = await asyncio.to_thread(_convert_to_webp_sync, data)
     async with tenant_connection(pool, tenant_id) as conn:
         if await repository.get_product_by_id(conn, product_id) is None:

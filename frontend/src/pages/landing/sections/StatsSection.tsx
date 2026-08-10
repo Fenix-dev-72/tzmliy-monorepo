@@ -2,6 +2,8 @@ import { ArrowRight } from "lucide-react";
 import { useLang } from "@/lib/i18n/LangContext";
 import { Reveal } from "@/components/shared/Reveal";
 import { CountUp } from "@/components/landing/CountUp";
+import { useReveal } from "@/lib/hooks/useReveal";
+import { cn } from "@/components/ui/utils";
 
 // "Impressive stats" style section (reference: TeamWave/Framer template
 // layout -- headline + copy on the left, a 2x2 stat grid with dividers on
@@ -41,6 +43,7 @@ const content = {
 export function StatsSection() {
   const { lang } = useLang();
   const t = content[lang];
+  const { ref: statsRef, visible: statsVisible } = useReveal<HTMLDivElement>(0.2);
 
   return (
     <section className="relative overflow-hidden py-20 sm:py-28">
@@ -71,18 +74,23 @@ export function StatsSection() {
           </a>
         </Reveal>
 
-        <Reveal delay={120}>
-          <div className="border-card-border grid grid-cols-2 divide-x divide-y overflow-hidden rounded-3xl border [&>*]:border-card-border">
-            {t.stats.map((stat, i) => (
-              <div key={stat.label} className="p-7 sm:p-9">
-                <div className="mb-2 text-[clamp(28px,3.2vw,38px)] font-bold" style={{ color: stat.color }}>
-                  <CountUp to={stat.value} suffix={stat.suffix} durationMs={1400 + i * 150} />
-                </div>
-                <p className="text-foreground-muted text-sm leading-snug">{stat.label}</p>
+        <div
+          ref={statsRef}
+          className="border-card-border grid grid-cols-2 divide-x divide-y overflow-hidden rounded-3xl border [&>*]:border-card-border"
+        >
+          {t.stats.map((stat, i) => (
+            <div
+              key={stat.label}
+              className={cn("reveal-on-scroll p-7 sm:p-9", statsVisible && "is-visible")}
+              style={{ transitionDelay: statsVisible ? `${120 + i * 80}ms` : "0ms" }}
+            >
+              <div className="mb-2 text-[clamp(28px,3.2vw,38px)] font-bold" style={{ color: stat.color }}>
+                <CountUp to={stat.value} suffix={stat.suffix} durationMs={1400 + i * 150} />
               </div>
-            ))}
-          </div>
-        </Reveal>
+              <p className="text-foreground-muted text-sm leading-snug">{stat.label}</p>
+            </div>
+          ))}
+        </div>
       </div>
     </section>
   );

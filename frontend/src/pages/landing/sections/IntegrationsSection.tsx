@@ -3,6 +3,7 @@ import { Users, Workflow, Megaphone, Phone, Send, CreditCard, Wallet } from "luc
 import { useLang } from "@/lib/i18n/LangContext";
 import { Reveal } from "@/components/shared/Reveal";
 import { ScaleToFit } from "@/components/shared/ScaleToFit";
+import { useReveal } from "@/lib/hooks/useReveal";
 
 // "Seamless Integrations" style section (reference: TeamWave/Framer
 // template's orbiting-logo-bubbles block). Rebuilt with Tizimly's own, real,
@@ -73,7 +74,7 @@ const content = {
   },
 };
 
-function OrbitCrescent() {
+function OrbitCrescent({ visible }: { visible: boolean }) {
   return (
     <div className="relative" style={{ width: ARC_WIDTH, height: ARC_HEIGHT }}>
       {/* Static dashed guide -- the same arc the icons sit on, drawn once so
@@ -113,9 +114,20 @@ function OrbitCrescent() {
             >
               <div style={{ transform: `rotate(${-angle}deg)` }}>
                 <div className="orbit-counter">
+                  {/* Opacity-only stagger (not transform) -- .orbit-counter's own
+                      animation already owns `transform` on this element, and
+                      stacking a second transform source here would fight it.
+                      Opacity is a separate property so both coexist cleanly. */}
                   <div
                     className="border-card-border bg-card flex size-14 items-center justify-center rounded-2xl border shadow-sm"
-                    style={{ marginLeft: -BUBBLE_HALF, marginTop: -BUBBLE_HALF, boxShadow: `0 8px 20px ${node.color}22` }}
+                    style={{
+                      marginLeft: -BUBBLE_HALF,
+                      marginTop: -BUBBLE_HALF,
+                      boxShadow: `0 8px 20px ${node.color}22`,
+                      opacity: visible ? 1 : 0,
+                      transition: "opacity .4s ease-out",
+                      transitionDelay: visible ? `${i * 70}ms` : "0ms",
+                    }}
                   >
                     <Icon size={22} style={{ color: node.color }} />
                   </div>
@@ -132,14 +144,20 @@ function OrbitCrescent() {
 export function IntegrationsSection() {
   const { lang } = useLang();
   const t = content[lang];
+  // Independent of the outer <Reveal> below (which still fades in the
+  // badge/heading/CTA copy as one unit, unchanged) -- just times the
+  // per-bubble opacity stagger.
+  const { ref: orbitRef, visible: orbitVisible } = useReveal<HTMLDivElement>(0.3);
 
   return (
     <section id="integrations" className="relative overflow-hidden py-20 sm:py-28">
       <div className="relative mx-auto max-w-3xl px-6 text-center">
         <Reveal>
-          <ScaleToFit naturalWidth={ARC_WIDTH} className="mb-4">
-            <OrbitCrescent />
-          </ScaleToFit>
+          <div ref={orbitRef}>
+            <ScaleToFit naturalWidth={ARC_WIDTH} className="mb-4">
+              <OrbitCrescent visible={orbitVisible} />
+            </ScaleToFit>
+          </div>
 
           <div className="border-primary/25 bg-primary/10 mb-6 inline-flex items-center gap-2 rounded-full border px-4 py-1.5">
             <div className="bg-primary size-1.5 rounded-full" />

@@ -1,3 +1,5 @@
+import { Navigate } from "react-router";
+import { useTenantAuth } from "@/lib/auth/tenantAuthStore";
 import { Navbar } from "./sections/Navbar";
 import { HeroSection } from "./sections/HeroSection";
 import { StatsSection } from "./sections/StatsSection";
@@ -17,6 +19,16 @@ import { Footer } from "./sections/Footer";
 // + Integrations + Tabs showcase + Pricing + closing newsletter CTA +
 // Footer (2026-07-21).
 export function LandingPage() {
+  const { status } = useTenantAuth();
+
+  // A logged-in user landing on "/" (bookmark, typed URL, back button) should
+  // go straight to their dashboard, not see the marketing page again.
+  // "authenticating" covers the brief session-restore window on a hard
+  // reload (see tenantAuthStore's lazy status init) -- render nothing rather
+  // than flashing the landing page for a frame before redirecting.
+  if (status === "authenticated") return <Navigate to="/dashboard" replace />;
+  if (status === "authenticating") return null;
+
   return (
     <div className="bg-background text-foreground min-h-screen overflow-x-hidden">
       <Navbar />

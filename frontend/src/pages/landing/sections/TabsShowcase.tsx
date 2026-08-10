@@ -296,13 +296,13 @@ export function TabsShowcase() {
           <div className="border-card-border bg-card/40 grid gap-10 rounded-3xl border p-6 sm:p-10 lg:grid-cols-2 lg:items-center">
             {active === "attendance" && (
               <>
-                <div>
+                <div className="tab-panel-enter">
                   <h2 className="font-display mb-6 text-[clamp(28px,4vw,42px)] leading-[1.15] font-bold tracking-tight">
                     {t.attendance.title1} <span className="gold-gradient-text">{t.attendance.titleHighlight}</span>
                   </h2>
                   <ul className="mb-8 space-y-4">
                     {t.attendance.checklist.map((item) => (
-                      <li key={item} className="flex items-start gap-3">
+                      <li key={item} className="checklist-item-anim flex items-start gap-3">
                         <span className="bg-primary/15 mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full">
                           <Check size={14} style={{ color: "var(--color-primary)" }} />
                         </span>
@@ -314,19 +314,21 @@ export function TabsShowcase() {
                     {t.attendance.cta}
                   </a>
                 </div>
-                <AttendanceMockup t={t.attendance} />
+                <div className="tab-panel-enter" style={{ animationDelay: "80ms" }}>
+                  <AttendanceMockup t={t.attendance} />
+                </div>
               </>
             )}
 
             {active === "security" && (
               <>
-                <div>
+                <div className="tab-panel-enter">
                   <h2 className="font-display mb-6 text-[clamp(28px,4vw,42px)] leading-[1.15] font-bold tracking-tight">
                     {t.security.title1} <span className="gold-gradient-text">{t.security.titleHighlight}</span>
                   </h2>
                   <ul className="mb-8 space-y-4">
                     {t.security.checklist.map((item) => (
-                      <li key={item} className="flex items-start gap-3">
+                      <li key={item} className="checklist-item-anim flex items-start gap-3">
                         <span className="bg-primary/15 mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full">
                           <Check size={14} style={{ color: "var(--color-primary)" }} />
                         </span>
@@ -338,19 +340,21 @@ export function TabsShowcase() {
                     {t.security.cta}
                   </a>
                 </div>
-                <SecurityMockup t={t.security} />
+                <div className="tab-panel-enter" style={{ animationDelay: "80ms" }}>
+                  <SecurityMockup t={t.security} />
+                </div>
               </>
             )}
 
             {active === "mobile" && (
               <>
-                <div>
+                <div className="tab-panel-enter">
                   <h2 className="font-display mb-6 text-[clamp(28px,4vw,42px)] leading-[1.15] font-bold tracking-tight">
                     {t.mobile.title1} <span className="gold-gradient-text">{t.mobile.titleHighlight}</span>
                   </h2>
                   <ul className="mb-8 space-y-4">
                     {t.mobile.checklist.map((item) => (
-                      <li key={item} className="flex items-start gap-3">
+                      <li key={item} className="checklist-item-anim flex items-start gap-3">
                         <span className="bg-primary/15 mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full">
                           <Check size={14} style={{ color: "var(--color-primary)" }} />
                         </span>
@@ -362,7 +366,9 @@ export function TabsShowcase() {
                     {t.mobile.cta}
                   </a>
                 </div>
-                <MobileMockup t={t.mobile} />
+                <div className="tab-panel-enter" style={{ animationDelay: "80ms" }}>
+                  <MobileMockup t={t.mobile} />
+                </div>
               </>
             )}
           </div>

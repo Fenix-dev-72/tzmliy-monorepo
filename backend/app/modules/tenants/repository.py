@@ -44,10 +44,6 @@ async def reset_platform_admin_failed_logins(conn: asyncpg.Connection, admin_id:
     await _queries.reset_platform_admin_failed_logins(conn, admin_id=admin_id)
 
 
-async def set_platform_admin_totp_secret(conn: asyncpg.Connection, admin_id: UUID, totp_secret: str) -> None:
-    await _queries.set_platform_admin_totp_secret(conn, admin_id=admin_id, totp_secret=totp_secret)
-
-
 async def enable_platform_admin_totp(conn: asyncpg.Connection, admin_id: UUID) -> None:
     await _queries.enable_platform_admin_totp(conn, admin_id=admin_id)
 
@@ -76,6 +72,11 @@ async def get_tenant_by_slug(conn: asyncpg.Connection, slug: str) -> dict | None
 
 async def update_tenant_status(conn: asyncpg.Connection, tenant_id: UUID, new_status: str) -> dict | None:
     row = await _queries.update_tenant_status(conn, tenant_id=tenant_id, new_status=new_status)
+    return _row(row)
+
+
+async def update_tenant_trial_ends_at(conn: asyncpg.Connection, tenant_id: UUID, trial_ends_at: datetime) -> dict | None:
+    row = await _queries.update_tenant_trial_ends_at(conn, tenant_id=tenant_id, trial_ends_at=trial_ends_at)
     return _row(row)
 
 

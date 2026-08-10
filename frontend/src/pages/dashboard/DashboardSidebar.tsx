@@ -4,7 +4,9 @@ import {
   Bell,
   BookOpen,
   CalendarCheck,
+  CreditCard,
   FileBarChart,
+  Lock,
   LayoutDashboard,
   LifeBuoy,
   Package,
@@ -22,6 +24,8 @@ import {
 } from "lucide-react";
 import { useLang } from "@/lib/i18n/LangContext";
 import { useTenantAuth } from "@/lib/auth/tenantAuthStore";
+import { useEntitlements } from "@/lib/billing/EntitlementsContext";
+import { FEATURE_CRM_INTEGRATIONS, FEATURE_META_ADS, FEATURE_ADVANCED_REPORTS, FEATURE_TELEGRAM_NOTIFICATIONS } from "@/lib/billing/features";
 
 const content = {
   uz: {
@@ -42,6 +46,7 @@ const content = {
     reports: "Hisobotlar",
     support: "Yordam so'rash",
     settings: "Sozlamalar",
+    billing: "Obuna va tarif",
   },
   ru: {
     home: "Главная",
@@ -61,6 +66,7 @@ const content = {
     reports: "Отчёты",
     support: "Обратиться за помощью",
     settings: "Настройки",
+    billing: "Подписка и тариф",
   },
 };
 
@@ -71,6 +77,7 @@ const content = {
 export function useNavItems() {
   const { lang } = useLang();
   const { user } = useTenantAuth();
+  const { hasFeature } = useEntitlements();
   const t = content[lang];
   const permissions = new Set(user?.permissions ?? []);
 
@@ -90,13 +97,21 @@ export function useNavItems() {
     { to: "/dashboard/roles", end: false, icon: ShieldCheck, label: t.roles, show: permissions.has("roles.view") },
     { to: "/dashboard/calls", end: false, icon: Phone, label: t.calls, show: permissions.has("calls.view") },
     { to: "/dashboard/attendance", end: false, icon: CalendarCheck, label: t.attendance, show: true },
-    { to: "/dashboard/integrations", end: false, icon: Plug, label: t.integrations, show: permissions.has("crm.view") },
+    {
+      to: "/dashboard/integrations",
+      end: false,
+      icon: Plug,
+      label: t.integrations,
+      show: permissions.has("crm.view"),
+      locked: !hasFeature(FEATURE_CRM_INTEGRATIONS) && !hasFeature(FEATURE_META_ADS),
+    },
     {
       to: "/dashboard/notifications",
       end: false,
       icon: Bell,
       label: t.notifications,
       show: permissions.has("notifications.view"),
+      locked: !hasFeature(FEATURE_TELEGRAM_NOTIFICATIONS),
     },
     { to: "/dashboard/products", end: false, icon: Package, label: t.catalog, show: permissions.has("catalog.view") },
     { to: "/dashboard/warehouse", end: false, icon: Warehouse, label: t.warehouse, show: permissions.has("catalog.view") },
@@ -107,7 +122,14 @@ export function useNavItems() {
       label: t.courseSales,
       show: permissions.has("analytics.view"),
     },
-    { to: "/dashboard/reports", end: false, icon: FileBarChart, label: t.reports, show: permissions.has("reports.view") },
+    {
+      to: "/dashboard/reports",
+      end: false,
+      icon: FileBarChart,
+      label: t.reports,
+      show: permissions.has("reports.view"),
+      locked: !hasFeature(FEATURE_ADVANCED_REPORTS),
+    },
     { to: "/dashboard/support", end: false, icon: LifeBuoy, label: t.support, show: true },
     {
       to: "/dashboard/settings/2fa",
@@ -117,6 +139,7 @@ export function useNavItems() {
       show: true,
       warn: !user?.totp_enabled,
     },
+    { to: "/dashboard/settings/billing", end: false, icon: CreditCard, label: t.billing, show: true },
   ].filter((item) => item.show);
 }
 
@@ -157,6 +180,8 @@ export function DashboardSidebar() {
               {item.label}
             </span>
             {item.warn && expanded && <ShieldAlert size={13} className="text-warning ml-auto shrink-0" />}
+            {item.locked && expanded && <Lock size={12} className="text-primary ml-auto shrink-0" />}
+            {item.locked && !expanded && <Lock size={10} className="text-primary absolute top-1.5 right-1.5" />}
           </NavLink>
         ))}
       </aside>

@@ -1,3 +1,6 @@
+from datetime import datetime
+from uuid import UUID
+
 from pydantic import BaseModel
 
 
@@ -13,6 +16,13 @@ class PaymentTotalOut(BaseModel):
     total_amount: int
 
 
+class PlanUsageOut(BaseModel):
+    code: str
+    name: str
+    is_active: bool
+    tenant_count: int
+
+
 class DashboardSummaryOut(BaseModel):
     total_tenants: int
     tenants_by_status: list[TenantStatusCountOut]
@@ -20,6 +30,17 @@ class DashboardSummaryOut(BaseModel):
     new_tenants_30d: int
     payments_today: list[PaymentTotalOut]
     payments_this_month: list[PaymentTotalOut]
+    plans_usage: list[PlanUsageOut]
+
+
+class TenantStorageUsageOut(BaseModel):
+    tenant_id: UUID
+    tenant_name: str
+    plan_code: str | None
+    total_bytes: int
+    billable_storage_limit_bytes: int | None
+    usage_ratio_bps: int
+    computed_at: datetime | None
 
 
 class ServerMetricsOut(BaseModel):

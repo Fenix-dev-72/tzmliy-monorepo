@@ -7,6 +7,7 @@ import asyncpg
 
 from app.core.database import read_tenant_connection, tenant_connection
 from app.core import storage
+from app.modules.billing import service as billing_service
 from app.modules.reports import export_writers, repository
 
 DEFAULT_STALE_ADJUSTMENT_DAYS = 3
@@ -125,6 +126,7 @@ async def _run_export(conn: asyncpg.Connection, tenant_id: UUID, job_id: UUID, e
 async def enqueue_export(
     pool: asyncpg.Pool, tenant_id: UUID, entity: ExportEntity, format: ExportFormat, actor_user_id: UUID
 ) -> dict:
+    await billing_service.enforce_storage_not_exceeded(pool, tenant_id)
     async with tenant_connection(pool, tenant_id) as conn:
         return await repository.insert_export_job(conn, tenant_id, entity, format, actor_user_id)
 

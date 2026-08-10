@@ -15,6 +15,7 @@ class PlatformLoginResponse(BaseModel):
     access_token: str | None = None
     refresh_token: str | None = None
     token_type: str = "bearer"
+    resend_after_seconds: int = 0
 
 
 class RefreshRequest(BaseModel):

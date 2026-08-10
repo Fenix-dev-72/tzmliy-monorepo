@@ -30,6 +30,7 @@ const content = {
     cancel: "Bekor qilish",
     save: "Saqlash",
     need2fa: "Integratsiya sozlash uchun 2FA yoqilgan bo'lishi kerak.",
+    need2faToast: "Integratsiya ulash uchun avval 2FA yoqilishi kerak",
     genericError: "Xatolik yuz berdi",
     connectedToast: "Integratsiya ulandi",
     oneClickConnect: "Ulash",
@@ -60,6 +61,7 @@ const content = {
     cancel: "Отмена",
     save: "Сохранить",
     need2fa: "Для настройки интеграции требуется включённая 2FA.",
+    need2faToast: "Для подключения интеграции сначала включите 2FA",
     genericError: "Произошла ошибка",
     connectedToast: "Интеграция подключена",
     oneClickConnect: "Подключить",
@@ -293,7 +295,13 @@ export function IntegrationsPage() {
       // redirects back to our backend's callback, which then redirects here.
       window.location.assign(authorize_url);
     } catch (err) {
-      toast.error(err instanceof ApiError && err.status === 400 ? t.oneClickNotConfigured : t.genericError);
+      if (err instanceof ApiError && err.status === 400) {
+        toast.error(t.oneClickNotConfigured);
+      } else if (err instanceof ApiError && err.status === 403) {
+        toast.error(t.need2faToast);
+      } else {
+        toast.error(t.genericError);
+      }
       setOauthConnecting(null);
     }
   }

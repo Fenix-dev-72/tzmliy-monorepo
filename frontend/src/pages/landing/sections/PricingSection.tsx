@@ -1,25 +1,20 @@
-import { useState } from "react";
-import { Check } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Check, Loader2 } from "lucide-react";
 import { Link } from "react-router";
 import { useLang } from "@/lib/i18n/LangContext";
 import { Reveal } from "@/components/shared/Reveal";
+import { CardConnector } from "@/components/shared/CardConnector";
+import { useReveal } from "@/lib/hooks/useReveal";
+import * as billingApi from "@/lib/api/billing";
+import type { BillingPlanPublic } from "@/lib/api/billing";
 
 // "Pricing Plans" style section (reference: TeamWave/Framer template's
 // Monthly/Yearly toggle + 3-card pricing block, middle card highlighted as
-// "Popular"). Rebuilt around Tizimly's real three billing plans (backend:
-// billing_plans.code CHECK IN ('starter','business','enterprise'), see
-// CLAUDE.md's Billing/Faza 8 section) instead of generic Basic/Pro/
-// Enterprise copy, priced in so'm (this is a Uzbekistan-market product, not
-// USD), with the yearly toggle applying the real -20% the tab label
-// promises.
-
-interface Plan {
-  code: string;
-  name: string;
-  monthly: number | null;
-  features: string[];
-  popular?: boolean;
-}
+// "Popular"). Reads real plans from GET /api/v1/billing/plans/public
+// (billing_plans table, Platform Admin managed under /platform/billing-plans)
+// instead of hardcoded copy -- a new plan created there appears here
+// automatically. Only the yearly -20% math stays client-side (no yearly
+// billing period exists on the backend yet).
 
 const content = {
   uz: {
@@ -29,50 +24,11 @@ const content = {
     monthly: "Oylik",
     yearly: "Yillik — 20% chegirma",
     perMonth: "/oy",
-    custom: "Individual",
     cta: "Ushbu tarifni tanlash",
-    ctaEnterprise: "Narx so'rash",
-    plans: [
-      {
-        code: "starter",
-        name: "Starter",
-        monthly: 299000,
-        features: [
-          "Savdo va ombor boshqaruvi",
-          "CRM va mijozlar bazasi",
-          "Asosiy analitika va hisobotlar",
-          "5 GB xotira",
-          "Email orqali qo'llab-quvvatlash",
-        ],
-      },
-      {
-        code: "business",
-        name: "Business",
-        monthly: 590000,
-        popular: true,
-        features: [
-          "Barcha Starter imkoniyatlari",
-          "AmoCRM, Bitrix24, Meta Ads integratsiyalari",
-          "Telegram bot orqali bildirishnomalar",
-          "Kengaytirilgan hisobot va eksport (CSV/XLSX)",
-          "50 GB xotira",
-          "Ustuvor qo'llab-quvvatlash",
-        ],
-      },
-      {
-        code: "enterprise",
-        name: "Enterprise",
-        monthly: null,
-        features: [
-          "Barcha Business imkoniyatlari",
-          "Shaxsiy hisob menejeri",
-          "Maxsus integratsiyalar",
-          "Cheksiz xotira",
-          "24/7 qo'llab-quvvatlash",
-          "SLA kafolati",
-        ],
-      },
-    ] as Plan[],
+    ctaTrial: "Bepul boshlash",
+    free: "Bepul",
+    trialDays: (days: number) => `${days} kun`,
+    empty: "Tariflar hozircha e'lon qilinmagan.",
   },
   ru: {
     badge: "Тарифы",
@@ -81,61 +37,34 @@ const content = {
     monthly: "Помесячно",
     yearly: "Ежегодно — скидка 20%",
     perMonth: "/мес",
-    custom: "Индивидуально",
     cta: "Выбрать этот тариф",
-    ctaEnterprise: "Запросить цену",
-    plans: [
-      {
-        code: "starter",
-        name: "Starter",
-        monthly: 299000,
-        features: [
-          "Управление продажами и складом",
-          "CRM и база клиентов",
-          "Базовая аналитика и отчёты",
-          "5 ГБ хранилища",
-          "Поддержка по email",
-        ],
-      },
-      {
-        code: "business",
-        name: "Business",
-        monthly: 590000,
-        popular: true,
-        features: [
-          "Все возможности Starter",
-          "Интеграции AmoCRM, Bitrix24, Meta Ads",
-          "Уведомления через Telegram-бота",
-          "Расширенные отчёты и экспорт (CSV/XLSX)",
-          "50 ГБ хранилища",
-          "Приоритетная поддержка",
-        ],
-      },
-      {
-        code: "enterprise",
-        name: "Enterprise",
-        monthly: null,
-        features: [
-          "Все возможности Business",
-          "Персональный менеджер",
-          "Индивидуальные интеграции",
-          "Неограниченное хранилище",
-          "Поддержка 24/7",
-          "Гарантия SLA",
-        ],
-      },
-    ] as Plan[],
+    ctaTrial: "Начать бесплатно",
+    free: "Бесплатно",
+    trialDays: (days: number) => `${days} дней`,
+    empty: "Тарифы пока не опубликованы.",
   },
 };
 
-function formatSom(amount: number) {
-  return new Intl.NumberFormat("ru-RU").format(amount);
+function formatPrice(amount: number, currency: string): string {
+  if (currency === "USD") {
+    return `$${new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount / 100)}`;
+  }
+  return `${new Intl.NumberFormat("ru-RU").format(amount)} so'm`;
 }
 
 export function PricingSection() {
   const { lang } = useLang();
   const t = content[lang];
   const [yearly, setYearly] = useState(false);
+  const [plans, setPlans] = useState<BillingPlanPublic[] | null>(null);
+  const { ref: gridRef, visible: gridVisible } = useReveal<HTMLDivElement>(0.2);
+
+  useEffect(() => {
+    billingApi
+      .listPublicPlans()
+      .then(setPlans)
+      .catch(() => setPlans([]));
+  }, []);
 
   return (
     <section id="pricing" className="relative overflow-hidden py-20 sm:py-28">
@@ -179,57 +108,84 @@ export function PricingSection() {
           </div>
         </Reveal>
 
-        <div className="grid gap-6 lg:grid-cols-3">
-          {t.plans.map((plan, i) => {
-            const price = plan.monthly === null ? null : yearly ? Math.round((plan.monthly * 0.8) / 1000) * 1000 : plan.monthly;
-            return (
-              <Reveal key={plan.code} delay={i * 90}>
-                <div
-                  className={`flex h-full flex-col rounded-3xl border p-8 ${
-                    plan.popular ? "border-primary bg-card shadow-lg" : "border-card-border bg-card/40"
-                  }`}
-                >
-                  <span
-                    className={`mb-6 inline-block w-fit rounded-lg border px-3 py-1 text-xs font-bold tracking-wide uppercase ${
-                      plan.popular ? "border-primary/40 text-primary" : "border-card-border text-foreground-muted"
+        {plans === null && (
+          <div className="text-foreground-muted flex justify-center py-16">
+            <Loader2 size={22} className="animate-spin" />
+          </div>
+        )}
+
+        {plans !== null && plans.length === 0 && (
+          <p className="text-foreground-muted py-16 text-center text-sm">{t.empty}</p>
+        )}
+
+        {plans !== null && plans.length > 0 && (
+          <div ref={gridRef} className={`grid gap-6 ${plans.length >= 3 ? "lg:grid-cols-3" : plans.length === 2 ? "sm:grid-cols-2" : ""}`}>
+            {plans.map((plan, i) => {
+              const price = yearly ? Math.round((plan.price_amount * 0.8) / 1000) * 1000 : plan.price_amount;
+              const features = lang === "uz" ? plan.features_uz : plan.features_ru;
+              const isFree = plan.is_trial || plan.price_amount === 0;
+              return (
+                <Reveal key={plan.code} delay={i * 90} className="relative">
+                  {i < plans.length - 1 && (
+                    <CardConnector
+                      orientation="h"
+                      visible={gridVisible}
+                      delay={i * 90 + 60}
+                      className="absolute top-1/2 -right-6 hidden w-6 -translate-y-1/2 lg:block"
+                    />
+                  )}
+                  <div
+                    className={`flex h-full flex-col rounded-3xl border p-8 ${
+                      plan.is_popular ? "border-primary bg-card shadow-lg" : "border-card-border bg-card/40"
                     }`}
                   >
-                    {plan.name}
-                  </span>
+                    <span
+                      className={`mb-6 inline-block w-fit rounded-lg border px-3 py-1 text-xs font-bold tracking-wide uppercase ${
+                        plan.is_popular ? "border-primary/40 text-primary" : "border-card-border text-foreground-muted"
+                      }`}
+                    >
+                      {plan.name}
+                    </span>
 
-                  <div className="mb-6">
-                    {price === null ? (
-                      <span className="text-4xl font-bold">{t.custom}</span>
-                    ) : (
-                      <>
-                        <span className="text-4xl font-bold">{formatSom(price)}</span>
-                        <span className="text-foreground-muted ml-1 text-sm">{"so'm"}{t.perMonth}</span>
-                      </>
-                    )}
+                    <div className="mb-6">
+                      {isFree ? (
+                        <>
+                          <span className="text-4xl font-bold">{t.free}</span>
+                          {plan.trial_days !== null && (
+                            <span className="text-foreground-muted ml-1 text-sm">— {t.trialDays(plan.trial_days)}</span>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-4xl font-bold">{formatPrice(price, plan.currency)}</span>
+                          <span className="text-foreground-muted ml-1 text-sm">{t.perMonth}</span>
+                        </>
+                      )}
+                    </div>
+
+                    <ul className="border-card-border mb-8 flex-1 space-y-3 border-t pt-6">
+                      {features.map((f) => (
+                        <li key={f} className="flex items-start gap-2.5 text-sm">
+                          <Check size={16} className="mt-0.5 shrink-0" style={{ color: "var(--color-primary)" }} />
+                          <span>{f}</span>
+                        </li>
+                      ))}
+                    </ul>
+
+                    <Link
+                      to="/register"
+                      className={`rounded-xl px-6 py-3 text-center text-sm font-bold transition-opacity hover:opacity-90 ${
+                        plan.is_popular ? "gold-gradient-bg text-[#0A0E1A]" : "border-card-border hover:bg-accent border"
+                      }`}
+                    >
+                      {isFree ? t.ctaTrial : t.cta}
+                    </Link>
                   </div>
-
-                  <ul className="border-card-border mb-8 flex-1 space-y-3 border-t pt-6">
-                    {plan.features.map((f) => (
-                      <li key={f} className="flex items-start gap-2.5 text-sm">
-                        <Check size={16} className="mt-0.5 shrink-0" style={{ color: "var(--color-primary)" }} />
-                        <span>{f}</span>
-                      </li>
-                    ))}
-                  </ul>
-
-                  <Link
-                    to="/register"
-                    className={`rounded-xl px-6 py-3 text-center text-sm font-bold transition-opacity hover:opacity-90 ${
-                      plan.popular ? "gold-gradient-bg text-[#0A0E1A]" : "border-card-border hover:bg-accent border"
-                    }`}
-                  >
-                    {plan.monthly === null ? t.ctaEnterprise : t.cta}
-                  </Link>
-                </div>
-              </Reveal>
-            );
-          })}
-        </div>
+                </Reveal>
+              );
+            })}
+          </div>
+        )}
       </div>
     </section>
   );

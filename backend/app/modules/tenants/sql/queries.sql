@@ -1,10 +1,10 @@
 -- name: get_platform_admin_by_email^
-SELECT id, email, password_hash, is_active, totp_secret, totp_enabled, failed_login_attempts, locked_until
+SELECT id, email, password_hash, is_active, totp_enabled, failed_login_attempts, locked_until
 FROM platform_admins
 WHERE email = :email;
 
 -- name: get_platform_admin_by_id^
-SELECT id, email, password_hash, is_active, totp_secret, totp_enabled, failed_login_attempts, locked_until
+SELECT id, email, password_hash, is_active, totp_enabled, failed_login_attempts, locked_until
 FROM platform_admins
 WHERE id = :admin_id;
 
@@ -23,9 +23,6 @@ RETURNING failed_login_attempts, locked_until;
 UPDATE platform_admins
 SET failed_login_attempts = 0, locked_until = NULL
 WHERE id = :admin_id AND (failed_login_attempts > 0 OR locked_until IS NOT NULL);
-
--- name: set_platform_admin_totp_secret!
-UPDATE platform_admins SET totp_secret = :totp_secret, totp_enabled = false WHERE id = :admin_id;
 
 -- name: enable_platform_admin_totp!
 UPDATE platform_admins SET totp_enabled = true WHERE id = :admin_id;
@@ -57,6 +54,10 @@ WHERE slug = :slug;
 
 -- name: update_tenant_status^
 UPDATE tenants SET status = :new_status, updated_at = now() WHERE id = :tenant_id
+RETURNING id, name, slug, status, trial_ends_at, created_at;
+
+-- name: update_tenant_trial_ends_at^
+UPDATE tenants SET trial_ends_at = :trial_ends_at, updated_at = now() WHERE id = :tenant_id
 RETURNING id, name, slug, status, trial_ends_at, created_at;
 
 -- name: insert_platform_admin_session^

@@ -1,28 +1,53 @@
 -- name: list_billing_plans
-SELECT id, code, name, price_amount, currency, billing_period_months, max_users, max_billable_storage_bytes, is_active, created_at, updated_at
+SELECT id, code, name, price_amount, currency, billing_period_months, max_users, max_billable_storage_bytes, features_uz, features_ru, feature_keys, is_popular, is_active, is_trial, trial_days, created_at, updated_at
 FROM billing_plans
 ORDER BY price_amount;
 
+-- name: list_public_billing_plans
+SELECT code, name, price_amount, currency, billing_period_months, max_users, features_uz, features_ru, is_popular, is_trial, trial_days
+FROM billing_plans
+WHERE is_active = true
+ORDER BY price_amount;
+
 -- name: get_billing_plan_by_code^
-SELECT id, code, name, price_amount, currency, billing_period_months, max_users, max_billable_storage_bytes, is_active, created_at, updated_at
+SELECT id, code, name, price_amount, currency, billing_period_months, max_users, max_billable_storage_bytes, features_uz, features_ru, feature_keys, is_popular, is_active, is_trial, trial_days, created_at, updated_at
 FROM billing_plans
 WHERE code = :code;
 
 -- name: get_billing_plan_by_id^
-SELECT id, code, name, price_amount, currency, billing_period_months, max_users, max_billable_storage_bytes, is_active, created_at, updated_at
+SELECT id, code, name, price_amount, currency, billing_period_months, max_users, max_billable_storage_bytes, features_uz, features_ru, feature_keys, is_popular, is_active, is_trial, trial_days, created_at, updated_at
 FROM billing_plans
 WHERE id = :billing_plan_id;
 
+-- name: get_trial_plan^
+SELECT id, code, name, price_amount, currency, billing_period_months, max_users, max_billable_storage_bytes, features_uz, features_ru, feature_keys, is_popular, is_active, is_trial, trial_days, created_at, updated_at
+FROM billing_plans
+WHERE is_trial = true AND is_active = true
+LIMIT 1;
+
+-- name: insert_billing_plan^
+INSERT INTO billing_plans (code, name, price_amount, currency, billing_period_months, max_users, max_billable_storage_bytes, features_uz, features_ru, feature_keys, is_popular, is_active, is_trial, trial_days)
+VALUES (:code, :name, :price_amount, :currency, :billing_period_months, :max_users, :max_billable_storage_bytes, :features_uz, :features_ru, :feature_keys, :is_popular, :is_active, :is_trial, :trial_days)
+ON CONFLICT (code) DO NOTHING
+RETURNING id, code, name, price_amount, currency, billing_period_months, max_users, max_billable_storage_bytes, features_uz, features_ru, feature_keys, is_popular, is_active, is_trial, trial_days, created_at, updated_at;
+
 -- name: update_billing_plan^
 UPDATE billing_plans
-SET price_amount = COALESCE(:price_amount, price_amount),
+SET name = COALESCE(:name, name),
+    price_amount = COALESCE(:price_amount, price_amount),
     currency = COALESCE(:currency, currency),
     max_users = COALESCE(:max_users, max_users),
     max_billable_storage_bytes = COALESCE(:max_billable_storage_bytes, max_billable_storage_bytes),
+    features_uz = COALESCE(:features_uz, features_uz),
+    features_ru = COALESCE(:features_ru, features_ru),
+    feature_keys = COALESCE(:feature_keys, feature_keys),
+    is_popular = COALESCE(:is_popular, is_popular),
     is_active = COALESCE(:is_active, is_active),
+    is_trial = :is_trial,
+    trial_days = :trial_days,
     updated_at = now()
 WHERE code = :code
-RETURNING id, code, name, price_amount, currency, billing_period_months, max_users, max_billable_storage_bytes, is_active, created_at, updated_at;
+RETURNING id, code, name, price_amount, currency, billing_period_months, max_users, max_billable_storage_bytes, features_uz, features_ru, feature_keys, is_popular, is_active, is_trial, trial_days, created_at, updated_at;
 
 -- name: get_tenant_subscription^
 SELECT id, tenant_id, billing_plan_id, current_period_start, current_period_end, warning_80_sent_at, warning_100_sent_at, created_at, updated_at

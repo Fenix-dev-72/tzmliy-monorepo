@@ -2,6 +2,8 @@ import { Link } from "react-router";
 import { Send, Camera, Briefcase, MapPin, Mail } from "lucide-react";
 import { useLang } from "@/lib/i18n/LangContext";
 import { TizimlyLogo, TizimlyWordmark } from "@/components/layout/TizimlyLogo";
+import { useReveal } from "@/lib/hooks/useReveal";
+import { cn } from "@/components/ui/utils";
 
 // Closing footer (reference: TeamWave/Framer template's 4-column footer).
 // "Useful links" (privacy/terms) and social links point at "#" -- no
@@ -61,12 +63,13 @@ const content = {
 export function Footer() {
   const { lang } = useLang();
   const t = content[lang];
+  const { ref, visible } = useReveal<HTMLElement>(0.15);
 
   return (
-    <footer className="border-card-border border-t">
+    <footer ref={ref} className={cn("footer-reveal border-card-border border-t", visible && "is-visible")}>
       <div className="mx-auto max-w-6xl px-6 py-14">
         <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr]">
-          <div>
+          <div className={cn("reveal-on-scroll", visible && "is-visible")}>
             <div className="mb-4 flex items-center gap-2">
               <TizimlyLogo size={26} gradientId="footerLogoGrad" />
               <TizimlyWordmark className="h-5" />
@@ -74,7 +77,7 @@ export function Footer() {
             <p className="text-foreground-muted max-w-xs text-sm leading-relaxed">{t.tagline}</p>
           </div>
 
-          <div>
+          <div className={cn("reveal-on-scroll", visible && "is-visible")} style={{ transitionDelay: visible ? "80ms" : "0ms" }}>
             <h4 className="text-foreground-muted mb-4 text-xs font-semibold tracking-wide uppercase">{t.menu}</h4>
             <ul className="space-y-3">
               {t.menuLinks.map((link) =>
@@ -95,7 +98,7 @@ export function Footer() {
             </ul>
           </div>
 
-          <div>
+          <div className={cn("reveal-on-scroll", visible && "is-visible")} style={{ transitionDelay: visible ? "160ms" : "0ms" }}>
             <h4 className="text-foreground-muted mb-4 text-xs font-semibold tracking-wide uppercase">{t.useful}</h4>
             <ul className="space-y-3">
               {t.usefulLinks.map((link) => (
@@ -133,7 +136,7 @@ export function Footer() {
             </div>
           </div>
 
-          <div>
+          <div className={cn("reveal-on-scroll", visible && "is-visible")} style={{ transitionDelay: visible ? "240ms" : "0ms" }}>
             <h4 className="text-foreground-muted mb-4 text-xs font-semibold tracking-wide uppercase">{t.contactTitle}</h4>
             <ul className="space-y-3 text-sm">
               <li className="flex items-start gap-2">

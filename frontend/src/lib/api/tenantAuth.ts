@@ -9,6 +9,13 @@ export function verifyLogin2fa(params: { pending_token: string; code: string }) 
   return apiFetch<TokenPair>("/api/v1/auth/2fa/verify-login", { method: "POST", body: params });
 }
 
+export function resendLogin2fa(params: { pending_token: string }) {
+  return apiFetch<{ resend_after_seconds: number }>("/api/v1/auth/2fa/resend-login-code", {
+    method: "POST",
+    body: params,
+  });
+}
+
 export function refresh(params: { refresh_token: string }) {
   return apiFetch<TokenPair>("/api/v1/auth/refresh", { method: "POST", body: params });
 }
@@ -42,13 +49,22 @@ export function me(accessToken: string) {
 }
 
 // --- Two-factor auth ---------------------------------------------------
-// Enabling 2FA takes effect on the user's *next* token refresh (the
-// totp_enabled claim is baked into the access token at issue time) -- callers
-// must refresh the session right after confirm2fa succeeds, or privileged
-// actions (finance.manage, etc.) will keep 403ing on the stale token.
+// 2FA is email-OTP-based: setup/resend send a 6-digit code to the account's
+// email, confirm verifies it. Enabling 2FA takes effect on the user's *next*
+// token refresh (the totp_enabled claim is baked into the access token at
+// issue time) -- callers must refresh the session right after confirm2fa
+// succeeds, or privileged actions (finance.manage, etc.) will keep 403ing on
+// the stale token.
 
 export function setup2fa(accessToken: string) {
-  return apiFetch<{ secret: string; otpauth_uri: string }>("/api/v1/auth/2fa/setup", {
+  return apiFetch<{ email_masked: string; resend_after_seconds: number }>("/api/v1/auth/2fa/setup", {
+    method: "POST",
+    accessToken,
+  });
+}
+
+export function resendSetup2fa(accessToken: string) {
+  return apiFetch<{ email_masked: string; resend_after_seconds: number }>("/api/v1/auth/2fa/resend-setup-code", {
     method: "POST",
     accessToken,
   });

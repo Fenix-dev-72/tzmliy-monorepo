@@ -68,7 +68,8 @@ export const router = createBrowserRouter([
       },
       {
         path: "integrations",
-        lazy: () => import("@/pages/dashboard/IntegrationsPage").then((m) => ({ Component: m.IntegrationsPage })),
+        lazy: () =>
+          import("@/pages/dashboard/IntegrationsPageGated").then((m) => ({ Component: m.IntegrationsPageGated })),
       },
       {
         path: "notifications",
@@ -88,6 +89,10 @@ export const router = createBrowserRouter([
       {
         path: "settings/2fa",
         lazy: () => import("@/pages/dashboard/TwoFactorSettingsPage").then((m) => ({ Component: m.TwoFactorSettingsPage })),
+      },
+      {
+        path: "settings/billing",
+        lazy: () => import("@/pages/dashboard/BillingSettingsPage").then((m) => ({ Component: m.BillingSettingsPage })),
       },
       {
         path: "complete-setup",
@@ -173,6 +178,16 @@ export const router = createBrowserRouter([
             path: "tenants/new",
             lazy: () =>
               import("@/pages/platform-auth/PlatformCreateTenantView").then((m) => ({ Component: m.PlatformCreateTenantView })),
+          },
+          {
+            path: "backup-settings",
+            lazy: () =>
+              import("@/pages/platform-auth/PlatformBackupSettingsView").then((m) => ({ Component: m.PlatformBackupSettingsView })),
+          },
+          {
+            path: "billing-plans",
+            lazy: () =>
+              import("@/pages/platform-auth/PlatformBillingPlansPage").then((m) => ({ Component: m.PlatformBillingPlansPage })),
           },
         ],
       },

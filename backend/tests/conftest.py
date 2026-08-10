@@ -177,7 +177,7 @@ async def api_client(app_pool):
     from app.main import app as fastapi_app
 
     redis_client = aioredis.Redis(
-        host="localhost", port=int(os.environ.get("TEST_REDIS_PORT", "6379")), db=8
+        host="localhost", port=int(os.environ.get("TEST_REDIS_PORT", "6379")), db=8, decode_responses=True
     )
     await redis_client.flushdb()
     fastapi_app.state.pool = app_pool

@@ -38,6 +38,11 @@ export function Navbar() {
   const t = content[lang];
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
+  // Kept mounted for a short window after `open` flips false so the CSS
+  // exit animation (.mobile-menu-exit, 200ms) can actually play -- a plain
+  // {open && (...)} conditional unmounts the node instantly, before any
+  // transition/animation has a chance to run.
+  const [shouldRender, setShouldRender] = useState(false);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 16);
@@ -45,6 +50,15 @@ export function Navbar() {
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
+
+  useEffect(() => {
+    if (open) {
+      setShouldRender(true);
+      return;
+    }
+    const timer = setTimeout(() => setShouldRender(false), 220);
+    return () => clearTimeout(timer);
+  }, [open]);
 
   // "/#section" (not bare "#section") so the links still work when Navbar is
   // rendered on a non-landing page (login/register/OTP) -- clicking one from
@@ -133,8 +147,8 @@ export function Navbar() {
       </nav>
 
       {/* mobile dropdown menu */}
-      {open && (
-        <div className="relative mx-auto mt-2 max-w-5xl xl:hidden">
+      {shouldRender && (
+        <div className={`relative mx-auto mt-2 max-w-5xl xl:hidden ${open ? "mobile-menu-enter" : "mobile-menu-exit"}`}>
           <div
             className="pointer-events-none absolute -inset-px rounded-3xl opacity-60 blur-md"
             style={{ background: "linear-gradient(135deg, rgba(212,175,55,0.35), rgba(76,111,255,0.25))" }}

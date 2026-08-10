@@ -15,12 +15,14 @@ auth flow**, and a **platform admin console** (`/platform/*`).
 
 ## Tech stack
 
-- React 18 + TypeScript, Vite 8
+- React 19 + TypeScript, Vite 8
 - Tailwind CSS 4, CSS-first `@theme` config (no `tailwind.config.js`) — tokens live in `src/styles/theme.css`
-- React Router 7 (`createBrowserRouter`, routes in `src/router.tsx`)
+- React Router 8 (`createBrowserRouter`, routes in `src/router.tsx`) — upgraded from React 18/Router 7
+  2026-08-05 to clear GHSA-qwww-vcr4-c8h2 (router 8 requires React >=19.2.7). A benign `No HydrateFallback
+  element provided` console warning appears on initial load of a lazy route — that's a router-8 SSR-oriented
+  notice with no effect on this pure-SPA (`createBrowserRouter`, no server rendering); safe to ignore.
 - A handful of vendored/adapted shadcn-style primitives in `src/components/ui/` (button, input, label, tabs,
   input-otp, sonner) built on the specific Radix primitives each one needs
-- `qrcode.react` for rendering the 2FA `otpauth_uri` as a scannable QR code
 - `recharts` for dashboard charts (`CourseSalesPage`, `SalesTrendCharts`, `SellersPage`, `KpiCard`)
 - Plain `useState`-driven forms with manual validation — **not** `react-hook-form`/`zod`. Those were
   installed during initial planning but never wired in because hand-rolled state was sufficient; they were
@@ -31,6 +33,11 @@ auth flow**, and a **platform admin console** (`/platform/*`).
 `src/`): `three`, `@react-three/fiber`, `@react-three/drei`, `@types/three`, `gsap`, `lenis`. Dropped from
 `package.json` to slim the install. If a future page genuinely needs 3D/animation, re-add the specific one
 then. (`recharts` used to be in the "not installed" list — it is now installed *and* used, per the bullet above.)
+
+**Removed 2026-08-10**: `qrcode.react` — 2FA switched from TOTP/QR-code to email-delivered OTP codes (see
+`backend/CLAUDE.md`'s Auth section); the QR-rendering setup views (`TwoFactorSettingsPage.tsx`,
+`PlatformTwoFaSetupView.tsx`) now just show "code sent to x***@y.com" + the existing `OtpCodeInput`, no QR
+image involved anywhere.
 
 **Deliberately not installed**: `@mui/*`, `@emotion/*`, most Radix primitives beyond label/slot/tabs/dialog,
 `react-day-picker`, `react-dnd*`, `embla-carousel*`, `react-slick`, `canvas-confetti`, `vaul`, `cmdk`,

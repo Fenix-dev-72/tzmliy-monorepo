@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, 
 
 from app.core.deps import AuthContext, get_pool, require_permission
 from app.modules.auth.permissions import CATALOG_MANAGE, CATALOG_VIEW
+from app.modules.billing import service as billing_service
 from app.modules.products import service
 from app.modules.products.schemas import (
     ProductCreate,
@@ -133,6 +134,8 @@ async def upload_photo(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Product not found")
     except service.InvalidPhotoError:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Photo file is corrupted or unreadable")
+    except billing_service.StorageLimitExceededError:
+        raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, "Storage limit reached for the current plan")
 
 
 @router.get("/{product_id}/photo-url", response_model=ProductPhotoUrlOut)

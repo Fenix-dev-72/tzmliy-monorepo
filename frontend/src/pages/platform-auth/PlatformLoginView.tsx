@@ -46,13 +46,17 @@ export function PlatformLoginView() {
   const [error, setError] = useState<string | null>(null);
   const [failCount, setFailCount] = useState(0);
 
-  async function handleSubmit() {
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!email || !password || loading) return;
     setError(null);
     setLoading(true);
     try {
       const result = await login({ email, password });
       if (result.requires_2fa) {
-        navigate("/platform/login/2fa", { state: { pendingToken: result.pending_token } });
+        navigate("/platform/login/2fa", {
+          state: { pendingToken: result.pending_token, resendAfterSeconds: result.resend_after_seconds },
+        });
       } else {
         // requires_2fa is only false when this account has no TOTP configured yet.
         navigate("/platform/2fa-setup");
@@ -80,33 +84,29 @@ export function PlatformLoginView() {
       <h2 className="font-heading mb-1 text-2xl font-extrabold text-foreground">{t.title}</h2>
       <p className="mb-7 text-sm text-foreground-muted">{t.sub}</p>
 
-      <FormField label={t.email} type="email" placeholder="admin@dashboarduz.uz" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
-      <FormField
-        label={t.password}
-        type={showPass ? "text" : "password"}
-        placeholder="••••••••"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        autoComplete="current-password"
-        rightEl={
-          <button type="button" onClick={() => setShowPass((s) => !s)} className="text-foreground-muted">
-            {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
-          </button>
-        }
-      />
+      <form onSubmit={handleSubmit}>
+        <FormField label={t.email} type="email" placeholder="admin@dashboarduz.uz" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
+        <FormField
+          label={t.password}
+          type={showPass ? "text" : "password"}
+          placeholder="••••••••"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          autoComplete="current-password"
+          rightEl={
+            <button type="button" onClick={() => setShowPass((s) => !s)} className="text-foreground-muted">
+              {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          }
+        />
 
-      {error && <p className="text-destructive mb-4 text-[13px] font-medium">{error}</p>}
+        {error && <p className="text-destructive mb-4 text-[13px] font-medium">{error}</p>}
 
-      <Button
-        variant="gold"
-        size="lg"
-        className="mt-2 w-full"
-        disabled={!email || !password || loading}
-        onClick={handleSubmit}
-      >
-        {loading && <Loader2 size={16} className="animate-spin" />}
-        {t.btn}
-      </Button>
+        <Button type="submit" variant="gold" size="lg" className="mt-2 w-full" disabled={!email || !password || loading}>
+          {loading && <Loader2 size={16} className="animate-spin" />}
+          {t.btn}
+        </Button>
+      </form>
     </AuthCard>
   );
 }

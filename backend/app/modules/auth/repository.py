@@ -106,6 +106,11 @@ async def count_users(conn: asyncpg.Connection) -> int:
     return row["count"]
 
 
+async def count_active_users(conn: asyncpg.Connection) -> int:
+    row = await _queries.count_active_users(conn)
+    return row["count"]
+
+
 async def update_user_profile(
     conn: asyncpg.Connection, user_id: UUID, full_name: str | None, phone: str | None
 ) -> dict | None:
@@ -129,10 +134,6 @@ async def deactivate_user(conn: asyncpg.Connection, user_id: UUID) -> None:
 
 async def update_user_password(conn: asyncpg.Connection, user_id: UUID, password_hash: str) -> None:
     await _queries.update_user_password(conn, user_id=user_id, password_hash=password_hash)
-
-
-async def set_user_totp_secret(conn: asyncpg.Connection, user_id: UUID, totp_secret: str) -> None:
-    await _queries.set_user_totp_secret(conn, user_id=user_id, totp_secret=totp_secret)
 
 
 async def enable_user_totp(conn: asyncpg.Connection, user_id: UUID) -> None:

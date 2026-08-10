@@ -52,8 +52,13 @@ export function CTASection() {
           <h2 className="font-display mb-4 text-[clamp(30px,4.5vw,46px)] leading-[1.15] font-bold tracking-tight">
             {t.title}
           </h2>
-          <p className="text-foreground-muted mb-9 text-[15px] leading-relaxed">{t.subtitle}</p>
+        </Reveal>
 
+        <Reveal delay={100}>
+          <p className="text-foreground-muted mb-9 text-[15px] leading-relaxed">{t.subtitle}</p>
+        </Reveal>
+
+        <Reveal delay={200}>
           {submitted ? (
             <p className="text-primary text-sm font-semibold">{t.thanks}</p>
           ) : (

@@ -5,6 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.core.config import Settings, get_settings
 from app.core.deps import AuthContext, get_current_user, get_pool, require_permission
 from app.modules.auth.permissions import NOTIFICATIONS_MANAGE, NOTIFICATIONS_VIEW
+from app.modules.billing.deps import require_plan_feature
+from app.modules.billing.features import FEATURE_TELEGRAM_NOTIFICATIONS
 from app.modules.notifications import service
 from app.modules.notifications.schemas import (
     DeliveryLogOut,
@@ -32,6 +34,7 @@ async def configure_telegram_bot(
     body: TelegramBotConfigure,
     pool=Depends(get_pool),
     auth: AuthContext = Depends(require_permission(NOTIFICATIONS_MANAGE)),
+    _feature: AuthContext = Depends(require_plan_feature(FEATURE_TELEGRAM_NOTIFICATIONS)),
 ):
     try:
         return await service.configure_telegram_bot(pool, auth.tenant_id, body.bot_token)

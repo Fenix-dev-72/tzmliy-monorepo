@@ -11,6 +11,7 @@ FastAPI event loop.
 """
 
 from celery import Celery
+from celery.schedules import crontab
 
 from app.core.config import get_settings
 
@@ -23,7 +24,9 @@ celery_app.conf.update(task_ignore_result=True, broker_connection_retry_on_start
 # it, autodiscover_tasks defers discovery to a signal hook that never fires
 # for a plain worker-process import (caught the hard way for the OTP tasks
 # originally; would silently recur here too without it).
-celery_app.autodiscover_tasks(["app.core", "app.modules.notifications"], force=True)
+celery_app.autodiscover_tasks(
+    ["app.core", "app.modules.notifications", "app.modules.backups", "app.modules.billing"], force=True
+)
 
 _settings = get_settings()
 celery_app.conf.beat_schedule = {
@@ -38,5 +41,25 @@ celery_app.conf.beat_schedule = {
     "notifications-poll-group-links": {
         "task": "notifications.poll_group_links",
         "schedule": float(_settings.telegram_link_worker_poll_seconds),
+    },
+    # First crontab (not float-seconds) entry in this schedule -- daily at
+    # 03:00 server time, a low-traffic hour, per optimize.md's backup pass.
+    "backups-run-daily": {
+        "task": "backups.run_daily_backup",
+        "schedule": crontab(hour=3, minute=0),
+    },
+    # Polls for the "/start <token>" message Telegram delivers once the
+    # admin picks a group for the backup bot -- same poll cadence as the
+    # tenant-facing notifications-poll-group-links above.
+    "backups-poll-link": {
+        "task": "backups.poll_link",
+        "schedule": float(_settings.telegram_link_worker_poll_seconds),
+    },
+    # Right after the backup job (03:30) so the two heavy per-tenant scans
+    # don't overlap. Backs enforce_storage_not_exceeded's blocking check,
+    # which only ever reads this pre-computed snapshot.
+    "billing-recalculate-storage-daily": {
+        "task": "billing.recalculate_storage_daily",
+        "schedule": crontab(hour=3, minute=30),
     },
 }

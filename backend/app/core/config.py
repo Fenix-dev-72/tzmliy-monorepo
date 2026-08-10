@@ -112,6 +112,16 @@ class Settings(BaseSettings):
     otp_max_attempts: int = 5
     two_factor_pending_ttl_minutes: int = 5
 
+    # Minimum gap between email-code sends for 2FA (setup + login-verify,
+    # tenant + platform). Real-world worst case (Celery queue + SMTP round
+    # trip) has been observed up to ~75s, so the cooldown must be at least
+    # that long or a resend races the still-in-flight first email. Enforced
+    # server-side in Redis (otp_store's *_resend_cooldown helpers), not just
+    # a frontend timer. `two_factor_resend_cooldown_enabled=False` disables
+    # enforcement entirely (e.g. for local testing).
+    two_factor_resend_cooldown_enabled: bool = True
+    two_factor_resend_cooldown_seconds: int = 75
+
     # Account lockout (brute-force protection): N consecutive failed
     # password/TOTP attempts lock the account for M minutes. Applies to tenant
     # users, platform admins, and dashboards alike; OTP has its own per-code

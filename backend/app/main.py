@@ -19,6 +19,7 @@ from app.modules.attendance.router import router as attendance_router
 from app.modules.auth.roles_router import router as roles_router
 from app.modules.auth.router import router as auth_router
 from app.modules.auth.users_router import router as users_router
+from app.modules.backups.router import router as backups_router
 from app.modules.billing.router import platform_router as billing_platform_router
 from app.modules.billing.router import tenant_router as billing_tenant_router
 from app.modules.billing.router import webhook_router as billing_webhook_router
@@ -184,6 +185,7 @@ app.include_router(reports_router)
 app.include_router(platform_dashboard_router)
 app.include_router(complaints_tenant_router)
 app.include_router(complaints_platform_router)
+app.include_router(backups_router)
 
 
 @app.get("/health")

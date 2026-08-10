@@ -14,6 +14,13 @@ export interface PaymentTotal {
   total_amount: number;
 }
 
+export interface PlanUsage {
+  code: string;
+  name: string;
+  is_active: boolean;
+  tenant_count: number;
+}
+
 export interface DashboardSummary {
   total_tenants: number;
   tenants_by_status: TenantStatusCount[];
@@ -21,6 +28,7 @@ export interface DashboardSummary {
   new_tenants_30d: number;
   payments_today: PaymentTotal[];
   payments_this_month: PaymentTotal[];
+  plans_usage: PlanUsage[];
 }
 
 export interface ServerMetrics {
@@ -33,8 +41,22 @@ export interface ServerMetrics {
   disk_total_bytes: number;
 }
 
+export interface TenantStorageUsage {
+  tenant_id: string;
+  tenant_name: string;
+  plan_code: string | null;
+  total_bytes: number;
+  billable_storage_limit_bytes: number | null;
+  usage_ratio_bps: number;
+  computed_at: string | null;
+}
+
 export function getSummary(accessToken: string) {
   return apiFetch<DashboardSummary>("/platform/v1/dashboard/summary", { accessToken });
+}
+
+export function getStorageUsage(accessToken: string) {
+  return apiFetch<TenantStorageUsage[]>("/platform/v1/dashboard/storage-usage", { accessToken });
 }
 
 /**

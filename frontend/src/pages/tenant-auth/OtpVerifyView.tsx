@@ -71,26 +71,34 @@ export function OtpVerifyView() {
       <p className="mb-1 text-sm text-foreground-muted">{t.sent}</p>
       <p className="mb-8 text-[15px] font-bold text-foreground">{state.phone}</p>
 
-      <OtpCodeInput value={code} onChange={setCode} onComplete={handleVerify} />
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (code.length < 6 || loading) return;
+          handleVerify(code);
+        }}
+      >
+        <OtpCodeInput value={code} onChange={setCode} onComplete={handleVerify} />
 
-      {error && <p className="text-destructive mt-4 text-[13px] font-medium">{error}</p>}
+        {error && <p className="text-destructive mt-4 text-[13px] font-medium">{error}</p>}
 
-      <div className="my-6">
-        {countdown > 0 ? (
-          <span className="text-[13px] text-foreground-muted">
-            {t.resend} {countdown} {t.seconds}
-          </span>
-        ) : (
-          <button onClick={handleResend} className="text-primary text-[13px] font-semibold">
-            {t.resend}
-          </button>
-        )}
-      </div>
+        <div className="my-6">
+          {countdown > 0 ? (
+            <span className="text-[13px] text-foreground-muted">
+              {t.resend} {countdown} {t.seconds}
+            </span>
+          ) : (
+            <button type="button" onClick={handleResend} className="text-primary text-[13px] font-semibold">
+              {t.resend}
+            </button>
+          )}
+        </div>
 
-      <Button variant="gold" size="lg" className="w-full" disabled={code.length < 6 || loading} onClick={() => handleVerify(code)}>
-        {loading ? <Loader2 size={16} className="animate-spin" /> : t.verify}
-        {!loading && <ArrowRight size={16} />}
-      </Button>
+        <Button type="submit" variant="gold" size="lg" className="w-full" disabled={code.length < 6 || loading}>
+          {loading ? <Loader2 size={16} className="animate-spin" /> : t.verify}
+          {!loading && <ArrowRight size={16} />}
+        </Button>
+      </form>
       <button
         onClick={() => navigate("/login")}
         className="mx-auto mt-4 flex items-center justify-center gap-1.5 text-[13px] font-medium text-foreground-muted"

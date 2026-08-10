@@ -47,6 +47,10 @@ class LoginResponse(BaseModel):
     access_token: str | None = None
     refresh_token: str | None = None
     token_type: str = "bearer"
+    # Seconds the client must wait before calling resend-login-code again --
+    # 0 means the cooldown is disabled (Settings.two_factor_resend_cooldown_enabled).
+    # Only meaningful when requires_2fa is True.
+    resend_after_seconds: int = 0
 
 
 class RefreshRequest(BaseModel):
@@ -127,8 +131,8 @@ class RegistrationComplete(BaseModel):
 
 
 class TwoFactorSetupOut(BaseModel):
-    secret: str
-    otpauth_uri: str
+    email_masked: str
+    resend_after_seconds: int = 0
 
 
 class TwoFactorConfirmRequest(BaseModel):
@@ -138,6 +142,14 @@ class TwoFactorConfirmRequest(BaseModel):
 class TwoFactorVerifyLoginRequest(BaseModel):
     pending_token: str
     code: str
+
+
+class TwoFactorResendLoginCodeRequest(BaseModel):
+    pending_token: str
+
+
+class TwoFactorResendOut(BaseModel):
+    resend_after_seconds: int = 0
 
 
 class PasswordChangeRequest(BaseModel):

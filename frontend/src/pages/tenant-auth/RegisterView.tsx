@@ -43,7 +43,9 @@ export function RegisterView() {
 
   const canSubmit = identifier.trim().length > 0;
 
-  async function handleSubmit() {
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!canSubmit || loading) return;
     setError(null);
     setLoading(true);
     try {
@@ -65,22 +67,24 @@ export function RegisterView() {
       <h2 className="font-display mb-1 text-center text-[22px] font-bold text-foreground sm:text-left">{t.title}</h2>
       <p className="mb-7 text-center text-sm text-foreground-muted sm:text-left">{t.sub}</p>
 
-      <FormField
-        label={t.identifier}
-        type="text"
-        placeholder={t.identifierPlaceholder}
-        value={identifier}
-        onChange={(e) => setIdentifier(e.target.value)}
-        autoComplete="username"
-        leftEl={<Mail size={16} className="text-foreground-muted" />}
-      />
+      <form onSubmit={handleSubmit}>
+        <FormField
+          label={t.identifier}
+          type="text"
+          placeholder={t.identifierPlaceholder}
+          value={identifier}
+          onChange={(e) => setIdentifier(e.target.value)}
+          autoComplete="username"
+          leftEl={<Mail size={16} className="text-foreground-muted" />}
+        />
 
-      {error && <p className="text-destructive mb-4 text-[13px] font-medium">{error}</p>}
+        {error && <p className="text-destructive mb-4 text-[13px] font-medium">{error}</p>}
 
-      <Button variant="gold" size="lg" className="w-full" disabled={!canSubmit || loading} onClick={handleSubmit}>
-        {loading ? <Loader2 size={16} className="animate-spin" /> : t.btn}
-        {!loading && <ArrowRight size={16} />}
-      </Button>
+        <Button type="submit" variant="gold" size="lg" className="w-full" disabled={!canSubmit || loading}>
+          {loading ? <Loader2 size={16} className="animate-spin" /> : t.btn}
+          {!loading && <ArrowRight size={16} />}
+        </Button>
+      </form>
 
       <p className="mt-7 text-center text-[13px] text-foreground-muted">
         {t.hasAccount}{" "}

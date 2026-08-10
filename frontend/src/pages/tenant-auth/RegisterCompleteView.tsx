@@ -78,7 +78,9 @@ export function RegisterCompleteView() {
   const slugValid = /^[a-z0-9-]+$/.test(slug) && slug.length > 0;
   const canSubmit = name.trim().length > 0 && slugValid && password.length > 0 && password === confirm;
 
-  async function handleSubmit() {
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!canSubmit || loading) return;
     if (password !== confirm) {
       setError(t.mismatch);
       return;
@@ -110,62 +112,64 @@ export function RegisterCompleteView() {
       <h2 className="font-display mb-1 text-center text-[22px] font-bold text-foreground sm:text-left">{t.title}</h2>
       <p className="mb-7 text-center text-sm text-foreground-muted sm:text-left">{t.sub}</p>
 
-      <FormField
-        label={t.name}
-        placeholder="Acme LLC"
-        value={name}
-        onChange={(e) => {
-          setName(e.target.value);
-          if (!slugTouched) setSlug(slugify(e.target.value));
-        }}
-        leftEl={<Building2 size={16} className="text-foreground-muted" />}
-      />
-      <FormField
-        label={t.slug}
-        placeholder="acme-llc"
-        value={slug}
-        onChange={(e) => {
-          setSlugTouched(true);
-          setSlug(slugify(e.target.value));
-        }}
-        hint={t.slugHint}
-        error={slug.length > 0 && !slugValid ? t.slugError : undefined}
-        leftEl={<Hash size={16} className="text-foreground-muted" />}
-      />
-      <FormField
-        label={t.password}
-        type={showPass ? "text" : "password"}
-        placeholder="••••••••"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        autoComplete="new-password"
-        leftEl={<Lock size={16} className="text-foreground-muted" />}
-        rightEl={
-          <button type="button" onClick={() => setShowPass((s) => !s)} className="text-foreground-muted">
-            {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
-          </button>
-        }
-      />
-      <PasswordStrengthMeter password={password} />
-
-      <div className="mt-4">
+      <form onSubmit={handleSubmit}>
         <FormField
-          label={t.confirm}
-          type="password"
+          label={t.name}
+          placeholder="Acme LLC"
+          value={name}
+          onChange={(e) => {
+            setName(e.target.value);
+            if (!slugTouched) setSlug(slugify(e.target.value));
+          }}
+          leftEl={<Building2 size={16} className="text-foreground-muted" />}
+        />
+        <FormField
+          label={t.slug}
+          placeholder="acme-llc"
+          value={slug}
+          onChange={(e) => {
+            setSlugTouched(true);
+            setSlug(slugify(e.target.value));
+          }}
+          hint={t.slugHint}
+          error={slug.length > 0 && !slugValid ? t.slugError : undefined}
+          leftEl={<Hash size={16} className="text-foreground-muted" />}
+        />
+        <FormField
+          label={t.password}
+          type={showPass ? "text" : "password"}
           placeholder="••••••••"
-          value={confirm}
-          onChange={(e) => setConfirm(e.target.value)}
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
           autoComplete="new-password"
           leftEl={<Lock size={16} className="text-foreground-muted" />}
+          rightEl={
+            <button type="button" onClick={() => setShowPass((s) => !s)} className="text-foreground-muted">
+              {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          }
         />
-      </div>
+        <PasswordStrengthMeter password={password} />
 
-      {error && <p className="text-destructive mb-4 text-[13px] font-medium">{error}</p>}
+        <div className="mt-4">
+          <FormField
+            label={t.confirm}
+            type="password"
+            placeholder="••••••••"
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            autoComplete="new-password"
+            leftEl={<Lock size={16} className="text-foreground-muted" />}
+          />
+        </div>
 
-      <Button variant="gold" size="lg" className="mt-2 w-full" disabled={!canSubmit || loading} onClick={handleSubmit}>
-        {loading ? <Loader2 size={16} className="animate-spin" /> : t.btn}
-        {!loading && <ArrowRight size={16} />}
-      </Button>
+        {error && <p className="text-destructive mb-4 text-[13px] font-medium">{error}</p>}
+
+        <Button type="submit" variant="gold" size="lg" className="mt-2 w-full" disabled={!canSubmit || loading}>
+          {loading ? <Loader2 size={16} className="animate-spin" /> : t.btn}
+          {!loading && <ArrowRight size={16} />}
+        </Button>
+      </form>
     </AuthCard>
   );
 }

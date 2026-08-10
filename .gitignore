@@ -4,6 +4,7 @@ backend/__pycache__/
 **/__pycache__/
 *.pyc
 backend/.env
+/.env
 .idea/
 
 # Redis/Valkey dumps and Celery beat schedule

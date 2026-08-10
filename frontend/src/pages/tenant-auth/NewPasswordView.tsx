@@ -70,7 +70,9 @@ export function NewPasswordView() {
     );
   }
 
-  async function handleSubmit() {
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!password || !confirm || loading) return;
     if (password !== confirm) {
       setError(t.mismatch);
       return;
@@ -92,42 +94,38 @@ export function NewPasswordView() {
       <h2 className="font-display mb-2 text-[26px] font-bold text-foreground">{t.title}</h2>
       <p className="mb-7 text-sm text-foreground-muted">{t.sub}</p>
 
-      <FormField
-        label={t.password}
-        type={showPass ? "text" : "password"}
-        placeholder="••••••••"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        rightEl={
-          <button type="button" onClick={() => setShowPass((s) => !s)} className="text-foreground-muted">
-            {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
-          </button>
-        }
-      />
-      <PasswordStrengthMeter password={password} />
-
-      <div className="mt-4">
+      <form onSubmit={handleSubmit}>
         <FormField
-          label={t.confirm}
-          type="password"
+          label={t.password}
+          type={showPass ? "text" : "password"}
           placeholder="••••••••"
-          value={confirm}
-          onChange={(e) => setConfirm(e.target.value)}
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          rightEl={
+            <button type="button" onClick={() => setShowPass((s) => !s)} className="text-foreground-muted">
+              {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          }
         />
-      </div>
+        <PasswordStrengthMeter password={password} />
 
-      {error && <p className="text-destructive mb-4 text-[13px] font-medium">{error}</p>}
+        <div className="mt-4">
+          <FormField
+            label={t.confirm}
+            type="password"
+            placeholder="••••••••"
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+          />
+        </div>
 
-      <Button
-        variant="gold"
-        size="lg"
-        className="mt-2 w-full"
-        disabled={!password || !confirm || loading}
-        onClick={handleSubmit}
-      >
-        {loading && <Loader2 size={16} className="animate-spin" />}
-        {t.btn}
-      </Button>
+        {error && <p className="text-destructive mb-4 text-[13px] font-medium">{error}</p>}
+
+        <Button type="submit" variant="gold" size="lg" className="mt-2 w-full" disabled={!password || !confirm || loading}>
+          {loading && <Loader2 size={16} className="animate-spin" />}
+          {t.btn}
+        </Button>
+      </form>
     </AuthCard>
   );
 }

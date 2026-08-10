@@ -5,7 +5,7 @@ import { useLang } from "@/lib/i18n/LangContext";
 import { useTenantAuth } from "@/lib/auth/tenantAuthStore";
 import { ApiError } from "@/lib/api/client";
 import * as billingApi from "@/lib/api/billing";
-import type { BillingPlan } from "@/lib/api/billing";
+import type { BillingPlan, BillingPlanPublic } from "@/lib/api/billing";
 import { formatMoney } from "@/lib/format/money";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { Button } from "@/components/ui/button";
@@ -13,8 +13,8 @@ import { Button } from "@/components/ui/button";
 const content = {
   uz: {
     title: "Tarifni tanlang",
-    sub: "15 kun bepul sinab ko'ring yoki hoziroq tarifni tanlang",
-    trialTitle: "15 kunlik bepul sinov",
+    sub: "Bepul sinab ko'ring yoki hoziroq tarifni tanlang",
+    trialTitle: (days: number) => `${days} kunlik bepul sinov`,
     trialDesc: "To'lov ma'lumoti kerak emas. Muddat tugagach xohlagan tarifni tanlaysiz.",
     trialBtn: "Bepul sinov bilan boshlash",
     or: "yoki hoziroq tarif tanlang",
@@ -27,8 +27,8 @@ const content = {
   },
   ru: {
     title: "Выберите тариф",
-    sub: "Попробуйте бесплатно 15 дней или выберите тариф сейчас",
-    trialTitle: "15-дневный бесплатный период",
+    sub: "Попробуйте бесплатно или выберите тариф сейчас",
+    trialTitle: (days: number) => `${days}-дневный бесплатный период`,
     trialDesc: "Платёжные данные не нужны. Тариф можно выбрать после окончания периода.",
     trialBtn: "Начать с бесплатного периода",
     or: "или выберите тариф сейчас",
@@ -48,6 +48,7 @@ export function RegisterPlanView() {
   const { status, accessToken } = useTenantAuth();
 
   const [plans, setPlans] = useState<BillingPlan[] | null>(null);
+  const [trialPlan, setTrialPlan] = useState<BillingPlanPublic | null>(null);
   const [payingCode, setPayingCode] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -61,10 +62,17 @@ export function RegisterPlanView() {
     if (!accessToken) return;
     billingApi
       .listPlans(accessToken)
-      .then(setPlans)
+      .then((all) => setPlans(all.filter((p) => !p.is_trial)))
       .catch(() => setError(t.loadError));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken]);
+
+  useEffect(() => {
+    billingApi
+      .listPublicPlans()
+      .then((all) => setTrialPlan(all.find((p) => p.is_trial) ?? null))
+      .catch(() => {});
+  }, []);
 
   if (status !== "authenticated" || !accessToken) return null;
 
@@ -98,7 +106,7 @@ export function RegisterPlanView() {
         <div className="border-success/25 bg-success/12 mx-auto mb-4 flex size-12 items-center justify-center rounded-xl border">
           <CheckCircle2 size={22} className="text-success" />
         </div>
-        <h3 className="font-heading mb-1 text-lg font-bold text-foreground">{t.trialTitle}</h3>
+        <h3 className="font-heading mb-1 text-lg font-bold text-foreground">{t.trialTitle(trialPlan?.trial_days ?? 15)}</h3>
         <p className="mb-5 text-sm text-foreground-muted">{t.trialDesc}</p>
         <Button variant="gold" size="lg" className="w-full" onClick={() => navigate("/dashboard")}>
           {t.trialBtn}

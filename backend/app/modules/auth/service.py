@@ -5,7 +5,6 @@ from uuid import UUID, uuid4
 
 import asyncpg
 import jwt
-import pyotp
 import redis.asyncio as redis
 
 from app.core.config import Settings
@@ -22,7 +21,8 @@ from app.core.security import (
 )
 from app.modules.auth import otp_store, repository, roles_service
 from app.modules.auth.permissions import CALLS_VIEW, CRM_VIEW, CUSTOMERS_MANAGE
-from app.modules.auth.schemas import LoginResponse, TwoFactorSetupOut
+from app.modules.auth.schemas import LoginResponse, TwoFactorResendOut, TwoFactorSetupOut
+from app.modules.billing import service as billing_service
 from app.modules.calls import service as calls_service
 from app.modules.crm import service as crm_service
 from app.modules.tenants import repository as tenants_repository
@@ -55,6 +55,22 @@ class InvalidTwoFactorCodeError(Exception):
 
 class TwoFactorNotSetupError(Exception):
     pass
+
+
+class NoEmailForTwoFactorError(Exception):
+    """2FA is email-OTP-based -- an account with no email on file (a
+    phone-only self-registered user) has nothing to send the code to."""
+
+    pass
+
+
+class ResendCooldownError(Exception):
+    """A 2FA email code (setup or login-verify) was sent too recently --
+    enforced server-side via otp_store's Redis cooldown keys, not just a
+    frontend timer. Carries the remaining wait so the client can show it."""
+
+    def __init__(self, remaining_seconds: int):
+        self.remaining_seconds = remaining_seconds
 
 
 class IdentifierTakenError(Exception):
@@ -134,7 +150,30 @@ def _is_locked(row: dict) -> bool:
     return row["locked_until"] is not None and row["locked_until"] > datetime.now(timezone.utc)
 
 
-async def login(pool: asyncpg.Pool, settings: Settings, identifier: str, password: str) -> LoginResponse:
+def _mask_email(email: str) -> str:
+    local, _, domain = email.partition("@")
+    visible = local[:2]
+    return f"{visible}***@{domain}" if domain else f"{visible}***"
+
+
+async def _send_two_factor_login_code(
+    redis_client: redis.Redis, settings: Settings, tenant_id: UUID, user_id: UUID, email: str
+) -> None:
+    if settings.two_factor_resend_cooldown_enabled:
+        remaining = await otp_store.try_start_two_factor_login_cooldown(
+            redis_client, tenant_id, user_id, settings.two_factor_resend_cooldown_seconds
+        )
+        if remaining is not None:
+            raise ResendCooldownError(remaining)
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    ttl = timedelta(minutes=settings.otp_code_ttl_minutes)
+    await otp_store.set_two_factor_login_code(redis_client, tenant_id, user_id, hash_token(code), ttl)
+    await send_code(channel="email", destination=email, code=code)
+
+
+async def login(
+    pool: asyncpg.Pool, redis_client: redis.Redis, settings: Settings, identifier: str, password: str
+) -> LoginResponse:
     identifier = _normalize_identifier(identifier)
     mapping = await _resolve_identifier(pool, identifier)
     if mapping is None:
@@ -166,17 +205,25 @@ async def login(pool: asyncpg.Pool, settings: Settings, identifier: str, passwor
             )
             response = None
         elif user["totp_enabled"]:
-            # Deliberately no reset_failed_logins here: failed TOTP attempts
-            # (below, in verify_login_2fa) count into the same counter, and
-            # resetting it on every correct password would let an attacker who
-            # knows the password bank unlimited TOTP guesses 5 at a time. The
-            # counter only resets after the full login (password + TOTP).
+            # Deliberately no reset_failed_logins here: failed 2FA-code
+            # attempts (below, in verify_login_2fa) count into the same
+            # counter, and resetting it on every correct password would let
+            # an attacker who knows the password bank unlimited code guesses
+            # 5 at a time. The counter only resets after the full login
+            # (password + 2FA code).
             pending_token = encode_token(
                 {"sub": str(user["id"]), "tenant_id": str(tenant_id), "type": "two_factor_pending"},
                 secret=settings.jwt_secret,
                 ttl=timedelta(minutes=settings.two_factor_pending_ttl_minutes),
             )
-            response = LoginResponse(requires_2fa=True, pending_token=pending_token)
+            try:
+                await _send_two_factor_login_code(redis_client, settings, tenant_id, user["id"], user["email"])
+            except ResendCooldownError:
+                # A code was already sent moments ago (e.g. a duplicate login
+                # attempt) -- it's still valid, don't fail the login over it.
+                pass
+            resend_after = settings.two_factor_resend_cooldown_seconds if settings.two_factor_resend_cooldown_enabled else 0
+            response = LoginResponse(requires_2fa=True, pending_token=pending_token, resend_after_seconds=resend_after)
         else:
             if user["failed_login_attempts"] > 0 or user["locked_until"] is not None:
                 await repository.reset_failed_logins(conn, user["id"])
@@ -188,7 +235,53 @@ async def login(pool: asyncpg.Pool, settings: Settings, identifier: str, passwor
     return response
 
 
-async def verify_login_2fa(pool: asyncpg.Pool, settings: Settings, pending_token: str, code: str) -> TokenPair:
+async def verify_login_2fa(
+    pool: asyncpg.Pool, redis_client: redis.Redis, settings: Settings, pending_token: str, code: str
+) -> TokenPair:
+    try:
+        claims = decode_token(pending_token, secret=settings.jwt_secret)
+    except jwt.PyJWTError as exc:
+        raise InvalidTwoFactorCodeError from exc
+    if claims.get("type") != "two_factor_pending":
+        raise InvalidTwoFactorCodeError
+
+    tenant_id = UUID(claims["tenant_id"])
+    user_id = UUID(claims["sub"])
+
+    row = await otp_store.get_two_factor_login_code(redis_client, tenant_id, user_id)
+    if row is None or row["attempt_count"] >= settings.otp_max_attempts:
+        raise InvalidTwoFactorCodeError
+
+    async with tenant_connection(pool, tenant_id) as conn:
+        user = await repository.get_user_by_id(conn, user_id)
+        if user is None or not user["totp_enabled"]:
+            raise InvalidTwoFactorCodeError
+        if _is_locked(user):
+            raise InvalidTwoFactorCodeError
+        if not tokens_match(row["code_hash"], hash_token(code)):
+            # Email-OTP guesses share the password-failure counter (a 6-digit
+            # code is far more brute-forceable than a password), so enough of
+            # them locks the account just like wrong passwords do. Commit the
+            # increment by exiting the transaction before raising.
+            await repository.record_failed_login(
+                conn, user_id, settings.login_max_failed_attempts, settings.login_lockout_minutes
+            )
+            await otp_store.increment_two_factor_login_attempt(redis_client, tenant_id, user_id)
+            pair = None
+        else:
+            await otp_store.consume_two_factor_login_code(redis_client, tenant_id, user_id)
+            if user["failed_login_attempts"] > 0 or user["locked_until"] is not None:
+                await repository.reset_failed_logins(conn, user_id)
+            pair = await _issue_token_pair(conn, settings, tenant_id, user_id, user["role_id"], user["totp_enabled"])
+
+    if pair is None:
+        raise InvalidTwoFactorCodeError
+    return pair
+
+
+async def resend_login_2fa_code(
+    pool: asyncpg.Pool, redis_client: redis.Redis, settings: Settings, pending_token: str
+) -> TwoFactorResendOut:
     try:
         claims = decode_token(pending_token, secret=settings.jwt_secret)
     except jwt.PyJWTError as exc:
@@ -201,27 +294,11 @@ async def verify_login_2fa(pool: asyncpg.Pool, settings: Settings, pending_token
 
     async with tenant_connection(pool, tenant_id) as conn:
         user = await repository.get_user_by_id(conn, user_id)
-        if user is None or not user["totp_enabled"] or not user["totp_secret"]:
+        if user is None or not user["totp_enabled"] or not user["email"]:
             raise InvalidTwoFactorCodeError
-        if _is_locked(user):
-            raise InvalidTwoFactorCodeError
-        if not pyotp.TOTP(user["totp_secret"]).verify(code, valid_window=1):
-            # TOTP guesses share the password-failure counter (a 6-digit code
-            # is far more brute-forceable than a password), so enough of them
-            # locks the account just like wrong passwords do. Commit the
-            # increment by exiting the transaction before raising.
-            await repository.record_failed_login(
-                conn, user_id, settings.login_max_failed_attempts, settings.login_lockout_minutes
-            )
-            pair = None
-        else:
-            if user["failed_login_attempts"] > 0 or user["locked_until"] is not None:
-                await repository.reset_failed_logins(conn, user_id)
-            pair = await _issue_token_pair(conn, settings, tenant_id, user_id, user["role_id"], user["totp_enabled"])
-
-    if pair is None:
-        raise InvalidTwoFactorCodeError
-    return pair
+    await _send_two_factor_login_code(redis_client, settings, tenant_id, user_id, user["email"])
+    resend_after = settings.two_factor_resend_cooldown_seconds if settings.two_factor_resend_cooldown_enabled else 0
+    return TwoFactorResendOut(resend_after_seconds=resend_after)
 
 
 async def refresh(pool: asyncpg.Pool, settings: Settings, refresh_token: str) -> TokenPair:
@@ -400,22 +477,46 @@ async def verify_otp(pool: asyncpg.Pool, redis_client: redis.Redis, settings: Se
     return pair
 
 
-async def setup_2fa(pool: asyncpg.Pool, tenant_id: UUID, user_id: UUID) -> TwoFactorSetupOut:
+async def setup_2fa(
+    pool: asyncpg.Pool, redis_client: redis.Redis, settings: Settings, tenant_id: UUID, user_id: UUID
+) -> TwoFactorSetupOut:
     async with tenant_connection(pool, tenant_id) as conn:
         user = await repository.get_user_by_id(conn, user_id)
-        secret = pyotp.random_base32()
-        await repository.set_user_totp_secret(conn, user_id, secret)
-    uri = pyotp.TOTP(secret).provisioning_uri(name=user["email"] or user["phone"] or str(user_id), issuer_name="Dashboarduz")
-    return TwoFactorSetupOut(secret=secret, otpauth_uri=uri)
+    if user is None or not user["email"]:
+        raise NoEmailForTwoFactorError
+    if settings.two_factor_resend_cooldown_enabled:
+        remaining = await otp_store.try_start_two_factor_setup_cooldown(
+            redis_client, tenant_id, user_id, settings.two_factor_resend_cooldown_seconds
+        )
+        if remaining is not None:
+            raise ResendCooldownError(remaining)
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    ttl = timedelta(minutes=settings.otp_code_ttl_minutes)
+    await otp_store.set_two_factor_setup_code(redis_client, tenant_id, user_id, hash_token(code), ttl)
+    await send_code(channel="email", destination=user["email"], code=code)
+    resend_after = settings.two_factor_resend_cooldown_seconds if settings.two_factor_resend_cooldown_enabled else 0
+    return TwoFactorSetupOut(email_masked=_mask_email(user["email"]), resend_after_seconds=resend_after)
 
 
-async def confirm_2fa(pool: asyncpg.Pool, tenant_id: UUID, user_id: UUID, code: str) -> None:
+async def resend_2fa_setup_code(
+    pool: asyncpg.Pool, redis_client: redis.Redis, settings: Settings, tenant_id: UUID, user_id: UUID
+) -> TwoFactorSetupOut:
+    return await setup_2fa(pool, redis_client, settings, tenant_id, user_id)
+
+
+async def confirm_2fa(
+    pool: asyncpg.Pool, redis_client: redis.Redis, settings: Settings, tenant_id: UUID, user_id: UUID, code: str
+) -> None:
+    row = await otp_store.get_two_factor_setup_code(redis_client, tenant_id, user_id)
+    if row is None:
+        raise TwoFactorNotSetupError
+    if row["attempt_count"] >= settings.otp_max_attempts:
+        raise InvalidTwoFactorCodeError
+    if not tokens_match(row["code_hash"], hash_token(code)):
+        await otp_store.increment_two_factor_setup_attempt(redis_client, tenant_id, user_id)
+        raise InvalidTwoFactorCodeError
+    await otp_store.consume_two_factor_setup_code(redis_client, tenant_id, user_id)
     async with tenant_connection(pool, tenant_id) as conn:
-        user = await repository.get_user_by_id(conn, user_id)
-        if user is None or not user["totp_secret"]:
-            raise TwoFactorNotSetupError
-        if not pyotp.TOTP(user["totp_secret"]).verify(code, valid_window=1):
-            raise InvalidTwoFactorCodeError
         await repository.enable_user_totp(conn, user_id)
 
 
@@ -499,12 +600,19 @@ async def complete_registration(
             raise TenantSlugTakenError
     tenant_id = tenant["id"]
 
-    # tenants.trial_ends_at defaults to now() + 15 days at the DB level
-    # (0020_self_registration.sql) -- nothing else to do here to start the
-    # trial. Payment (skip-the-trial path) is a separate, already-existing
-    # flow: POST /api/v1/billing/payments/initiate, called by the frontend
-    # right after this returns tokens, if the user chose to pay immediately
-    # instead of using the trial.
+    # Ties the tenant to a real trial billing_plans row (max_users/storage/
+    # features all enforceable) instead of just tenants.trial_ends_at's bare
+    # column default -- keeps trial_ends_at in sync since run_dunning still
+    # reads it directly. No-op if no trial plan is currently configured
+    # (tenants.trial_ends_at's own DEFAULT then remains the only fallback).
+    # Payment (skip-the-trial path) is a separate, already-existing flow:
+    # POST /api/v1/billing/payments/initiate, called by the frontend right
+    # after this returns tokens, if the user chose to pay immediately.
+    trial = await billing_service.assign_trial_subscription(pool, tenant_id)
+    if trial is not None:
+        async with platform_connection(pool) as conn:
+            await tenants_repository.update_tenant_trial_ends_at(conn, tenant_id, trial["trial_ends_at"])
+
     role_ids = await roles_service.seed_default_roles(pool, tenant_id)
     password_hash = await hash_password(password)
 

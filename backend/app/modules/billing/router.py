@@ -9,7 +9,10 @@ from app.modules.auth.permissions import BILLING_MANAGE, BILLING_VIEW
 from app.modules.billing import providers, service
 from app.modules.billing.providers import PaymeProvider
 from app.modules.billing.schemas import (
+    BillingEntitlementsOut,
+    BillingPlanCreate,
     BillingPlanOut,
+    BillingPlanPublicOut,
     BillingPlanUpdate,
     DunningRunResultOut,
     ManualInvoiceCreate,
@@ -38,6 +41,16 @@ tenant_router = APIRouter(prefix="/api/v1/billing", tags=["billing"])
 @tenant_router.get("/plans", response_model=list[BillingPlanOut])
 async def list_plans(pool=Depends(get_pool), _auth: AuthContext = Depends(get_current_user)):
     return await service.list_billing_plans(pool)
+
+
+@tenant_router.get("/plans/public", response_model=list[BillingPlanPublicOut])
+async def list_public_plans(pool=Depends(get_pool)):
+    return await service.list_public_billing_plans(pool)
+
+
+@tenant_router.get("/entitlements", response_model=BillingEntitlementsOut)
+async def get_entitlements(pool=Depends(get_pool), auth: AuthContext = Depends(get_current_user)):
+    return await service.get_entitlements(pool, auth.tenant_id)
 
 
 @tenant_router.get("/subscription", response_model=TenantSubscriptionOut)
@@ -150,6 +163,42 @@ async def platform_list_plans(pool=Depends(get_pool), _admin: PlatformAuthContex
     return await service.list_billing_plans(pool)
 
 
+@platform_router.post("/billing/plans", response_model=BillingPlanOut, status_code=status.HTTP_201_CREATED)
+async def platform_create_plan(
+    body: BillingPlanCreate,
+    pool=Depends(get_pool),
+    admin: PlatformAuthContext = Depends(get_current_platform_admin),
+):
+    try:
+        return await service.create_billing_plan(
+            pool,
+            admin.admin_id,
+            body.code,
+            body.name,
+            body.price_amount,
+            body.currency,
+            body.billing_period_months,
+            body.max_users,
+            body.max_billable_storage_bytes,
+            body.features_uz,
+            body.features_ru,
+            body.feature_keys,
+            body.is_popular,
+            body.is_active,
+            body.is_trial,
+            body.trial_days,
+            body.reason,
+        )
+    except service.TwoFactorRequiredError:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Platform Admin must enable 2FA before creating a plan")
+    except service.PlanCodeTakenError:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Plan code already exists")
+    except service.TrialPlanAlreadyExistsError:
+        raise HTTPException(status.HTTP_409_CONFLICT, "A trial plan already exists")
+    except service.InvalidTrialPlanError:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "is_trial requires a positive trial_days, and vice versa")
+
+
 @platform_router.patch("/billing/plans/{code}", response_model=BillingPlanOut)
 async def platform_update_plan(
     code: str,
@@ -159,10 +208,27 @@ async def platform_update_plan(
 ):
     try:
         return await service.update_billing_plan(
-            pool, code, body.price_amount, body.currency, body.max_users, body.max_billable_storage_bytes, body.is_active
+            pool,
+            code,
+            body.name,
+            body.price_amount,
+            body.currency,
+            body.max_users,
+            body.max_billable_storage_bytes,
+            body.features_uz,
+            body.features_ru,
+            body.feature_keys,
+            body.is_popular,
+            body.is_active,
+            body.is_trial,
+            body.trial_days,
         )
     except service.PlanNotFoundError:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown plan code")
+    except service.TrialPlanAlreadyExistsError:
+        raise HTTPException(status.HTTP_409_CONFLICT, "A trial plan already exists")
+    except service.InvalidTrialPlanError:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "is_trial requires a positive trial_days, and vice versa")
 
 
 @platform_router.get("/tenants/{tenant_id}/subscription", response_model=TenantSubscriptionOut)

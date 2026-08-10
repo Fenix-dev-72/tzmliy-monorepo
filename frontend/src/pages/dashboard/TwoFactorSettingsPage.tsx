@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { QRCodeSVG } from "qrcode.react";
-import { CheckCircle2, Loader2, ShieldCheck } from "lucide-react";
+import { CheckCircle2, Loader2, Mail } from "lucide-react";
 import { useLang } from "@/lib/i18n/LangContext";
 import { useTenantAuth } from "@/lib/auth/tenantAuthStore";
 import * as tenantAuthApi from "@/lib/api/tenantAuth";
+import { ApiError } from "@/lib/api/client";
 import { OtpCodeInput } from "@/components/auth/OtpCodeInput";
 import { Button } from "@/components/ui/button";
 import { PasswordChangeCard } from "./PasswordChangeCard";
@@ -14,12 +14,15 @@ const content = {
   uz: {
     pageTitle: "Sozlamalar",
     title: "Ikki faktorli tasdiqlash (2FA)",
-    sub: "Google Authenticator yoki Authy ilovasi bilan QR kodni skanerlang, so'ng kodni kiriting.",
-    secretLabel: "Yoki qo'lda kiriting:",
+    sub: "manziliga yuborilgan 6 xonali kodni kiriting.",
     btn: "Tasdiqlash",
     loading: "Yuklanmoqda...",
     error: "Kod noto'g'ri",
-    loadError: "QR kod yuklanmadi, sahifani yangilang",
+    loadError: "Kod yuborilmadi. Qayta urinib ko'ring",
+    send: "Kodni yuborish",
+    resend: "Kodni qayta yuborish",
+    resendWait: (s: number) => `Qayta yuborish (${s}s)`,
+    cooldownError: (s: number) => `Kod hozirgina yuborildi. ${s} soniyadan so'ng qayta urinib ko'ring`,
     enabledTitle: "2FA yoqilgan",
     enabledDesc: "Hisobingiz ikki faktorli tasdiqlash bilan himoyalangan. Endi to'lov qabul qilish, bonus rejalar va boshqa imtiyozli amallar mavjud.",
     whyTitle: "Nega kerak?",
@@ -28,12 +31,15 @@ const content = {
   ru: {
     pageTitle: "Настройки",
     title: "Двухфакторная аутентификация (2FA)",
-    sub: "Отсканируйте QR-код в Google Authenticator или Authy, затем введите код.",
-    secretLabel: "Или введите вручную:",
+    sub: "Введите 6-значный код, отправленный на",
     btn: "Подтвердить",
     loading: "Загрузка...",
     error: "Неверный код",
-    loadError: "Не удалось загрузить QR-код, обновите страницу",
+    loadError: "Не удалось отправить код. Попробуйте ещё раз",
+    send: "Отправить код",
+    resend: "Отправить код повторно",
+    resendWait: (s: number) => `Повторная отправка (${s}с)`,
+    cooldownError: (s: number) => `Код только что отправлен. Повторите через ${s} с`,
     enabledTitle: "2FA включена",
     enabledDesc: "Ваш аккаунт защищён двухфакторной аутентификацией. Теперь доступны приём платежей, бонусные планы и другие привилегированные действия.",
     whyTitle: "Зачем это нужно?",
@@ -46,16 +52,42 @@ export function TwoFactorSettingsPage() {
   const t = content[lang];
   const { accessToken, user, refreshSession } = useTenantAuth();
 
-  const [otpauthUri, setOtpauthUri] = useState<string | null>(null);
-  const [secret, setSecret] = useState<string | null>(null);
+  const [emailMasked, setEmailMasked] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
+  const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [justEnabled, setJustEnabled] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
   const setupRequested = useRef(false);
 
   const alreadyEnabled = Boolean(user?.totp_enabled) || justEnabled;
   const canManageDashboards = (user?.permissions ?? []).includes("analytics.manage");
+
+  async function sendCode() {
+    if (!accessToken || sending) return;
+    setSending(true);
+    setError(null);
+    try {
+      // Same cooldown-gated endpoint whether this is the very first send or
+      // an explicit resend click -- the backend treats them identically, so
+      // there's no reason for the button to ever be permanently disabled
+      // just because an earlier attempt (e.g. the auto-fire below) failed.
+      const res = await tenantAuthApi.resendSetup2fa(accessToken);
+      setEmailMasked(res.email_masked);
+      setResendCooldown(res.resend_after_seconds);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 429) {
+        const wait = err.retryAfterSeconds ?? 0;
+        setResendCooldown(wait);
+        setError(t.cooldownError(wait));
+      } else {
+        setError(t.loadError);
+      }
+    } finally {
+      setSending(false);
+    }
+  }
 
   useEffect(() => {
     // Must wait for `user` to actually load, not just `accessToken` -- the
@@ -68,15 +100,15 @@ export function TwoFactorSettingsPage() {
     // call, silently disabling 2FA every time this page was hit early.
     if (!accessToken || !user || alreadyEnabled || setupRequested.current) return;
     setupRequested.current = true;
-    tenantAuthApi
-      .setup2fa(accessToken)
-      .then((res) => {
-        setOtpauthUri(res.otpauth_uri);
-        setSecret(res.secret);
-      })
-      .catch(() => setError(t.loadError));
+    void sendCode();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken, user, alreadyEnabled]);
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setTimeout(() => setResendCooldown((s) => s - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendCooldown]);
 
   async function handleConfirm(submittedCode: string) {
     if (!accessToken) return;
@@ -121,40 +153,57 @@ export function TwoFactorSettingsPage() {
       ) : (
         <div className="glass-card p-6 text-center sm:p-8">
           <div className="border-primary/25 bg-primary/12 mx-auto mb-5 flex size-14 items-center justify-center rounded-2xl border">
-            <ShieldCheck size={26} className="text-primary" />
+            <Mail size={26} className="text-primary" />
           </div>
-          <p className="mx-auto mb-6 max-w-[320px] text-sm leading-relaxed text-foreground-muted">{t.sub}</p>
 
-          {otpauthUri ? (
-            <div className="mx-auto mb-3 w-fit rounded-2xl bg-white p-4">
-              <QRCodeSVG value={otpauthUri} size={180} />
-            </div>
-          ) : (
-            <div className="mb-3 flex justify-center py-10">
+          {emailMasked ? (
+            <>
+              <p className="mx-auto mb-6 max-w-[320px] text-sm leading-relaxed text-foreground-muted">
+                {lang === "uz" ? `${emailMasked} ${t.sub}` : `${t.sub} ${emailMasked}.`}
+              </p>
+
+              <OtpCodeInput value={code} onChange={setCode} onComplete={handleConfirm} />
+
+              {error && <p className="text-destructive mt-4 text-[13px] font-medium">{error}</p>}
+
+              <Button
+                variant="gold"
+                size="lg"
+                className="mt-6 w-full"
+                disabled={code.length < 6 || loading}
+                onClick={() => handleConfirm(code)}
+              >
+                {loading && <Loader2 size={16} className="animate-spin" />}
+                {loading ? t.loading : t.btn}
+              </Button>
+
+              <button
+                type="button"
+                onClick={() => void sendCode()}
+                disabled={sending || resendCooldown > 0}
+                className="mt-4 text-[13px] font-medium text-foreground-muted disabled:opacity-50"
+              >
+                {resendCooldown > 0 ? t.resendWait(resendCooldown) : t.resend}
+              </button>
+            </>
+          ) : sending ? (
+            <div className="mb-6 flex justify-center py-4">
               <Loader2 size={24} className="text-primary animate-spin" />
             </div>
+          ) : (
+            <>
+              {error && <p className="text-destructive mb-4 text-[13px] font-medium">{error}</p>}
+              <Button
+                variant="gold"
+                size="lg"
+                className="w-full"
+                disabled={resendCooldown > 0}
+                onClick={() => void sendCode()}
+              >
+                {resendCooldown > 0 ? t.resendWait(resendCooldown) : t.send}
+              </Button>
+            </>
           )}
-
-          {secret && (
-            <p className="font-mono mb-7 text-xs break-all text-foreground-muted">
-              {t.secretLabel} {secret}
-            </p>
-          )}
-
-          <OtpCodeInput value={code} onChange={setCode} onComplete={handleConfirm} />
-
-          {error && <p className="text-destructive mt-4 text-[13px] font-medium">{error}</p>}
-
-          <Button
-            variant="gold"
-            size="lg"
-            className="mt-6 w-full"
-            disabled={code.length < 6 || loading || !otpauthUri}
-            onClick={() => handleConfirm(code)}
-          >
-            {loading && <Loader2 size={16} className="animate-spin" />}
-            {loading ? t.loading : t.btn}
-          </Button>
         </div>
       )}
 

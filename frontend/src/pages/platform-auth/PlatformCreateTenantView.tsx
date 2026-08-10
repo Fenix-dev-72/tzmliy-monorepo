@@ -101,7 +101,9 @@ export function PlatformCreateTenantView() {
   const canSubmitStep1 = name.trim().length > 0 && slugValid;
   const canSubmitStep2 = email.length > 0 && password.length > 0 && reason.trim().length >= 3;
 
-  async function handleCreateTenant() {
+  async function handleCreateTenant(e: React.FormEvent) {
+    e.preventDefault();
+    if (!canSubmitStep1 || loading) return;
     setError(null);
     setLoading(true);
     try {
@@ -115,8 +117,9 @@ export function PlatformCreateTenantView() {
     }
   }
 
-  async function handleCreateAdmin() {
-    if (!tenant) return;
+  async function handleCreateAdmin(e: React.FormEvent) {
+    e.preventDefault();
+    if (!tenant || !canSubmitStep2 || loading) return;
     setError(null);
     setLoading(true);
     try {
@@ -187,33 +190,35 @@ export function PlatformCreateTenantView() {
           <h2 className="font-heading mb-1 text-center text-2xl font-extrabold text-foreground">{t.step1Title}</h2>
           <p className="mb-7 text-center text-sm text-foreground-muted">{t.step1Sub}</p>
 
-          <FormField
-            label={t.name}
-            placeholder="Acme LLC"
-            value={name}
-            onChange={(e) => {
-              setName(e.target.value);
-              if (!slugTouched) setSlug(slugify(e.target.value));
-            }}
-          />
-          <FormField
-            label={t.slug}
-            placeholder="acme-llc"
-            value={slug}
-            onChange={(e) => {
-              setSlugTouched(true);
-              setSlug(slugify(e.target.value));
-            }}
-            hint={t.slugHint}
-            error={slug.length > 0 && !slugValid ? t.slugError : undefined}
-          />
+          <form onSubmit={handleCreateTenant}>
+            <FormField
+              label={t.name}
+              placeholder="Acme LLC"
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value);
+                if (!slugTouched) setSlug(slugify(e.target.value));
+              }}
+            />
+            <FormField
+              label={t.slug}
+              placeholder="acme-llc"
+              value={slug}
+              onChange={(e) => {
+                setSlugTouched(true);
+                setSlug(slugify(e.target.value));
+              }}
+              hint={t.slugHint}
+              error={slug.length > 0 && !slugValid ? t.slugError : undefined}
+            />
 
-          {error && <p className="text-destructive mb-4 text-[13px] font-medium">{error}</p>}
+            {error && <p className="text-destructive mb-4 text-[13px] font-medium">{error}</p>}
 
-          <Button variant="gold" size="lg" className="w-full" disabled={!canSubmitStep1 || loading} onClick={handleCreateTenant}>
-            {loading && <Loader2 size={16} className="animate-spin" />}
-            {t.next}
-          </Button>
+            <Button type="submit" variant="gold" size="lg" className="w-full" disabled={!canSubmitStep1 || loading}>
+              {loading && <Loader2 size={16} className="animate-spin" />}
+              {t.next}
+            </Button>
+          </form>
         </>
       ) : (
         <>
@@ -224,31 +229,33 @@ export function PlatformCreateTenantView() {
           <p className="mb-1 text-center text-sm text-foreground-muted">{t.step2Sub}</p>
           <p className="font-mono mb-6 text-center text-xs text-foreground-muted">{tenant?.slug}</p>
 
-          <FormField label={t.email} type="email" placeholder="admin@company.com" value={email} onChange={(e) => setEmail(e.target.value)} />
-          <FormField
-            label={t.password}
-            type={showPass ? "text" : "password"}
-            placeholder="••••••••"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            rightEl={
-              <button type="button" onClick={() => setShowPass((s) => !s)} className="text-foreground-muted">
-                {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
-            }
-          />
-          <PasswordStrengthMeter password={password} />
+          <form onSubmit={handleCreateAdmin}>
+            <FormField label={t.email} type="email" placeholder="admin@company.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <FormField
+              label={t.password}
+              type={showPass ? "text" : "password"}
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              rightEl={
+                <button type="button" onClick={() => setShowPass((s) => !s)} className="text-foreground-muted">
+                  {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              }
+            />
+            <PasswordStrengthMeter password={password} />
 
-          <div className="mt-4">
-            <FormField label={t.reason} placeholder={t.reasonPlaceholder} value={reason} onChange={(e) => setReason(e.target.value)} />
-          </div>
+            <div className="mt-4">
+              <FormField label={t.reason} placeholder={t.reasonPlaceholder} value={reason} onChange={(e) => setReason(e.target.value)} />
+            </div>
 
-          {error && <p className="text-destructive mb-4 text-[13px] font-medium">{error}</p>}
+            {error && <p className="text-destructive mb-4 text-[13px] font-medium">{error}</p>}
 
-          <Button variant="gold" size="lg" className="w-full" disabled={!canSubmitStep2 || loading} onClick={handleCreateAdmin}>
-            {loading && <Loader2 size={16} className="animate-spin" />}
-            {t.create}
-          </Button>
+            <Button type="submit" variant="gold" size="lg" className="w-full" disabled={!canSubmitStep2 || loading}>
+              {loading && <Loader2 size={16} className="animate-spin" />}
+              {t.create}
+            </Button>
+          </form>
         </>
       )}
     </AuthCard>

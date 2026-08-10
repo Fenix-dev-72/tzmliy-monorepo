@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 from datetime import datetime
 from uuid import UUID
 
@@ -10,6 +11,8 @@ from app.core.config import Settings, get_settings
 from app.core.deps import AuthContext, get_current_user, get_pool, get_redis, require_permission
 from app.core.pagination import Paginated
 from app.modules.auth.permissions import CRM_MANAGE, CRM_VIEW
+from app.modules.billing.deps import require_plan_feature
+from app.modules.billing.features import FEATURE_CRM_INTEGRATIONS, FEATURE_META_ADS
 from app.modules.crm import service
 from app.modules.crm.providers import CrmApiError, UnknownProviderError
 from app.modules.crm.schemas import (
@@ -27,6 +30,8 @@ from app.modules.crm.schemas import (
 )
 
 router = APIRouter(prefix="/api/v1/crm", tags=["crm"])
+
+logger = logging.getLogger("dashboarduz.crm.oauth")
 
 
 def _default_encoder(value):
@@ -72,19 +77,29 @@ async def _lead_sync_event_source(request: Request, pool, redis_client, tenant_i
 
 @router.post("/integrations/amocrm", response_model=IntegrationConfiguredOut, status_code=status.HTTP_201_CREATED)
 async def configure_amocrm(
-    body: AmoCrmConfigure, pool=Depends(get_pool), auth: AuthContext = Depends(require_permission(CRM_MANAGE))
+    body: AmoCrmConfigure,
+    pool=Depends(get_pool),
+    auth: AuthContext = Depends(require_permission(CRM_MANAGE)),
+    _feature: AuthContext = Depends(require_plan_feature(FEATURE_CRM_INTEGRATIONS)),
 ):
     return await service.configure_amocrm(pool, auth.tenant_id, body.subdomain, body.api_token)
 
 
 @router.get("/integrations", response_model=list[IntegrationConfiguredOut])
-async def list_integrations(pool=Depends(get_pool), auth: AuthContext = Depends(require_permission(CRM_VIEW))):
+async def list_integrations(
+    pool=Depends(get_pool),
+    auth: AuthContext = Depends(require_permission(CRM_VIEW)),
+    _feature: AuthContext = Depends(require_plan_feature(FEATURE_CRM_INTEGRATIONS)),
+):
     return await service.list_integrations(pool, auth.tenant_id)
 
 
 @router.delete("/integrations/{provider}", status_code=status.HTTP_204_NO_CONTENT)
 async def disconnect_integration(
-    provider: str, pool=Depends(get_pool), auth: AuthContext = Depends(require_permission(CRM_MANAGE))
+    provider: str,
+    pool=Depends(get_pool),
+    auth: AuthContext = Depends(require_permission(CRM_MANAGE)),
+    _feature: AuthContext = Depends(require_plan_feature(FEATURE_CRM_INTEGRATIONS)),
 ):
     await service.disconnect_integration(pool, auth.tenant_id, provider)
 
@@ -94,6 +109,7 @@ async def get_oauth_authorize_url(
     provider: OAuthProviderName,
     domain: str | None = Query(None, description="Portal/account subdomain -- required for amocrm and bitrix24"),
     auth: AuthContext = Depends(require_permission(CRM_MANAGE)),
+    _feature: AuthContext = Depends(require_plan_feature(FEATURE_CRM_INTEGRATIONS)),
 ):
     """"1 tugma bilan ulash" -- returns the URL as JSON rather than
     redirecting itself, since this is an authenticated bearer-token API call
@@ -111,8 +127,9 @@ async def get_oauth_authorize_url(
 @router.get("/oauth/{provider}/callback")
 async def oauth_callback(
     provider: OAuthProviderName,
-    code: str = Query(...),
-    state: str = Query(...),
+    code: str | None = Query(None),
+    state: str | None = Query(None),
+    error: str | None = Query(None, description="Set by the provider instead of `code` when the user/provider aborted the flow (e.g. amoCRM's Private-integration rejection)"),
     referer: str | None = Query(None, description="amoCRM only -- the account's own address, e.g. subdomain.amocrm.ru"),
     pool=Depends(get_pool),
     settings: Settings = Depends(get_settings),
@@ -121,7 +138,17 @@ async def oauth_callback(
     no bearer token, same class of exception as the webhook route below;
     tenant identity comes from the Redis-stored state, not a session. Always
     ends in an HTTP redirect back to the frontend, never JSON -- this URL is
-    only ever hit by a real browser following the provider's own redirect."""
+    only ever hit by a real browser following the provider's own redirect.
+
+    `code`/`state` are optional at the FastAPI level (not Query(...)) because
+    a provider that aborts the flow before showing its consent screen (e.g.
+    amoCRM rejecting a Private-status integration for the logged-in account)
+    redirects back here with no `code` at all -- treating them as required
+    turned that case into a raw 422 JSON response instead of the friendly
+    oauth_error redirect below."""
+    if not code or not state:
+        logger.warning("oauth_callback aborted for provider=%s: missing code/state (provider error=%r)", provider, error)
+        return RedirectResponse(f"{settings.frontend_base_url}/dashboard/integrations?oauth_error={provider}")
     # amoCRM's authorize step is domain-agnostic (see crm/oauth.py), so the
     # account subdomain is only known now, from its own `referer` param
     # (e.g. "samandarorifjonov749.amocrm.ru") -- strip the host down to the
@@ -151,6 +178,7 @@ async def push_customer(
     provider: str,
     pool=Depends(get_pool),
     auth: AuthContext = Depends(require_permission(CRM_MANAGE)),
+    _feature: AuthContext = Depends(require_plan_feature(FEATURE_CRM_INTEGRATIONS)),
 ):
     try:
         return await service.push_customer_to_crm(pool, auth.tenant_id, customer_id, provider)
@@ -173,7 +201,11 @@ async def push_customer(
 
 
 @router.get("/leads", response_model=list[CrmLeadSyncOut])
-async def list_leads(pool=Depends(get_pool), auth: AuthContext = Depends(require_permission(CRM_VIEW))):
+async def list_leads(
+    pool=Depends(get_pool),
+    auth: AuthContext = Depends(require_permission(CRM_VIEW)),
+    _feature: AuthContext = Depends(require_plan_feature(FEATURE_CRM_INTEGRATIONS)),
+):
     return await service.list_lead_syncs(pool, auth.tenant_id)
 
 
@@ -184,6 +216,7 @@ async def stream_leads(
     redis_client=Depends(get_redis),
     settings: Settings = Depends(get_settings),
     auth: AuthContext = Depends(require_permission(CRM_VIEW)),
+    _feature: AuthContext = Depends(require_plan_feature(FEATURE_CRM_INTEGRATIONS)),
 ):
     return StreamingResponse(
         _lead_sync_event_source(request, pool, redis_client, auth.tenant_id, settings), media_type="text/event-stream"
@@ -195,6 +228,7 @@ async def create_manager_mapping(
     body: ManagerMappingCreate,
     pool=Depends(get_pool),
     auth: AuthContext = Depends(require_permission(CRM_MANAGE)),
+    _feature: AuthContext = Depends(require_plan_feature(FEATURE_CRM_INTEGRATIONS)),
 ):
     try:
         return await service.create_manager_mapping(
@@ -231,7 +265,11 @@ async def create_own_manager_mapping(
 
 
 @router.get("/manager-mappings", response_model=list[ManagerMappingOut])
-async def list_manager_mappings(pool=Depends(get_pool), auth: AuthContext = Depends(require_permission(CRM_VIEW))):
+async def list_manager_mappings(
+    pool=Depends(get_pool),
+    auth: AuthContext = Depends(require_permission(CRM_VIEW)),
+    _feature: AuthContext = Depends(require_plan_feature(FEATURE_CRM_INTEGRATIONS)),
+):
     return await service.list_manager_mappings(pool, auth.tenant_id)
 
 
@@ -241,6 +279,7 @@ async def list_ad_campaigns(
     offset: int = Query(0, ge=0),
     pool=Depends(get_pool),
     auth: AuthContext = Depends(require_permission(CRM_VIEW)),
+    _feature: AuthContext = Depends(require_plan_feature(FEATURE_META_ADS)),
 ):
     items, total = await service.list_ad_campaigns(pool, auth.tenant_id, limit, offset)
     return Paginated(items=items, total=total)
@@ -251,5 +290,6 @@ async def list_ad_insights(
     campaign_id: UUID | None = None,
     pool=Depends(get_pool),
     auth: AuthContext = Depends(require_permission(CRM_VIEW)),
+    _feature: AuthContext = Depends(require_plan_feature(FEATURE_META_ADS)),
 ):
     return await service.list_ad_insights(pool, auth.tenant_id, campaign_id)

@@ -6,6 +6,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.core.deps import AuthContext, get_pool, get_replica_pool, require_permission
 from app.modules.auth.permissions import REPORTS_EXPORT, REPORTS_VIEW
+from app.modules.billing import service as billing_service
+from app.modules.billing.deps import require_plan_feature
+from app.modules.billing.features import FEATURE_ADVANCED_REPORTS
 from app.modules.reports import service
 from app.modules.reports.schemas import DiagnosticsOut, ExportJobOut
 
@@ -29,12 +32,16 @@ async def export_entity(
     format: Literal["csv", "xlsx"] = "csv",
     pool=Depends(get_pool),
     auth: AuthContext = Depends(require_permission(REPORTS_EXPORT)),
+    _feature: AuthContext = Depends(require_plan_feature(FEATURE_ADVANCED_REPORTS)),
 ):
     """Enqueues the export instead of generating it synchronously --
     export_worker.py picks it up in the background. Poll
     GET /export/jobs/{id} for status; once status=done, download_url is a
     short-lived presigned URL to the generated file."""
-    return await service.enqueue_export(pool, auth.tenant_id, entity, format, auth.user_id)
+    try:
+        return await service.enqueue_export(pool, auth.tenant_id, entity, format, auth.user_id)
+    except billing_service.StorageLimitExceededError:
+        raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, "Storage limit reached for the current plan")
 
 
 @router.get("/export/jobs/{job_id}", response_model=ExportJobOut)

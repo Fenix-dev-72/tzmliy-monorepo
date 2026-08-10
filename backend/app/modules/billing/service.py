@@ -8,6 +8,7 @@ import asyncpg
 from app.core import notify, storage
 from app.core.config import Settings
 from app.core.database import platform_connection, tenant_connection
+from app.modules.auth import repository as auth_repository
 from app.modules.billing import providers, repository
 from app.modules.billing.providers import ClickProvider, PaymeProvider
 from app.modules.tenants import repository as tenants_repository
@@ -17,6 +18,32 @@ click_provider = ClickProvider()
 
 
 class PlanNotFoundError(Exception):
+    pass
+
+
+class PlanCodeTakenError(Exception):
+    pass
+
+
+class TrialPlanAlreadyExistsError(Exception):
+    pass
+
+
+class InvalidTrialPlanError(Exception):
+    """is_trial=true without a positive trial_days, or vice versa."""
+
+    pass
+
+
+class UserLimitReachedError(Exception):
+    pass
+
+
+class PlanFeatureRequiredError(Exception):
+    pass
+
+
+class StorageLimitExceededError(Exception):
     pass
 
 
@@ -81,7 +108,7 @@ async def _require_admin_2fa(pool: asyncpg.Pool, admin_id: UUID) -> None:
         raise TwoFactorRequiredError
 
 
-async def _audit(pool: asyncpg.Pool, admin_id: UUID, tenant_id: UUID, action: str, reason: str) -> None:
+async def _audit(pool: asyncpg.Pool, admin_id: UUID, tenant_id: UUID | None, action: str, reason: str) -> None:
     async with platform_connection(pool) as conn:
         await tenants_repository.insert_audit_log(
             conn, actor_type="platform_admin", actor_id=admin_id, tenant_id=tenant_id, action=action, reason=reason
@@ -109,18 +136,107 @@ async def list_billing_plans(pool: asyncpg.Pool) -> list[dict]:
         return await repository.list_billing_plans(conn)
 
 
+async def list_public_billing_plans(pool: asyncpg.Pool) -> list[dict]:
+    async with platform_connection(pool) as conn:
+        return await repository.list_public_billing_plans(conn)
+
+
+async def _check_trial_pairing_and_uniqueness(conn: asyncpg.Connection, is_trial: bool, trial_days: int | None, code: str) -> None:
+    if is_trial and (trial_days is None or trial_days <= 0):
+        raise InvalidTrialPlanError
+    if not is_trial and trial_days is not None:
+        raise InvalidTrialPlanError
+    if is_trial:
+        existing_trial = await repository.get_trial_plan(conn)
+        if existing_trial is not None and existing_trial["code"] != code:
+            raise TrialPlanAlreadyExistsError
+
+
+async def create_billing_plan(
+    pool: asyncpg.Pool,
+    admin_id: UUID,
+    code: str,
+    name: str,
+    price_amount: int,
+    currency: str,
+    billing_period_months: int,
+    max_users: int,
+    max_billable_storage_bytes: int,
+    features_uz: list[str],
+    features_ru: list[str],
+    feature_keys: list[str],
+    is_popular: bool,
+    is_active: bool,
+    is_trial: bool,
+    trial_days: int | None,
+    reason: str,
+) -> dict:
+    await _require_admin_2fa(pool, admin_id)
+    async with platform_connection(pool) as conn:
+        await _check_trial_pairing_and_uniqueness(conn, is_trial, trial_days, code)
+        created = await repository.insert_billing_plan(
+            conn,
+            code,
+            name,
+            price_amount,
+            currency,
+            billing_period_months,
+            max_users,
+            max_billable_storage_bytes,
+            features_uz,
+            features_ru,
+            feature_keys,
+            is_popular,
+            is_active,
+            is_trial,
+            trial_days,
+        )
+    if created is None:
+        raise PlanCodeTakenError
+    await _audit(pool, admin_id, None, "create_billing_plan", reason)
+    return created
+
+
 async def update_billing_plan(
     pool: asyncpg.Pool,
     code: str,
+    name: str | None,
     price_amount: int | None,
     currency: str | None,
     max_users: int | None,
     max_billable_storage_bytes: int | None,
+    features_uz: list[str] | None,
+    features_ru: list[str] | None,
+    feature_keys: list[str] | None,
+    is_popular: bool | None,
     is_active: bool | None,
+    is_trial: bool | None,
+    trial_days: int | None,
 ) -> dict:
     async with platform_connection(pool) as conn:
+        current = await repository.get_billing_plan_by_code(conn, code)
+        if current is None:
+            raise PlanNotFoundError
+        effective_is_trial = current["is_trial"] if is_trial is None else is_trial
+        effective_trial_days = current["trial_days"] if trial_days is None else trial_days
+        if not effective_is_trial:
+            effective_trial_days = None
+        await _check_trial_pairing_and_uniqueness(conn, effective_is_trial, effective_trial_days, code)
         updated = await repository.update_billing_plan(
-            conn, code, price_amount, currency, max_users, max_billable_storage_bytes, is_active
+            conn,
+            code,
+            name,
+            price_amount,
+            currency,
+            max_users,
+            max_billable_storage_bytes,
+            features_uz,
+            features_ru,
+            feature_keys,
+            is_popular,
+            is_active,
+            effective_is_trial,
+            effective_trial_days,
         )
     if updated is None:
         raise PlanNotFoundError
@@ -167,6 +283,60 @@ async def assign_subscription(
         sub = await repository.upsert_tenant_subscription(conn, tenant_id, plan["id"], period_start, period_end)
     await _audit(pool, admin_id, tenant_id, "assign_subscription", reason)
     return sub
+
+
+async def assign_trial_subscription(pool: asyncpg.Pool, tenant_id: UUID) -> dict | None:
+    """Called once, right after a tenant is created (tenants/service.py's
+    create_tenant), for both the self-registration and Platform-Admin-
+    provisioning paths -- mirrors select_own_subscription's no-2FA reasoning
+    (nothing to gate, the tenant doesn't even have an admin user yet).
+    Returns None (no-op) if no trial plan is currently configured, so a
+    Platform Admin deleting the trial plan doesn't break tenant creation."""
+    async with platform_connection(pool) as conn:
+        plan = await repository.get_trial_plan(conn)
+    if plan is None:
+        return None
+    period_start = datetime.now(timezone.utc)
+    period_end = period_start + timedelta(days=plan["trial_days"])
+    async with tenant_connection(pool, tenant_id) as conn:
+        sub = await repository.upsert_tenant_subscription(conn, tenant_id, plan["id"], period_start, period_end)
+    return {"subscription": sub, "trial_ends_at": period_end}
+
+
+async def get_entitlements(pool: asyncpg.Pool, tenant_id: UUID) -> dict:
+    """Single source of truth for what a tenant's current plan allows --
+    consumed by the tenant-facing GET /api/v1/billing/entitlements endpoint
+    (dashboard sidebar lock icons, the /dashboard/settings/billing page) and
+    by billing/deps.py's require_plan_feature. A tenant with no subscription
+    at all (shouldn't happen post-trial-wiring, but defensive) gets an
+    all-zero/empty entitlement set rather than raising -- the caller decides
+    what to do with that."""
+    async with tenant_connection(pool, tenant_id) as conn:
+        subscription = await repository.get_tenant_subscription(conn, tenant_id)
+        current_user_count = await auth_repository.count_active_users(conn)
+
+    plan = None
+    if subscription is not None:
+        async with platform_connection(pool) as conn:
+            plan = await repository.get_billing_plan_by_id(conn, subscription["billing_plan_id"])
+
+    if plan is None:
+        return {
+            "plan_code": None,
+            "plan_name": None,
+            "max_users": None,
+            "current_user_count": current_user_count,
+            "max_billable_storage_bytes": None,
+            "feature_keys": [],
+        }
+    return {
+        "plan_code": plan["code"],
+        "plan_name": plan["name"],
+        "max_users": plan["max_users"],
+        "current_user_count": current_user_count,
+        "max_billable_storage_bytes": plan["max_billable_storage_bytes"],
+        "feature_keys": plan["feature_keys"],
+    }
 
 
 async def select_own_subscription(pool: asyncpg.Pool, tenant_id: UUID, billing_plan_code: str) -> dict:
@@ -343,12 +513,25 @@ async def get_usage(pool: asyncpg.Pool, tenant_id: UUID) -> dict:
 async def recalculate_storage(
     pool: asyncpg.Pool, admin_id: UUID, tenant_id: UUID, reason: str, settings: Settings, force: bool = False
 ) -> dict:
+    """Thin, 2FA+audit-gated wrapper around _recalculate_storage_for_tenant
+    for the Platform-Admin-triggered "Recalculate now" button -- the daily
+    Celery task (billing/tasks.py) calls the internal function directly,
+    since there's no admin actor/reason for an automated system job."""
+    await _require_admin_2fa(pool, admin_id)
+    result = await _recalculate_storage_for_tenant(pool, tenant_id, settings, force)
+    action = "recalculate_storage_cached" if result.get("_cached") else "recalculate_storage"
+    await _audit(pool, admin_id, tenant_id, action, reason)
+    return result["snapshot"]
+
+
+async def _recalculate_storage_for_tenant(
+    pool: asyncpg.Pool, tenant_id: UUID, settings: Settings, force: bool = False
+) -> dict:
     """optimize.md #9: compute_tenant_db_bytes scans every tenant-scoped table
     (pg_column_size over ~24 tables) -- skip redoing that if the latest
     snapshot is still fresh (billing_storage_recalc_cache_minutes), unless the
     caller explicitly asks for force=True. Storage doesn't change fast enough
-    to need a fresh scan on every manual click."""
-    await _require_admin_2fa(pool, admin_id)
+    to need a fresh scan on every manual click/daily run."""
     cached_snapshot: dict | None = None
     async with tenant_connection(pool, tenant_id) as conn:
         if not force:
@@ -404,10 +587,21 @@ async def recalculate_storage(
             if new_warning_80 != warning_80 or new_warning_100 != warning_100:
                 await repository.set_storage_warning_flags(conn, tenant_id, new_warning_80, new_warning_100)
 
-    result = cached_snapshot if cached_snapshot is not None else snapshot
-    action = "recalculate_storage_cached" if cached_snapshot is not None else "recalculate_storage"
-    await _audit(pool, admin_id, tenant_id, action, reason)
-    return result
+    result_snapshot = cached_snapshot if cached_snapshot is not None else snapshot
+    return {"snapshot": result_snapshot, "_cached": cached_snapshot is not None}
+
+
+async def enforce_storage_not_exceeded(pool: asyncpg.Pool, tenant_id: UUID) -> None:
+    """Reads the latest already-computed snapshot (never recomputes -- that's
+    the daily task's job, see billing/tasks.py) and blocks the caller if the
+    tenant is already at/over its plan's storage limit. At most a day stale;
+    an intentional trade-off, not an oversight (see this repo's plan for the
+    reasoning: real-time SUM(pg_column_size(...)) on every upload would be
+    far too expensive). No subscription/snapshot yet -- nothing to enforce."""
+    async with tenant_connection(pool, tenant_id) as conn:
+        snapshot = await repository.get_latest_storage_usage_snapshot(conn)
+    if snapshot is not None and snapshot["usage_ratio_bps"] >= 10000:
+        raise StorageLimitExceededError
 
 
 # --- Dunning ----------------------------------------------------------------

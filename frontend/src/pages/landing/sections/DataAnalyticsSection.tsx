@@ -1,6 +1,8 @@
 import { ArrowRight, FileText, FileSpreadsheet, FileType } from "lucide-react";
 import { useLang } from "@/lib/i18n/LangContext";
 import { Reveal } from "@/components/shared/Reveal";
+import { useReveal } from "@/lib/hooks/useReveal";
+import { cn } from "@/components/ui/utils";
 
 // "Data and Document Management" style section (reference: TeamWave/Framer
 // template's centered-heading + two-large-cards block, each card = a mockup
@@ -74,8 +76,13 @@ const fileIcons = { csv: FileText, xlsx: FileSpreadsheet, pdf: FileType };
 const fileIconColor = { csv: "var(--color-secondary)", xlsx: "var(--color-success)", pdf: "var(--color-accent-orange)" };
 
 function ExportsCard({ t }: { t: (typeof content)["uz"]["exports"] }) {
+  // Own observer, independent of the outer <Reveal> wrapping this whole
+  // card (same "nested useReveal alongside an outer Reveal" pattern as
+  // FeatureShowcase.tsx's LayeredCardsFrame) -- lets the table rows stagger
+  // in on top of the card's own fade-up.
+  const { ref, visible } = useReveal<HTMLDivElement>(0.3);
   return (
-    <div className="border-card-border bg-card/40 flex h-full flex-col rounded-3xl border p-6 sm:p-8">
+    <div ref={ref} className="border-card-border bg-card/40 flex h-full flex-col rounded-3xl border p-6 sm:p-8">
       <div className="glass-card rounded-2xl p-5">
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-base font-bold">{t.cardTitle}</h3>
@@ -88,10 +95,17 @@ function ExportsCard({ t }: { t: (typeof content)["uz"]["exports"] }) {
           <span>{t.columns.date}</span>
         </div>
         <div className="divide-card-border/60 divide-y">
-          {t.rows.map((row) => {
+          {t.rows.map((row, i) => {
             const Icon = fileIcons[row.kind];
             return (
-              <div key={row.name} className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-4 py-3 text-sm">
+              <div
+                key={row.name}
+                className={cn(
+                  "reveal-on-scroll grid grid-cols-[1fr_auto_auto_auto] items-center gap-4 py-3 text-sm",
+                  visible && "is-visible",
+                )}
+                style={{ transitionDelay: visible ? `${i * 70}ms` : "0ms" }}
+              >
                 <div className="flex min-w-0 items-center gap-2.5">
                   <Icon size={16} className="shrink-0" style={{ color: fileIconColor[row.kind] }} />
                   <span className="truncate font-medium">{row.name}</span>
@@ -116,8 +130,9 @@ function ExportsCard({ t }: { t: (typeof content)["uz"]["exports"] }) {
 }
 
 function AnalyticsCard({ t }: { t: (typeof content)["uz"]["analytics"] }) {
+  const { ref, visible } = useReveal<HTMLDivElement>(0.3);
   return (
-    <div className="border-card-border bg-card/40 flex h-full flex-col rounded-3xl border p-6 sm:p-8">
+    <div ref={ref} className="border-card-border bg-card/40 flex h-full flex-col rounded-3xl border p-6 sm:p-8">
       <div className="glass-card rounded-2xl p-5">
         <div className="mb-5 flex items-center justify-between">
           <h3 className="text-base font-bold">{t.cardTitle}</h3>
@@ -165,6 +180,8 @@ function AnalyticsCard({ t }: { t: (typeof content)["uz"]["analytics"] }) {
               strokeWidth="3"
               strokeLinecap="round"
               strokeLinejoin="round"
+              pathLength="1"
+              className={cn("chart-line-draw", visible && "is-visible")}
             />
           </svg>
         </div>

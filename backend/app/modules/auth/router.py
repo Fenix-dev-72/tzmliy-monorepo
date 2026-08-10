@@ -18,6 +18,8 @@ from app.modules.auth.schemas import (
     RegistrationCodeVerifyOut,
     RegistrationComplete,
     TwoFactorConfirmRequest,
+    TwoFactorResendLoginCodeRequest,
+    TwoFactorResendOut,
     TwoFactorSetupOut,
     TwoFactorVerifyLoginRequest,
 )
@@ -27,9 +29,14 @@ router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 
 @router.post("/login", response_model=LoginResponse)
-async def login(body: LoginRequest, pool=Depends(get_pool), settings: Settings = Depends(get_settings)):
+async def login(
+    body: LoginRequest,
+    pool=Depends(get_pool),
+    redis_client=Depends(get_redis),
+    settings: Settings = Depends(get_settings),
+):
     try:
-        return await service.login(pool, settings, body.identifier, body.password)
+        return await service.login(pool, redis_client, settings, body.identifier, body.password)
     except service.InvalidCredentialsError:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")
 
@@ -144,25 +151,84 @@ async def verify_otp(
 
 
 @router.post("/2fa/setup", response_model=TwoFactorSetupOut)
-async def setup_2fa(auth: AuthContext = Depends(get_current_user), pool=Depends(get_pool)):
-    return await service.setup_2fa(pool, auth.tenant_id, auth.user_id)
+async def setup_2fa(
+    auth: AuthContext = Depends(get_current_user),
+    pool=Depends(get_pool),
+    redis_client=Depends(get_redis),
+    settings: Settings = Depends(get_settings),
+):
+    try:
+        return await service.setup_2fa(pool, redis_client, settings, auth.tenant_id, auth.user_id)
+    except service.NoEmailForTwoFactorError:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Account has no email on file for 2FA codes")
+    except service.ResendCooldownError as exc:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "Kod hozirgina yuborildi, birozdan so'ng qayta urinib ko'ring",
+            headers={"Retry-After": str(exc.remaining_seconds)},
+        )
+
+
+@router.post("/2fa/resend-setup-code", response_model=TwoFactorSetupOut)
+async def resend_2fa_setup_code(
+    auth: AuthContext = Depends(get_current_user),
+    pool=Depends(get_pool),
+    redis_client=Depends(get_redis),
+    settings: Settings = Depends(get_settings),
+):
+    try:
+        return await service.resend_2fa_setup_code(pool, redis_client, settings, auth.tenant_id, auth.user_id)
+    except service.NoEmailForTwoFactorError:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Account has no email on file for 2FA codes")
+    except service.ResendCooldownError as exc:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "Kod hozirgina yuborildi, birozdan so'ng qayta urinib ko'ring",
+            headers={"Retry-After": str(exc.remaining_seconds)},
+        )
 
 
 @router.post("/2fa/confirm", status_code=status.HTTP_204_NO_CONTENT)
 async def confirm_2fa(
-    body: TwoFactorConfirmRequest, auth: AuthContext = Depends(get_current_user), pool=Depends(get_pool)
+    body: TwoFactorConfirmRequest,
+    auth: AuthContext = Depends(get_current_user),
+    pool=Depends(get_pool),
+    redis_client=Depends(get_redis),
+    settings: Settings = Depends(get_settings),
 ):
     try:
-        await service.confirm_2fa(pool, auth.tenant_id, auth.user_id, body.code)
+        await service.confirm_2fa(pool, redis_client, settings, auth.tenant_id, auth.user_id, body.code)
     except (service.TwoFactorNotSetupError, service.InvalidTwoFactorCodeError):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid code or 2FA not set up")
 
 
 @router.post("/2fa/verify-login", response_model=TokenPair)
 async def verify_login_2fa(
-    body: TwoFactorVerifyLoginRequest, pool=Depends(get_pool), settings: Settings = Depends(get_settings)
+    body: TwoFactorVerifyLoginRequest,
+    pool=Depends(get_pool),
+    redis_client=Depends(get_redis),
+    settings: Settings = Depends(get_settings),
 ):
     try:
-        return await service.verify_login_2fa(pool, settings, body.pending_token, body.code)
+        return await service.verify_login_2fa(pool, redis_client, settings, body.pending_token, body.code)
     except service.InvalidTwoFactorCodeError:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired code")
+
+
+@router.post("/2fa/resend-login-code", response_model=TwoFactorResendOut)
+async def resend_login_2fa_code(
+    body: TwoFactorResendLoginCodeRequest,
+    pool=Depends(get_pool),
+    redis_client=Depends(get_redis),
+    settings: Settings = Depends(get_settings),
+):
+    try:
+        return await service.resend_login_2fa_code(pool, redis_client, settings, body.pending_token)
+    except service.InvalidTwoFactorCodeError:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired session")
+    except service.ResendCooldownError as exc:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "Kod hozirgina yuborildi, birozdan so'ng qayta urinib ko'ring",
+            headers={"Retry-After": str(exc.remaining_seconds)},
+        )

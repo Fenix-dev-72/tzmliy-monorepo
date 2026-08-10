@@ -5,7 +5,7 @@ export interface TokenPair {
 
 export type LoginResult =
   | ({ requires_2fa: false } & TokenPair)
-  | { requires_2fa: true; pending_token: string };
+  | { requires_2fa: true; pending_token: string; resend_after_seconds: number };
 
 export type PendingLink = "telegram" | "utel" | "crm";
 

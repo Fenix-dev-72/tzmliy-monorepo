@@ -10,11 +10,15 @@ export interface Paginated<T> {
 export class ApiError extends Error {
   status: number;
   detail: string;
+  // Populated from the Retry-After header on a 429 (e.g. 2FA resend-cooldown
+  // responses) -- seconds the caller must wait before trying again.
+  retryAfterSeconds?: number;
 
-  constructor(status: number, detail: string) {
+  constructor(status: number, detail: string, retryAfterSeconds?: number) {
     super(detail);
     this.status = status;
     this.detail = detail;
+    this.retryAfterSeconds = retryAfterSeconds;
   }
 }
 
@@ -96,7 +100,9 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
 
   if (!res.ok) {
     if (res.status === 401 && options.accessToken) unauthorizedHandler?.();
-    throw new ApiError(res.status, await parseErrorDetail(res));
+    const retryAfterHeader = res.headers.get("Retry-After");
+    const retryAfterSeconds = retryAfterHeader ? Number(retryAfterHeader) : undefined;
+    throw new ApiError(res.status, await parseErrorDetail(res), retryAfterSeconds);
   }
 
   if (res.status === 204) {

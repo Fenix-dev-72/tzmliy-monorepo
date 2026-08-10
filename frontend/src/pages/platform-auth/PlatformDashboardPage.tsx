@@ -1,11 +1,15 @@
 import { useEffect, useState } from "react";
-import { Building2, Cpu, HardDrive, MemoryStick, Users } from "lucide-react";
+import { Link } from "react-router";
+import { AlertTriangle, ArrowUpRight, Building2, CreditCard, Cpu, HardDrive, MemoryStick, Users } from "lucide-react";
 import { useLang } from "@/lib/i18n/LangContext";
 import { usePlatformAuth } from "@/lib/auth/platformAuthStore";
 import * as platformDashboardApi from "@/lib/api/platformDashboard";
-import type { DashboardSummary, ServerMetrics } from "@/lib/api/platformDashboard";
+import type { DashboardSummary, ServerMetrics, TenantStorageUsage } from "@/lib/api/platformDashboard";
+import { formatBytes } from "@/lib/format/storage";
 import * as platformTenantsApi from "@/lib/api/platformTenants";
 import type { Tenant } from "@/lib/api/platformTenants";
+import * as platformBackupApi from "@/lib/api/platformBackup";
+import type { BackupSettingsStatus } from "@/lib/api/platformBackup";
 import { formatMoney } from "@/lib/format/money";
 import { KpiCard } from "@/pages/dashboard/home/KpiCard";
 
@@ -22,11 +26,18 @@ const content = {
     slug: "Slug",
     status: "Holat",
     trialEndsAt: "Sinov tugaydi",
+    storage: "Xotira",
     serverTitle: "Server holati",
     cpu: "CPU",
     memory: "Xotira (RAM)",
     disk: "Disk",
+    plansTitle: "Tariflar",
+    viewAllPlans: "Barchasini ko'rish",
+    tenantsSuffix: "tenant",
     loadError: "Ma'lumotlarni yuklab bo'lmadi",
+    backupNotConfigured: "Ma'lumotlar bazasi zaxira nusxasi sozlanmagan — server nobud bo'lsa, ma'lumot yo'qolishi mumkin.",
+    backupFailed: "Oxirgi zaxira nusxa muvaffaqiyatsiz tugadi.",
+    backupSetup: "Sozlash",
     statuses: {
       trial: "Sinov",
       active: "Faol",
@@ -48,11 +59,18 @@ const content = {
     slug: "Slug",
     status: "Статус",
     trialEndsAt: "Пробный период до",
+    storage: "Хранилище",
     serverTitle: "Состояние сервера",
     cpu: "CPU",
     memory: "Память (RAM)",
     disk: "Диск",
+    plansTitle: "Тарифы",
+    viewAllPlans: "Смотреть все",
+    tenantsSuffix: "тенантов",
     loadError: "Не удалось загрузить данные",
+    backupNotConfigured: "Резервное копирование базы данных не настроено — при потере сервера данные могут быть утеряны.",
+    backupFailed: "Последняя резервная копия завершилась с ошибкой.",
+    backupSetup: "Настроить",
     statuses: {
       trial: "Пробный",
       active: "Активен",
@@ -108,7 +126,9 @@ export function PlatformDashboardPage() {
 
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [tenants, setTenants] = useState<Tenant[] | null>(null);
+  const [storageUsage, setStorageUsage] = useState<TenantStorageUsage[] | null>(null);
   const [metrics, setMetrics] = useState<ServerMetrics | null>(null);
+  const [backupStatus, setBackupStatus] = useState<BackupSettingsStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -119,6 +139,13 @@ export function PlatformDashboardPage() {
         setTenants(tenantsData);
       })
       .catch(() => setError(t.loadError));
+    // Fetched separately (not folded into the Promise.all above) so a
+    // backup-status failure never blocks the rest of the dashboard from
+    // rendering -- the warning banner just silently stays absent.
+    platformBackupApi.getBackupSettings(accessToken).then(setBackupStatus).catch(() => {});
+    // Also fetched separately -- a storage-usage failure shouldn't block the
+    // rest of the dashboard, the column just falls back to "—" per row.
+    platformDashboardApi.getStorageUsage(accessToken).then(setStorageUsage).catch(() => {});
   }, [accessToken, t.loadError]);
 
   useEffect(() => {
@@ -138,6 +165,23 @@ export function PlatformDashboardPage() {
       </div>
 
       {error && <div className="glass-card p-6 text-center text-sm text-foreground-muted">{error}</div>}
+
+      {backupStatus && (!backupStatus.configured || backupStatus.last_backup_status === "failed") && (
+        <div className="mb-6 flex items-center justify-between gap-4 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
+          <div className="flex items-center gap-3">
+            <AlertTriangle size={18} className="shrink-0 text-amber-500" />
+            <p className="text-sm font-medium text-amber-600 dark:text-amber-400">
+              {backupStatus.configured ? t.backupFailed : t.backupNotConfigured}
+            </p>
+          </div>
+          <Link
+            to="/platform/backup-settings"
+            className="shrink-0 rounded-lg border border-amber-500/40 px-3 py-1.5 text-xs font-semibold text-amber-600 whitespace-nowrap hover:bg-amber-500/10 dark:text-amber-400"
+          >
+            {t.backupSetup}
+          </Link>
+        </div>
+      )}
 
       {!error && (
         <>
@@ -195,12 +239,15 @@ export function PlatformDashboardPage() {
                         <th className="px-2 py-2 text-left font-medium">{t.name}</th>
                         <th className="px-2 py-2 text-left font-medium">{t.slug}</th>
                         <th className="px-2 py-2 text-left font-medium">{t.status}</th>
+                        <th className="px-2 py-2 text-left font-medium">{t.storage}</th>
                         <th className="px-2 py-2 text-right font-medium">{t.trialEndsAt}</th>
                       </tr>
                     </thead>
                     <tbody>
                       {tenants.map((tenant) => {
                         const color = STATUS_COLOR[tenant.status] ?? "#6B7280";
+                        const usage = storageUsage?.find((u) => u.tenant_id === tenant.id);
+                        const usagePercent = usage ? usage.usage_ratio_bps / 100 : 0;
                         return (
                           <tr key={tenant.id} className="border-card-border/60 border-b last:border-0">
                             <td className="px-2 py-2.5 font-medium text-foreground">{tenant.name}</td>
@@ -212,6 +259,23 @@ export function PlatformDashboardPage() {
                               >
                                 {t.statuses[tenant.status] ?? tenant.status}
                               </span>
+                            </td>
+                            <td className="px-2 py-2.5">
+                              {usage && usage.billable_storage_limit_bytes !== null ? (
+                                <div className="w-28">
+                                  <div className="text-foreground-muted mb-1 font-mono text-[11px] whitespace-nowrap">
+                                    {formatBytes(usage.total_bytes)} / {formatBytes(usage.billable_storage_limit_bytes)}
+                                  </div>
+                                  <div className="bg-accent h-1.5 w-full overflow-hidden rounded-full">
+                                    <div
+                                      className="h-full rounded-full transition-all"
+                                      style={{ width: `${Math.min(100, usagePercent)}%`, background: metricColor(usagePercent) }}
+                                    />
+                                  </div>
+                                </div>
+                              ) : (
+                                <span className="text-foreground-muted text-xs">—</span>
+                              )}
                             </td>
                             <td className="text-foreground-muted px-2 py-2.5 text-right text-xs">
                               {tenant.trial_ends_at ? new Date(tenant.trial_ends_at).toLocaleDateString() : "—"}
@@ -247,6 +311,50 @@ export function PlatformDashboardPage() {
                 </>
               )}
             </div>
+          </div>
+
+          <div className="glass-card p-5 sm:p-6">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                <CreditCard size={15} className="text-foreground-muted" />
+                {t.plansTitle}
+              </h3>
+              <Link
+                to="/platform/billing-plans"
+                className="text-primary flex items-center gap-1 text-xs font-semibold hover:underline"
+              >
+                {t.viewAllPlans}
+                <ArrowUpRight size={13} />
+              </Link>
+            </div>
+
+            {!summary ? (
+              <div className="bg-accent/60 h-20 animate-pulse rounded-xl" />
+            ) : (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {summary.plans_usage.map((plan) => {
+                  const maxCount = Math.max(1, ...summary.plans_usage.map((p) => p.tenant_count));
+                  const width = (plan.tenant_count / maxCount) * 100;
+                  return (
+                    <Link
+                      key={plan.code}
+                      to="/platform/billing-plans"
+                      className="border-card-border/60 hover:border-primary/40 block rounded-xl border p-3 transition-colors"
+                    >
+                      <div className="mb-1.5 flex items-center justify-between gap-2">
+                        <span className="truncate text-sm font-medium text-foreground">{plan.name}</span>
+                        <span className="font-mono text-xs text-foreground-muted">
+                          {plan.tenant_count} {t.tenantsSuffix}
+                        </span>
+                      </div>
+                      <div className="bg-accent h-1.5 w-full overflow-hidden rounded-full">
+                        <div className="gold-gradient-bg h-full rounded-full transition-all" style={{ width: `${width}%` }} />
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </>
       )}
