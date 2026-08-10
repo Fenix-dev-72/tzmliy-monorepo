@@ -18,6 +18,7 @@ from app.modules.auth.schemas import (
     RegistrationCodeVerifyOut,
     RegistrationComplete,
     TwoFactorConfirmRequest,
+    TwoFactorDisableRequest,
     TwoFactorResendLoginCodeRequest,
     TwoFactorResendOut,
     TwoFactorSetupOut,
@@ -200,6 +201,19 @@ async def confirm_2fa(
         await service.confirm_2fa(pool, redis_client, settings, auth.tenant_id, auth.user_id, body.code)
     except (service.TwoFactorNotSetupError, service.InvalidTwoFactorCodeError):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid code or 2FA not set up")
+
+
+@router.post("/2fa/disable", status_code=status.HTTP_204_NO_CONTENT)
+async def disable_2fa(
+    body: TwoFactorDisableRequest,
+    auth: AuthContext = Depends(get_current_user),
+    pool=Depends(get_pool),
+    settings: Settings = Depends(get_settings),
+):
+    try:
+        await service.disable_2fa(pool, settings, auth.tenant_id, auth.user_id, body.password)
+    except service.InvalidCredentialsError:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid password")
 
 
 @router.post("/2fa/verify-login", response_model=TokenPair)

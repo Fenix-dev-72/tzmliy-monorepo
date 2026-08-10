@@ -104,6 +104,9 @@ UPDATE users SET password_hash = :password_hash, updated_at = now() WHERE id = :
 -- name: enable_user_totp!
 UPDATE users SET totp_enabled = true WHERE id = :user_id;
 
+-- name: disable_user_totp!
+UPDATE users SET totp_enabled = false WHERE id = :user_id;
+
 -- name: set_telegram_link_token!
 UPDATE users SET telegram_link_token_hash = :token_hash, telegram_link_token_expires_at = :expires_at
 WHERE id = :user_id;

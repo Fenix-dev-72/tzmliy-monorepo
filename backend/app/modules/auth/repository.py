@@ -140,6 +140,10 @@ async def enable_user_totp(conn: asyncpg.Connection, user_id: UUID) -> None:
     await _queries.enable_user_totp(conn, user_id=user_id)
 
 
+async def disable_user_totp(conn: asyncpg.Connection, user_id: UUID) -> None:
+    await _queries.disable_user_totp(conn, user_id=user_id)
+
+
 async def set_telegram_link_token(conn: asyncpg.Connection, user_id: UUID, token_hash: str, expires_at) -> None:
     await _queries.set_telegram_link_token(conn, user_id=user_id, token_hash=token_hash, expires_at=expires_at)
 

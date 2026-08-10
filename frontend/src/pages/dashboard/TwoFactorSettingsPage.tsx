@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { CheckCircle2, Loader2, Mail } from "lucide-react";
 import { useLang } from "@/lib/i18n/LangContext";
 import { useTenantAuth } from "@/lib/auth/tenantAuthStore";
 import * as tenantAuthApi from "@/lib/api/tenantAuth";
 import { ApiError } from "@/lib/api/client";
 import { OtpCodeInput } from "@/components/auth/OtpCodeInput";
+import { FormField } from "@/components/auth/FormField";
 import { Button } from "@/components/ui/button";
 import { PasswordChangeCard } from "./PasswordChangeCard";
 import { ProfileSettingsCard } from "./ProfileSettingsCard";
@@ -27,6 +29,13 @@ const content = {
     cooldownError: (s: number) => `Kod hozirgina yuborildi. ${s} soniyadan so'ng qayta urinib ko'ring`,
     enabledTitle: "2FA yoqilgan",
     enabledDesc: "Hisobingiz ikki faktorli tasdiqlash bilan himoyalangan. Endi to'lov qabul qilish, bonus rejalar va boshqa imtiyozli amallar mavjud.",
+    disable: "2FA ni o'chirish",
+    disableCancel: "Bekor qilish",
+    disablePasswordLabel: "Parolni tasdiqlang",
+    disableConfirm: "O'chirish",
+    disableWrongPassword: "Parol noto'g'ri",
+    disableError: "Xatolik yuz berdi",
+    disableSuccess: "2FA o'chirildi",
     whyTitle: "Nega kerak?",
     whyDesc: "To'lov qabul qilish, bonus/payroll hisoblash va boshqa moliyaviy amallar faqat 2FA yoqilgan hisoblarga ruxsat beriladi.",
   },
@@ -46,6 +55,13 @@ const content = {
     cooldownError: (s: number) => `Код только что отправлен. Повторите через ${s} с`,
     enabledTitle: "2FA включена",
     enabledDesc: "Ваш аккаунт защищён двухфакторной аутентификацией. Теперь доступны приём платежей, бонусные планы и другие привилегированные действия.",
+    disable: "Отключить 2FA",
+    disableCancel: "Отмена",
+    disablePasswordLabel: "Подтвердите пароль",
+    disableConfirm: "Отключить",
+    disableWrongPassword: "Неверный пароль",
+    disableError: "Произошла ошибка",
+    disableSuccess: "2FA отключена",
     whyTitle: "Зачем это нужно?",
     whyDesc: "Приём платежей, расчёт бонусов/зарплаты и другие финансовые действия доступны только аккаунтам с включённой 2FA.",
   },
@@ -63,6 +79,11 @@ export function TwoFactorSettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [justEnabled, setJustEnabled] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
+
+  const [showDisableForm, setShowDisableForm] = useState(false);
+  const [disablePassword, setDisablePassword] = useState("");
+  const [disableError, setDisableError] = useState<string | null>(null);
+  const [disabling, setDisabling] = useState(false);
 
   const alreadyEnabled = Boolean(user?.totp_enabled) || justEnabled;
   const canManageDashboards = (user?.permissions ?? []).includes("analytics.manage");
@@ -113,6 +134,29 @@ export function TwoFactorSettingsPage() {
     }
   }
 
+  async function handleDisable() {
+    if (!accessToken || disablePassword.length === 0) return;
+    setDisabling(true);
+    setDisableError(null);
+    try {
+      await tenantAuthApi.disable2fa(accessToken, disablePassword);
+      await refreshSession();
+      setJustEnabled(false);
+      setShowDisableForm(false);
+      setDisablePassword("");
+      // Reset the setup UI so a later re-enable starts from the idle state,
+      // not stuck showing a stale emailMasked/code from the previous run.
+      setEmailMasked(null);
+      setCode("");
+      toast.success(t.disableSuccess);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) setDisableError(t.disableWrongPassword);
+      else setDisableError(t.disableError);
+    } finally {
+      setDisabling(false);
+    }
+  }
+
   return (
     <main className="mx-auto max-w-lg px-4 py-8 sm:px-6 sm:py-10">
       <h1 className="font-heading mb-6 text-xl font-extrabold text-foreground sm:mb-8 sm:text-2xl">{t.pageTitle}</h1>
@@ -137,6 +181,50 @@ export function TwoFactorSettingsPage() {
           </div>
           <h2 className="font-heading text-lg font-bold text-foreground">{t.enabledTitle}</h2>
           <p className="max-w-sm text-sm text-foreground-muted">{t.enabledDesc}</p>
+
+          {showDisableForm ? (
+            <div className="mt-2 w-full max-w-[280px] text-left">
+              <FormField
+                label={t.disablePasswordLabel}
+                type="password"
+                value={disablePassword}
+                onChange={(e) => setDisablePassword(e.target.value)}
+                autoComplete="current-password"
+              />
+              {disableError && <p className="text-destructive mb-3 text-[13px] font-medium">{disableError}</p>}
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  disabled={disabling}
+                  onClick={() => {
+                    setShowDisableForm(false);
+                    setDisablePassword("");
+                    setDisableError(null);
+                  }}
+                >
+                  {t.disableCancel}
+                </Button>
+                <Button
+                  variant="destructive"
+                  className="flex-1"
+                  disabled={disablePassword.length === 0 || disabling}
+                  onClick={() => void handleDisable()}
+                >
+                  {disabling && <Loader2 size={16} className="animate-spin" />}
+                  {t.disableConfirm}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowDisableForm(true)}
+              className="text-destructive mt-1 text-[13px] font-medium"
+            >
+              {t.disable}
+            </button>
+          )}
         </div>
       ) : (
         <div className="glass-card p-6 text-center sm:p-8">

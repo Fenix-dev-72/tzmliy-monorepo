@@ -74,6 +74,14 @@ export function confirm2fa(accessToken: string, code: string) {
   return apiFetch<void>("/api/v1/auth/2fa/confirm", { method: "POST", accessToken, body: { code } });
 }
 
+// Requires the current password as a re-auth guard -- a valid access token
+// alone (e.g. an unattended open session) must not be enough to turn 2FA
+// off. Same refresh-session caveat as confirm2fa: the totp_enabled claim is
+// baked into the access token at issue time.
+export function disable2fa(accessToken: string, password: string) {
+  return apiFetch<void>("/api/v1/auth/2fa/disable", { method: "POST", accessToken, body: { password } });
+}
+
 // Revokes every refresh session (including the caller's own) on success --
 // the current tab must log out right after this succeeds, since its own
 // refresh token no longer works.

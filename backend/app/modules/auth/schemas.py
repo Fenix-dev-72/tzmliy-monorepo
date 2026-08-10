@@ -139,6 +139,10 @@ class TwoFactorConfirmRequest(BaseModel):
     code: str
 
 
+class TwoFactorDisableRequest(BaseModel):
+    password: str
+
+
 class TwoFactorVerifyLoginRequest(BaseModel):
     pending_token: str
     code: str

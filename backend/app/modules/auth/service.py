@@ -520,6 +520,22 @@ async def confirm_2fa(
         await repository.enable_user_totp(conn, user_id)
 
 
+async def disable_2fa(
+    pool: asyncpg.Pool, settings: Settings, tenant_id: UUID, user_id: UUID, password: str
+) -> None:
+    # Re-verifying the current password (not just a valid access token) is
+    # the standard guard on any security-lowering toggle -- an unattended,
+    # already-open session shouldn't be enough on its own to turn 2FA off.
+    async with tenant_connection(pool, tenant_id) as conn:
+        user = await repository.get_user_by_id(conn, user_id)
+        if user is None:
+            raise InvalidCredentialsError
+        if not await verify_password(password, user["password_hash"]):
+            raise InvalidCredentialsError
+        if user["totp_enabled"]:
+            await repository.disable_user_totp(conn, user_id)
+
+
 # --- Self-service tenant registration ---------------------------------
 #
 # Replaces Platform-Admin-provisioned onboarding as the primary path (that

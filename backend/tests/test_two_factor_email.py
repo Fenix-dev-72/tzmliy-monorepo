@@ -22,6 +22,7 @@ from app.modules.tenants import service as tenants_service
 SETUP = "/api/v1/auth/2fa/setup"
 RESEND_SETUP = "/api/v1/auth/2fa/resend-setup-code"
 CONFIRM = "/api/v1/auth/2fa/confirm"
+DISABLE = "/api/v1/auth/2fa/disable"
 LOGIN = "/api/v1/auth/login"
 VERIFY_LOGIN = "/api/v1/auth/2fa/verify-login"
 RESEND_LOGIN = "/api/v1/auth/2fa/resend-login-code"
@@ -62,6 +63,33 @@ async def test_setup_then_confirm_enables_2fa(api_client, http_user, monkeypatch
         CONFIRM, headers={"Authorization": f"Bearer {token}"}, json={"code": captured["code"]}
     )
     assert confirm.status_code == 204, confirm.text
+
+
+async def test_disable_requires_correct_password(api_client, http_user, monkeypatch):
+    captured = _capture_send_code(monkeypatch, auth_service)
+    token = await _login_token(api_client, http_user)
+    await api_client.post(SETUP, headers={"Authorization": f"Bearer {token}"})
+    await api_client.post(CONFIRM, headers={"Authorization": f"Bearer {token}"}, json={"code": captured["code"]})
+
+    wrong = await api_client.post(
+        DISABLE, headers={"Authorization": f"Bearer {token}"}, json={"password": "not-the-password"}
+    )
+    assert wrong.status_code == 401
+
+    right = await api_client.post(
+        DISABLE, headers={"Authorization": f"Bearer {token}"}, json={"password": http_user["password"]}
+    )
+    assert right.status_code == 204, right.text
+
+    me = await api_client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert me.json()["totp_enabled"] is False
+
+    # 2FA is off again -- login must not require a code this time.
+    login_resp = await api_client.post(
+        LOGIN, json={"identifier": http_user["identifier"], "password": http_user["password"]}
+    )
+    assert login_resp.status_code == 200, login_resp.text
+    assert login_resp.json()["requires_2fa"] is False
 
 
 async def test_confirm_with_wrong_code_is_400(api_client, http_user, monkeypatch):
