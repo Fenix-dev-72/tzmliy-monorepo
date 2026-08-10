@@ -111,6 +111,11 @@ async def count_active_users(conn: asyncpg.Connection) -> int:
     return row["count"]
 
 
+async def list_admin_user_ids(conn: asyncpg.Connection) -> list[UUID]:
+    rows = [row async for row in _queries.list_admin_user_ids(conn)]
+    return [r["id"] for r in rows]
+
+
 async def update_user_profile(
     conn: asyncpg.Connection, user_id: UUID, full_name: str | None, phone: str | None
 ) -> dict | None:

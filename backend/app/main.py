@@ -33,6 +33,7 @@ from app.modules.crm.router import router as crm_router
 from app.modules.customers.router import router as customers_router
 from app.modules.finance import payroll_worker
 from app.modules.finance.router import router as finance_router
+from app.modules.notifications.router import platform_router as notifications_platform_router
 from app.modules.notifications.router import router as notifications_router
 from app.modules.platform_dashboard.router import router as platform_dashboard_router
 from app.modules.products.router import router as products_router
@@ -178,6 +179,7 @@ app.include_router(billing_tenant_router)
 app.include_router(billing_platform_router)
 app.include_router(billing_webhook_router)
 app.include_router(notifications_router)
+app.include_router(notifications_platform_router)
 app.include_router(analytics_router)
 app.include_router(analytics_dashboard_router)
 app.include_router(crm_router)

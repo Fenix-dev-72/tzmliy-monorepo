@@ -1,5 +1,5 @@
 import { NavLink } from "react-router";
-import { CreditCard, DatabaseBackup, LayoutDashboard, MessageSquareWarning, PlusCircle } from "lucide-react";
+import { CreditCard, DatabaseBackup, LayoutDashboard, Megaphone, MessageSquareWarning, PlusCircle } from "lucide-react";
 import { useLang } from "@/lib/i18n/LangContext";
 
 const content = {
@@ -9,6 +9,7 @@ const content = {
     newTenant: "Yangi tenant yaratish",
     backupSettings: "Backup sozlamalari",
     billingPlans: "Tarif rejalar",
+    broadcast: "Xabar yuborish",
   },
   ru: {
     home: "Главная",
@@ -16,6 +17,7 @@ const content = {
     newTenant: "Создать тенанта",
     backupSettings: "Настройки бэкапа",
     billingPlans: "Тарифные планы",
+    broadcast: "Отправить сообщение",
   },
 };
 
@@ -28,6 +30,7 @@ export function PlatformDashboardSidebar() {
     { to: "/platform/complaints", end: false, icon: MessageSquareWarning, label: t.complaints },
     { to: "/platform/tenants/new", end: false, icon: PlusCircle, label: t.newTenant },
     { to: "/platform/billing-plans", end: false, icon: CreditCard, label: t.billingPlans },
+    { to: "/platform/broadcast", end: false, icon: Megaphone, label: t.broadcast },
     { to: "/platform/backup-settings", end: false, icon: DatabaseBackup, label: t.backupSettings },
   ];
 

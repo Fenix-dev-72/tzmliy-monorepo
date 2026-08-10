@@ -3,11 +3,19 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.core.config import Settings, get_settings
-from app.core.deps import AuthContext, get_current_user, get_pool, require_permission
+from app.core.deps import (
+    AuthContext,
+    PlatformAuthContext,
+    get_current_platform_admin,
+    get_current_user,
+    get_pool,
+    require_permission,
+)
 from app.modules.auth.permissions import NOTIFICATIONS_MANAGE, NOTIFICATIONS_VIEW
 from app.modules.billing.deps import require_plan_feature
 from app.modules.billing.features import FEATURE_TELEGRAM_NOTIFICATIONS
-from app.modules.notifications import service
+from app.modules.notifications import inbox_service, service
+from app.modules.notifications.inbox_schemas import BroadcastOut, BroadcastRequest, NotificationOut, UnreadCountOut
 from app.modules.notifications.schemas import (
     DeliveryLogOut,
     GroupLinkTokenRequest,
@@ -27,6 +35,10 @@ from app.modules.notifications.schemas import (
 from app.modules.notifications.telegram import TelegramApiError
 
 router = APIRouter(prefix="/api/v1/notifications", tags=["notifications"])
+
+# Platform-facing: Platform Admin broadcasting to tenant admins. Separate
+# router (same two-router-per-module shape as complaints/router.py).
+platform_router = APIRouter(prefix="/platform/v1/notifications", tags=["platform-notifications"])
 
 
 @router.post("/integrations/telegram", response_model=TelegramStatusOut, status_code=status.HTTP_201_CREATED)
@@ -255,3 +267,55 @@ async def list_delivery_log(
     auth: AuthContext = Depends(require_permission(NOTIFICATIONS_VIEW)),
 ):
     return await service.list_delivery_log(pool, auth.tenant_id, outbox_id)
+
+
+# --- In-app notification inbox (bell icon) -------------------------------
+#
+# Deliberately no permission gate (like /me) -- every employee needs their
+# own bell regardless of role, unlike the Telegram-config endpoints above.
+
+
+@router.get("/inbox", response_model=list[NotificationOut])
+async def list_inbox(
+    limit: int = 50, pool=Depends(get_pool), auth: AuthContext = Depends(get_current_user)
+):
+    return await inbox_service.list_inbox(pool, auth.tenant_id, auth.user_id, limit)
+
+
+@router.get("/inbox/unread-count", response_model=UnreadCountOut)
+async def get_unread_count(pool=Depends(get_pool), auth: AuthContext = Depends(get_current_user)):
+    count = await inbox_service.count_unread(pool, auth.tenant_id, auth.user_id)
+    return UnreadCountOut(count=count)
+
+
+@router.post("/inbox/{notification_id}/read", status_code=status.HTTP_204_NO_CONTENT)
+async def mark_notification_read(
+    notification_id: UUID, pool=Depends(get_pool), auth: AuthContext = Depends(get_current_user)
+):
+    await inbox_service.mark_read(pool, auth.tenant_id, auth.user_id, notification_id)
+
+
+@router.post("/inbox/read-all", status_code=status.HTTP_204_NO_CONTENT)
+async def mark_all_notifications_read(pool=Depends(get_pool), auth: AuthContext = Depends(get_current_user)):
+    await inbox_service.mark_all_read(pool, auth.tenant_id, auth.user_id)
+
+
+# --- Platform Admin: broadcast to tenant admins --------------------------
+
+
+@platform_router.post("/broadcast", response_model=BroadcastOut)
+async def broadcast_notification(
+    body: BroadcastRequest,
+    pool=Depends(get_pool),
+    settings: Settings = Depends(get_settings),
+    admin: PlatformAuthContext = Depends(get_current_platform_admin),
+):
+    if body.audience == "plan" and body.billing_plan_id is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "billing_plan_id is required when audience='plan'")
+    try:
+        result = await inbox_service.broadcast_notification(
+            pool, settings, admin.admin_id, body.audience, body.billing_plan_id, body.title, body.body, body.reason
+        )
+    except inbox_service.TwoFactorRequiredError:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "2FA required for this action")
+    return BroadcastOut(**result)

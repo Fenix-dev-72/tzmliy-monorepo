@@ -18,6 +18,11 @@ const content = {
     statuses: { open: "Ochiq", in_progress: "Jarayonda", resolved: "Hal qilindi" } as Record<ComplaintStatus, string>,
     updated: "Holat yangilandi",
     genericError: "Xatolik yuz berdi",
+    replyLabel: "Javob",
+    replyPlaceholder: "Javobingizni yozing...",
+    sendReply: "Javob yuborish",
+    replySent: "Javob yuborildi",
+    yourReply: "Sizning javobingiz:",
   },
   ru: {
     title: "Жалобы",
@@ -29,6 +34,11 @@ const content = {
     statuses: { open: "Открыта", in_progress: "В работе", resolved: "Решена" } as Record<ComplaintStatus, string>,
     updated: "Статус обновлён",
     genericError: "Произошла ошибка",
+    replyLabel: "Ответ",
+    replyPlaceholder: "Напишите ответ...",
+    sendReply: "Отправить ответ",
+    replySent: "Ответ отправлен",
+    yourReply: "Ваш ответ:",
   },
 };
 
@@ -46,6 +56,8 @@ export function PlatformComplaintsPage() {
   const [complaints, setComplaints] = useState<Complaint[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
+  const [replyingId, setReplyingId] = useState<string | null>(null);
 
   async function load() {
     if (!accessToken) return;
@@ -72,6 +84,22 @@ export function PlatformComplaintsPage() {
       toast.error(t.genericError);
     } finally {
       setUpdatingId(null);
+    }
+  }
+
+  async function handleReply(id: string) {
+    const message = (replyDrafts[id] ?? "").trim();
+    if (!accessToken || message.length === 0) return;
+    setReplyingId(id);
+    try {
+      await complaintsApi.replyToComplaint(accessToken, id, message);
+      toast.success(t.replySent);
+      setReplyDrafts((prev) => ({ ...prev, [id]: "" }));
+      await load();
+    } catch {
+      toast.error(t.genericError);
+    } finally {
+      setReplyingId(null);
     }
   }
 
@@ -109,27 +137,55 @@ export function PlatformComplaintsPage() {
                   </span>
                 </div>
                 <p className="text-foreground-muted mb-3 text-sm whitespace-pre-wrap">{c.message}</p>
+
+                {c.admin_reply && (
+                  <div className="border-card-border mb-3 rounded-lg border-l-2 border-l-primary bg-accent/40 p-3">
+                    <p className="text-primary mb-1 text-xs font-semibold">{t.yourReply}</p>
+                    <p className="text-foreground text-sm whitespace-pre-wrap">{c.admin_reply}</p>
+                  </div>
+                )}
+
+                <div className="mb-3">
+                  <textarea
+                    value={replyDrafts[c.id] ?? ""}
+                    onChange={(e) => setReplyDrafts((prev) => ({ ...prev, [c.id]: e.target.value }))}
+                    placeholder={c.admin_reply ? t.replyPlaceholder : `${t.replyLabel}: ${t.replyPlaceholder}`}
+                    rows={2}
+                    className="border-card-border bg-input-background text-foreground w-full rounded-lg border px-3 py-2 text-sm outline-none"
+                  />
+                </div>
+
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="text-foreground-muted text-xs">{new Date(c.created_at).toLocaleString()}</span>
-                  {c.status !== "resolved" && (
-                    <div className="flex gap-2">
-                      {c.status === "open" && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={updatingId === c.id}
-                          onClick={() => handleUpdate(c.id, "in_progress")}
-                        >
-                          <Clock size={13} />
-                          {t.markInProgress}
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={replyingId === c.id || (replyDrafts[c.id] ?? "").trim().length === 0}
+                      onClick={() => handleReply(c.id)}
+                    >
+                      {t.sendReply}
+                    </Button>
+                    {c.status !== "resolved" && (
+                      <>
+                        {c.status === "open" && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={updatingId === c.id}
+                            onClick={() => handleUpdate(c.id, "in_progress")}
+                          >
+                            <Clock size={13} />
+                            {t.markInProgress}
+                          </Button>
+                        )}
+                        <Button variant="gold" size="sm" disabled={updatingId === c.id} onClick={() => handleUpdate(c.id, "resolved")}>
+                          <CheckCircle2 size={13} />
+                          {t.markResolved}
                         </Button>
-                      )}
-                      <Button variant="gold" size="sm" disabled={updatingId === c.id} onClick={() => handleUpdate(c.id, "resolved")}>
-                        <CheckCircle2 size={13} />
-                        {t.markResolved}
-                      </Button>
-                    </div>
-                  )}
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
             );

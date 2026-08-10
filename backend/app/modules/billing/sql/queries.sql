@@ -50,7 +50,7 @@ WHERE code = :code
 RETURNING id, code, name, price_amount, currency, billing_period_months, max_users, max_billable_storage_bytes, features_uz, features_ru, feature_keys, is_popular, is_active, is_trial, trial_days, created_at, updated_at;
 
 -- name: get_tenant_subscription^
-SELECT id, tenant_id, billing_plan_id, current_period_start, current_period_end, warning_80_sent_at, warning_100_sent_at, created_at, updated_at
+SELECT id, tenant_id, billing_plan_id, current_period_start, current_period_end, warning_80_sent_at, warning_100_sent_at, payment_due_warning_sent_at, created_at, updated_at
 FROM tenant_subscriptions
 WHERE tenant_id = :tenant_id;
 
@@ -75,6 +75,11 @@ UPDATE tenant_subscriptions
 SET warning_80_sent_at = :warning_80_sent_at, warning_100_sent_at = :warning_100_sent_at, updated_at = now()
 WHERE tenant_id = :tenant_id
 RETURNING id, tenant_id, billing_plan_id, current_period_start, current_period_end, warning_80_sent_at, warning_100_sent_at, created_at, updated_at;
+
+-- name: set_payment_due_warning_sent!
+-- billing/tasks.py's daily payment-due-warning job -- fires once per period,
+-- same "have we warned yet" shape as warning_80_sent_at/warning_100_sent_at.
+UPDATE tenant_subscriptions SET payment_due_warning_sent_at = now(), updated_at = now() WHERE tenant_id = :tenant_id;
 
 -- name: insert_subscription_payment^
 INSERT INTO subscription_payments (

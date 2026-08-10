@@ -39,6 +39,15 @@ then. (`recharts` used to be in the "not installed" list — it is now installed
 `PlatformTwoFaSetupView.tsx`) now just show "code sent to x***@y.com" + the existing `OtpCodeInput`, no QR
 image involved anywhere.
 
+**Added 2026-08-10**: real in-app notifications. `components/layout/NotificationBell.tsx` replaced
+`DashboardHeader.tsx`'s old stub Bell-icon-as-a-Link — it now polls `GET /api/v1/notifications/inbox/unread-count`
+every 30s (red dot when >0), and a click opens a dropdown backed by `GET /api/v1/notifications/inbox`
+(`lib/api/notifications.ts`'s `getInbox`/`getUnreadCount`/`markNotificationRead`/`markAllNotificationsRead`).
+`SupportPage.tsx` gained a ticket-history list (with any `admin_reply`) below the compose form —
+`lib/api/complaints.ts`'s `listMyComplaints`. New Platform Admin page `PlatformBroadcastView.tsx`
+(`/platform/broadcast`) composes a message to either every tenant admin or a specific plan's tenant admins
+(`notificationsApi.sendBroadcast`) — same 2FA-gate-then-form pattern as `PlatformBillingPlansPage.tsx`.
+
 **Deliberately not installed**: `@mui/*`, `@emotion/*`, most Radix primitives beyond label/slot/tabs/dialog,
 `react-day-picker`, `react-dnd*`, `embla-carousel*`, `react-slick`, `canvas-confetti`, `vaul`, `cmdk`,
 `react-resizable-panels`, `react-responsive-masonry`, `next-themes`, `date-fns`, `@popperjs/core`, `motion`.

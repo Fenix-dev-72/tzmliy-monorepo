@@ -4,6 +4,7 @@ import asyncpg
 
 from app.core.database import platform_connection
 from app.modules.complaints import repository
+from app.modules.notifications import inbox_service
 
 
 class ComplaintNotFoundError(Exception):
@@ -26,6 +27,11 @@ async def list_complaints(pool: asyncpg.Pool, status: str | None) -> list[dict]:
         return await repository.list_complaints(conn, status)
 
 
+async def list_my_complaints(pool: asyncpg.Pool, tenant_id: UUID, user_id: UUID) -> list[dict]:
+    async with platform_connection(pool) as conn:
+        return await repository.list_my_complaints(conn, tenant_id, user_id)
+
+
 async def update_complaint_status(pool: asyncpg.Pool, complaint_id: UUID, new_status: str, admin_id: UUID) -> dict:
     async with platform_connection(pool) as conn:
         existing = await repository.get_complaint_by_id(conn, complaint_id)
@@ -35,3 +41,24 @@ async def update_complaint_status(pool: asyncpg.Pool, complaint_id: UUID, new_st
         if updated is None:
             raise ComplaintNotFoundError
         return updated
+
+
+async def reply_to_complaint(pool: asyncpg.Pool, complaint_id: UUID, admin_id: UUID, message: str) -> dict:
+    async with platform_connection(pool) as conn:
+        existing = await repository.get_complaint_by_id(conn, complaint_id)
+        if existing is None:
+            raise ComplaintNotFoundError
+        updated = await repository.reply_to_complaint(conn, complaint_id, admin_id, message)
+        if updated is None:
+            raise ComplaintNotFoundError
+
+    await inbox_service.notify_user(
+        pool,
+        updated["tenant_id"],
+        updated["created_by_user_id"],
+        "support_reply",
+        "Sizning so'rovingizga javob keldi",
+        message[:200],
+        link="/dashboard/support",
+    )
+    return updated

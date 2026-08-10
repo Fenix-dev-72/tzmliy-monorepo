@@ -25,6 +25,11 @@ async def list_complaints(conn: asyncpg.Connection, status: str | None) -> list[
     return [dict(r) for r in rows]
 
 
+async def list_my_complaints(conn: asyncpg.Connection, tenant_id: UUID, user_id: UUID) -> list[dict]:
+    rows = [row async for row in _queries.list_my_complaints(conn, tenant_id=tenant_id, user_id=user_id)]
+    return [dict(r) for r in rows]
+
+
 async def get_complaint_by_id(conn: asyncpg.Connection, complaint_id: UUID) -> dict | None:
     row = await _queries.get_complaint_by_id(conn, complaint_id=complaint_id)
     return _row(row)
@@ -36,4 +41,9 @@ async def update_complaint_status(
     row = await _queries.update_complaint_status(
         conn, complaint_id=complaint_id, new_status=new_status, admin_id=admin_id
     )
+    return _row(row)
+
+
+async def reply_to_complaint(conn: asyncpg.Connection, complaint_id: UUID, admin_id: UUID, message: str) -> dict | None:
+    row = await _queries.reply_to_complaint(conn, complaint_id=complaint_id, admin_id=admin_id, message=message)
     return _row(row)

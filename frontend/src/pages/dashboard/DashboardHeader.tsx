@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
-import { Bell, LogOut, Settings } from "lucide-react";
+import { LogOut, Settings } from "lucide-react";
 import { useLang } from "@/lib/i18n/LangContext";
 import { useTenantAuth } from "@/lib/auth/tenantAuthStore";
 import { TizimlyLogo, TizimlyWordmark } from "@/components/layout/TizimlyLogo";
 import { LangToggle } from "@/components/layout/LangToggle";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
+import { NotificationBell } from "@/components/layout/NotificationBell";
 
 const content = {
-  uz: { logout: "Chiqish", settings: "Sozlamalar", notifications: "Bildirishnomalar" },
-  ru: { logout: "Выйти", settings: "Настройки", notifications: "Уведомления" },
+  uz: { logout: "Chiqish", settings: "Sozlamalar" },
+  ru: { logout: "Выйти", settings: "Настройки" },
 };
 
 export function DashboardHeader() {
@@ -42,14 +43,7 @@ export function DashboardHeader() {
         <div className="flex flex-1 items-center justify-end gap-2 sm:gap-3">
           <LangToggle />
           <ThemeToggle />
-          <Link
-            to="/dashboard/notifications"
-            aria-label={t.notifications}
-            title={t.notifications}
-            className="border-card-border text-foreground-muted hover:bg-accent hover:text-foreground flex size-9 items-center justify-center rounded-lg border transition-colors"
-          >
-            <Bell size={16} />
-          </Link>
+          <NotificationBell />
 
           <div className="relative" ref={profileRef}>
             <button

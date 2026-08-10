@@ -143,3 +143,11 @@ UPDATE refresh_sessions SET revoked_at = now() WHERE user_id = :user_id AND revo
 
 -- password_reset_tokens / otp_codes / registration_verifications queries
 -- removed -- that data lives in Redis now (see app/modules/auth/otp_store.py).
+
+-- name: list_admin_user_ids
+-- Backs broadcast fan-out (notifications module) and the payment-due
+-- warning task (billing module) -- both notify the tenant admin(s), not
+-- every employee. RLS-scoped like list_users; run inside tenant_connection.
+SELECT u.id
+FROM users u JOIN roles r ON r.id = u.role_id
+WHERE r.name = 'admin' AND u.is_active = true;

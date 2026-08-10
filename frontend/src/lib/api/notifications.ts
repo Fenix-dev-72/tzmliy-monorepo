@@ -200,3 +200,57 @@ export function updateSchedule(accessToken: string, id: string, body: ScheduleUp
 export function deleteSchedule(accessToken: string, id: string) {
   return apiFetch<void>(`/api/v1/notifications/schedules/${id}`, { method: "DELETE", accessToken });
 }
+
+// --- In-app notification inbox (bell icon) -----------------------------
+// Separate from everything above -- that's all Telegram outbox/reports
+// config, this is the per-user bell feed (support replies, Platform Admin
+// broadcasts, payment-due warnings).
+
+export type InAppNotificationType = "support_reply" | "broadcast" | "payment_due";
+
+export interface InAppNotification {
+  id: string;
+  tenant_id: string;
+  user_id: string;
+  type: InAppNotificationType;
+  title: string;
+  body: string;
+  link: string | null;
+  is_read: boolean;
+  created_at: string;
+}
+
+export function getInbox(accessToken: string, limit = 20) {
+  return apiFetch<InAppNotification[]>(`/api/v1/notifications/inbox?limit=${limit}`, { accessToken });
+}
+
+export function getUnreadCount(accessToken: string) {
+  return apiFetch<{ count: number }>("/api/v1/notifications/inbox/unread-count", { accessToken });
+}
+
+export function markNotificationRead(accessToken: string, id: string) {
+  return apiFetch<void>(`/api/v1/notifications/inbox/${id}/read`, { method: "POST", accessToken });
+}
+
+export function markAllNotificationsRead(accessToken: string) {
+  return apiFetch<void>("/api/v1/notifications/inbox/read-all", { method: "POST", accessToken });
+}
+
+// --- Platform Admin: broadcast to tenant admins -------------------------
+
+export interface BroadcastRequest {
+  audience: "all" | "plan";
+  billing_plan_id?: string | null;
+  title: string;
+  body: string;
+  reason: string;
+}
+
+export interface BroadcastResult {
+  tenants_reached: number;
+  admins_notified: number;
+}
+
+export function sendBroadcast(accessToken: string, body: BroadcastRequest) {
+  return apiFetch<BroadcastResult>("/platform/v1/notifications/broadcast", { method: "POST", accessToken, body });
+}

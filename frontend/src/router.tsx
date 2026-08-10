@@ -189,6 +189,11 @@ export const router = createBrowserRouter([
             lazy: () =>
               import("@/pages/platform-auth/PlatformBillingPlansPage").then((m) => ({ Component: m.PlatformBillingPlansPage })),
           },
+          {
+            path: "broadcast",
+            lazy: () =>
+              import("@/pages/platform-auth/PlatformBroadcastView").then((m) => ({ Component: m.PlatformBroadcastView })),
+          },
         ],
       },
     ],

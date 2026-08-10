@@ -20,8 +20,15 @@ class ComplaintOut(BaseModel):
     status: str
     resolved_by_admin_id: UUID | None
     resolved_at: datetime | None
+    admin_reply: str | None
+    replied_by_admin_id: UUID | None
+    replied_at: datetime | None
     created_at: datetime
 
 
 class ComplaintStatusUpdate(BaseModel):
     status: str = Field(pattern="^(open|in_progress|resolved)$")
+
+
+class ComplaintReplyRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=4000)

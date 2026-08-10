@@ -4,7 +4,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.core.deps import AuthContext, PlatformAuthContext, get_current_platform_admin, get_current_user, get_pool
 from app.modules.complaints import service
-from app.modules.complaints.schemas import ComplaintCreate, ComplaintOut, ComplaintStatusUpdate
+from app.modules.complaints.schemas import (
+    ComplaintCreate,
+    ComplaintOut,
+    ComplaintReplyRequest,
+    ComplaintStatusUpdate,
+)
 
 # Tenant-facing: any authenticated employee can submit a complaint, no
 # permission required -- same "self-service, no gate" reasoning as
@@ -17,6 +22,11 @@ async def create_complaint(
     body: ComplaintCreate, pool=Depends(get_pool), auth: AuthContext = Depends(get_current_user)
 ):
     return await service.create_complaint(pool, auth.tenant_id, auth.user_id, body.subject, body.message)
+
+
+@tenant_router.get("", response_model=list[ComplaintOut])
+async def list_my_complaints(pool=Depends(get_pool), auth: AuthContext = Depends(get_current_user)):
+    return await service.list_my_complaints(pool, auth.tenant_id, auth.user_id)
 
 
 # Platform-facing: Platform Admin reads/resolves complaints across every tenant.
@@ -41,5 +51,18 @@ async def update_complaint_status(
 ):
     try:
         return await service.update_complaint_status(pool, complaint_id, body.status, admin.admin_id)
+    except service.ComplaintNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Complaint not found")
+
+
+@platform_router.post("/{complaint_id}/reply", response_model=ComplaintOut)
+async def reply_to_complaint(
+    complaint_id: UUID,
+    body: ComplaintReplyRequest,
+    pool=Depends(get_pool),
+    admin: PlatformAuthContext = Depends(get_current_platform_admin),
+):
+    try:
+        return await service.reply_to_complaint(pool, complaint_id, admin.admin_id, body.message)
     except service.ComplaintNotFoundError:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Complaint not found")

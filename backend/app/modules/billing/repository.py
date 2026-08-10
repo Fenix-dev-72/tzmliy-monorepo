@@ -153,6 +153,10 @@ async def set_storage_warning_flags(
     return _row(row)
 
 
+async def set_payment_due_warning_sent(conn: asyncpg.Connection, tenant_id: UUID) -> None:
+    await _queries.set_payment_due_warning_sent(conn, tenant_id=tenant_id)
+
+
 async def insert_subscription_payment(
     conn: asyncpg.Connection,
     tenant_id: UUID,

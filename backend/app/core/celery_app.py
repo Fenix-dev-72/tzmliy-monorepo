@@ -62,4 +62,11 @@ celery_app.conf.beat_schedule = {
         "task": "billing.recalculate_storage_daily",
         "schedule": crontab(hour=3, minute=30),
     },
+    # After the two jobs above so their per-tenant scans don't overlap.
+    # Fires the in-app "payment due in 2 days" bell notification -- separate
+    # from run_dunning's status-advance ladder, which stays admin-triggered.
+    "billing-payment-due-warnings-daily": {
+        "task": "billing.send_payment_due_warnings_daily",
+        "schedule": crontab(hour=4, minute=0),
+    },
 }
