@@ -27,6 +27,7 @@ const content = {
     debt: "Qarzdorlik",
     netProfit: "Sof foyda",
     thisWeek: "bu hafta",
+    thisMonth: "bu oy",
     noData: "Bugun uchun ma'lumot yo'q",
     emptyStateDesc: "Sizning tenant'ingizda hali savdo yozuvlari mavjud emas. Birinchi savdoni qo'shing.",
     addSale: "Savdo qo'shish",
@@ -43,6 +44,7 @@ const content = {
     debt: "Задолженность",
     netProfit: "Чистая прибыль",
     thisWeek: "за неделю",
+    thisMonth: "за месяц",
     noData: "Нет данных за сегодня",
     emptyStateDesc: "В вашем тенанте пока нет записей о продажах. Добавьте первую продажу.",
     addSale: "Добавить продажу",
@@ -64,6 +66,18 @@ function monthToDateRange(): { start: string; end: string } {
   return { start: start.toISOString(), end: now.toISOString() };
 }
 
+// Same month-boundary window as monthToDateRange, shifted back one calendar
+// month -- used only to derive the "Sof foyda" KPI card's month-over-month
+// growth badge (real numbers, not fabricated: two real getProfitSummary
+// calls compared, same pattern as salesTrend's week-over-week comparison
+// below).
+function previousMonthToDateRange(): { start: string; end: string } {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const end = new Date(now.getFullYear(), now.getMonth(), 1);
+  return { start: start.toISOString(), end: end.toISOString() };
+}
+
 export function DashboardPage() {
   const { lang } = useLang();
   const t = content[lang];
@@ -73,6 +87,7 @@ export function DashboardPage() {
   const [debt, setDebt] = useState<DebtSummaryEntry[] | null>(null);
   const [leadQuality, setLeadQuality] = useState<LeadQualitySummary | null>(null);
   const [profit, setProfit] = useState<ProfitSummaryEntry[] | null>(null);
+  const [previousProfit, setPreviousProfit] = useState<ProfitSummaryEntry[] | null>(null);
   // Separate from SalesTrendCharts' own interactive period toggle -- this is
   // a fixed 30-day fetch purely to derive the "Jami savdo" KPI card's
   // sparkline + week-over-week growth, both real numbers, not fabricated.
@@ -102,12 +117,22 @@ export function DashboardPage() {
       // just leaves the KPI card showing "—" instead of failing the whole
       // dashboard load.
       if (user?.permissions.includes("finance.view")) {
-        financeApi
-          .getProfitSummary(accessToken, periodStart, periodEnd)
-          .then(setProfit)
-          .catch(() => setProfit(null));
+        const { start: prevStart, end: prevEnd } = previousMonthToDateRange();
+        Promise.all([
+          financeApi.getProfitSummary(accessToken, periodStart, periodEnd),
+          financeApi.getProfitSummary(accessToken, prevStart, prevEnd),
+        ])
+          .then(([current, previous]) => {
+            setProfit(current);
+            setPreviousProfit(previous);
+          })
+          .catch(() => {
+            setProfit(null);
+            setPreviousProfit(null);
+          });
       } else {
         setProfit(null);
+        setPreviousProfit(null);
       }
     } catch (err) {
       setError(err instanceof ApiError ? err.detail : t.loadError);
@@ -157,6 +182,20 @@ export function DashboardPage() {
     const growthPct = prior7 > 0 ? Math.round(((last7 - prior7) / prior7) * 1000) / 10 : null;
     return { sparkline, growthPct };
   }, [monthSeries, dominantCurrency]);
+
+  // Month-over-month, dominant-currency growth for the "Sof foyda" card --
+  // same single-number-not-per-currency shape as salesTrend above, so the
+  // badge stays a plain "X% bu oy" rather than a per-currency list.
+  const profitTrend = useMemo(() => {
+    if (!profit || profit.length === 0 || !previousProfit) return { growthPct: null as number | null };
+    const dominantProfitCurrency = [...profit].sort((a, b) => b.profit - a.profit)[0]?.currency;
+    if (!dominantProfitCurrency) return { growthPct: null };
+    const current = profit.find((p) => p.currency === dominantProfitCurrency)?.profit ?? 0;
+    const previous = previousProfit.find((p) => p.currency === dominantProfitCurrency)?.profit ?? 0;
+    if (previous === 0) return { growthPct: null };
+    const growthPct = Math.round(((current - previous) / Math.abs(previous)) * 1000) / 10;
+    return { growthPct };
+  }, [profit, previousProfit]);
 
   return (
     <main className="mx-auto max-w-[1440px] px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
@@ -279,6 +318,8 @@ export function DashboardPage() {
               iconColor="#10B981"
               label={t.netProfit}
               delayMs={180}
+              growthLabel={profitTrend.growthPct !== null ? `${Math.abs(profitTrend.growthPct)}% ${t.thisMonth}` : undefined}
+              growthDirection={profitTrend.growthPct === null ? "neutral" : profitTrend.growthPct >= 0 ? "up" : "down"}
               value={
                 profit && profit.length > 0 ? (
                   <div className="flex flex-col gap-0.5">
@@ -300,9 +341,9 @@ export function DashboardPage() {
           {leadQuality && <LeadFunnel leadQuality={leadQuality} />}
 
           <div className="mb-5 grid grid-cols-1 items-stretch gap-4 sm:mb-6 xl:grid-cols-3">
-            <TopSellersTable accessToken={accessToken} />
-            <TopProductsCard accessToken={accessToken} />
-            <LatestOrdersTable accessToken={accessToken} />
+            <TopSellersTable accessToken={accessToken} delayMs={0} />
+            <TopProductsCard accessToken={accessToken} delayMs={60} />
+            <LatestOrdersTable accessToken={accessToken} delayMs={120} />
           </div>
 
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">

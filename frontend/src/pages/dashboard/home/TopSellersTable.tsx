@@ -18,7 +18,7 @@ interface SellerRow {
   byCurrency: Record<string, number>;
 }
 
-export function TopSellersTable({ accessToken }: { accessToken: string }) {
+export function TopSellersTable({ accessToken, delayMs = 0 }: { accessToken: string; delayMs?: number }) {
   const { lang } = useLang();
   const t = content[lang];
   const [entries, setEntries] = useState<LeaderboardEntry[] | null>(null);
@@ -51,7 +51,10 @@ export function TopSellersTable({ accessToken }: { accessToken: string }) {
   }, [rows]);
 
   return (
-    <div className="glass-card flex h-full flex-col p-5 sm:p-6">
+    <div
+      className="glass-card card-hover-lift auth-card-enter flex h-full flex-col p-5 sm:p-6"
+      style={{ animationDelay: `${delayMs}ms` }}
+    >
       <div className="mb-4 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Trophy size={18} className="text-accent-orange shrink-0" />

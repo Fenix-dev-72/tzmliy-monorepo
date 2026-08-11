@@ -55,7 +55,7 @@ interface Slice {
   color: string;
 }
 
-export function TopProductsCard({ accessToken }: { accessToken: string }) {
+export function TopProductsCard({ accessToken, delayMs = 0 }: { accessToken: string; delayMs?: number }) {
   const { lang } = useLang();
   const { isDark } = useThemeContext();
   const t = content[lang];
@@ -90,7 +90,10 @@ export function TopProductsCard({ accessToken }: { accessToken: string }) {
   ];
 
   return (
-    <div className="glass-card flex h-full flex-col p-5 sm:p-6">
+    <div
+      className="glass-card card-hover-lift auth-card-enter flex h-full flex-col p-5 sm:p-6"
+      style={{ animationDelay: `${delayMs}ms` }}
+    >
       <div className="mb-3 flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-foreground">{t.title}</h3>
         <Link to="/dashboard/course-sales" className="text-primary text-xs font-semibold whitespace-nowrap">

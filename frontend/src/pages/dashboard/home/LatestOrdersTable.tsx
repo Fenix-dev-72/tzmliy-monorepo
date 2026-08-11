@@ -43,7 +43,7 @@ const LATEST_ORDERS_LIMIT = 5;
 // paginated round-trip -- same dropdown-sized fetch SalesPage.tsx uses.
 const CUSTOMER_LOOKUP_LIMIT = 200;
 
-export function LatestOrdersTable({ accessToken }: { accessToken: string }) {
+export function LatestOrdersTable({ accessToken, delayMs = 0 }: { accessToken: string; delayMs?: number }) {
   const { lang } = useLang();
   const t = content[lang];
   const [sales, setSales] = useState<Sale[] | null>(null);
@@ -66,7 +66,10 @@ export function LatestOrdersTable({ accessToken }: { accessToken: string }) {
   }, [customers]);
 
   return (
-    <div className="glass-card flex h-full flex-col p-5 sm:p-6">
+    <div
+      className="glass-card card-hover-lift auth-card-enter flex h-full flex-col p-5 sm:p-6"
+      style={{ animationDelay: `${delayMs}ms` }}
+    >
       <div className="mb-4 flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-foreground">{t.title}</h3>
         <Link to="/dashboard/sales" className="text-primary text-xs font-semibold whitespace-nowrap">
