@@ -24,6 +24,13 @@ class PlanUsageOut(BaseModel):
     tenant_count: int
 
 
+class PaymentKindTotalOut(BaseModel):
+    kind: Literal["new", "recurring"]
+    currency: str
+    count: int
+    total_amount: int
+
+
 class DashboardSummaryOut(BaseModel):
     total_tenants: int
     tenants_by_status: list[TenantStatusCountOut]
@@ -31,6 +38,7 @@ class DashboardSummaryOut(BaseModel):
     new_tenants_30d: int
     payments_today: list[PaymentTotalOut]
     payments_this_month: list[PaymentTotalOut]
+    payments_this_month_by_kind: list[PaymentKindTotalOut]
     plans_usage: list[PlanUsageOut]
 
 

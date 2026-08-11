@@ -224,6 +224,11 @@ async def list_subscription_payments(conn: asyncpg.Connection) -> list[dict]:
     return _rows(rows)
 
 
+async def list_paid_payments(conn: asyncpg.Connection) -> list[dict]:
+    rows = [row async for row in _queries.list_paid_payments(conn)]
+    return _rows(rows)
+
+
 async def set_subscription_payment_provider_transaction(
     conn: asyncpg.Connection, payment_id: UUID, provider_transaction_id: str, provider_state: int | None
 ) -> dict | None:

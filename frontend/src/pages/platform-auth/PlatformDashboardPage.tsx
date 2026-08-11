@@ -21,6 +21,10 @@ const content = {
     activeTenants: "Faol",
     trialTenants: "Sinov muddatida",
     paymentsToday: "Bugungi to'lovlar",
+    monthlyRevenue: "Oylik tushum",
+    newPayments: "Yangi to'lovlar",
+    recurringPayments: "Doimiy to'lovlar",
+    peopleCount: (n: number) => `${n} kishi`,
     tenantsTitle: "Tenantlar",
     name: "Nomi",
     slug: "Slug",
@@ -54,6 +58,10 @@ const content = {
     activeTenants: "Активные",
     trialTenants: "На пробном периоде",
     paymentsToday: "Платежи сегодня",
+    monthlyRevenue: "Выручка за месяц",
+    newPayments: "Новые платежи",
+    recurringPayments: "Повторные платежи",
+    peopleCount: (n: number) => `${n} чел.`,
     tenantsTitle: "Тенанты",
     name: "Название",
     slug: "Slug",
@@ -157,6 +165,15 @@ export function PlatformDashboardPage() {
   const activeCount = summary?.tenants_by_status.find((s) => s.status === "active")?.count ?? 0;
   const trialCount = summary?.tenants_by_status.find((s) => s.status === "trial")?.count ?? 0;
 
+  const newPayments = summary?.payments_this_month_by_kind.filter((p) => p.kind === "new") ?? [];
+  const recurringPayments = summary?.payments_this_month_by_kind.filter((p) => p.kind === "recurring") ?? [];
+  const revenueByCurrency = new Map<string, number>();
+  for (const p of summary?.payments_this_month_by_kind ?? []) {
+    revenueByCurrency.set(p.currency, (revenueByCurrency.get(p.currency) ?? 0) + p.total_amount);
+  }
+  const totalNewPeople = newPayments.reduce((sum, p) => sum + p.count, 0);
+  const totalRecurringPeople = recurringPayments.reduce((sum, p) => sum + p.count, 0);
+
   return (
     <main className="mx-auto max-w-[1440px] px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
       <div className="mb-6 sm:mb-8">
@@ -218,6 +235,65 @@ export function PlatformDashboardPage() {
                           {formatMoney(p.total_amount, p.currency)}
                         </span>
                       ))}
+                  </div>
+                ) : (
+                  <span className="text-sm text-foreground-muted">—</span>
+                )
+              }
+            />
+          </div>
+
+          <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <KpiCard
+              icon={CreditCard}
+              iconColor="#059669"
+              label={t.monthlyRevenue}
+              value={
+                revenueByCurrency.size > 0 ? (
+                  <div className="flex flex-col gap-0.5">
+                    {[...revenueByCurrency.entries()].map(([currency, amount]) => (
+                      <span key={currency} className="font-mono text-lg font-bold text-foreground">
+                        {formatMoney(amount, currency)}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="text-sm text-foreground-muted">—</span>
+                )
+              }
+            />
+            <KpiCard
+              icon={Users}
+              iconColor="#2563EB"
+              label={t.newPayments}
+              value={
+                newPayments.length > 0 ? (
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-foreground-muted text-xs">{t.peopleCount(totalNewPeople)}</span>
+                    {newPayments.map((p) => (
+                      <span key={p.currency} className="font-mono text-lg font-bold text-foreground">
+                        {formatMoney(p.total_amount, p.currency)}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="text-sm text-foreground-muted">—</span>
+                )
+              }
+            />
+            <KpiCard
+              icon={Users}
+              iconColor="#F59E0B"
+              label={t.recurringPayments}
+              value={
+                recurringPayments.length > 0 ? (
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-foreground-muted text-xs">{t.peopleCount(totalRecurringPeople)}</span>
+                    {recurringPayments.map((p) => (
+                      <span key={p.currency} className="font-mono text-lg font-bold text-foreground">
+                        {formatMoney(p.total_amount, p.currency)}
+                      </span>
+                    ))}
                   </div>
                 ) : (
                   <span className="text-sm text-foreground-muted">—</span>

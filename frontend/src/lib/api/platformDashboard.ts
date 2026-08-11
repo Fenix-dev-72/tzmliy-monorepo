@@ -21,6 +21,13 @@ export interface PlanUsage {
   tenant_count: number;
 }
 
+export interface PaymentKindTotal {
+  kind: "new" | "recurring";
+  currency: string;
+  count: number;
+  total_amount: number;
+}
+
 export interface DashboardSummary {
   total_tenants: number;
   tenants_by_status: TenantStatusCount[];
@@ -28,6 +35,7 @@ export interface DashboardSummary {
   new_tenants_30d: number;
   payments_today: PaymentTotal[];
   payments_this_month: PaymentTotal[];
+  payments_this_month_by_kind: PaymentKindTotal[];
   plans_usage: PlanUsage[];
 }
 

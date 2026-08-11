@@ -49,6 +49,48 @@ async def _get_payments_summary(
     return _merge_payment_totals(results)
 
 
+def _merge_payment_kind_totals(rows_per_tenant: list[list[dict]]) -> list[dict]:
+    merged: dict[tuple[str, str], dict] = {}
+    for rows in rows_per_tenant:
+        for row in rows:
+            key = (row["kind"], row["currency"])
+            bucket = merged.setdefault(key, {"kind": row["kind"], "currency": row["currency"], "count": 0, "total_amount": 0})
+            bucket["count"] += 1
+            bucket["total_amount"] += row["amount"]
+    return list(merged.values())
+
+
+async def _get_payments_by_kind(
+    pool: asyncpg.Pool, tenant_ids: list[UUID], period_start: datetime, period_end: datetime
+) -> list[dict]:
+    """A tenant's first-ever 'paid' row is a new subscriber; every later one
+    is a renewal. Needs each tenant's FULL paid history (not just the
+    reporting period) to tell them apart, then filters down to the period --
+    same tenant-loop-with-semaphore shape as _get_payments_summary above."""
+    settings = get_settings()
+    semaphore = asyncio.Semaphore(settings.tenant_loop_max_concurrency)
+
+    async def _one(tenant_id: UUID) -> list[dict]:
+        async with semaphore:
+            async with tenant_connection(pool, tenant_id) as conn:
+                history = await billing_repository.list_paid_payments(conn)
+        tagged = []
+        for i, row in enumerate(history):
+            if row["performed_at"] is None or not (period_start <= row["performed_at"] < period_end):
+                continue
+            tagged.append(
+                {
+                    "kind": "new" if i == 0 else "recurring",
+                    "currency": row["currency"],
+                    "amount": row["amount"],
+                }
+            )
+        return tagged
+
+    results = await asyncio.gather(*(_one(tid) for tid in tenant_ids))
+    return _merge_payment_kind_totals(results)
+
+
 async def _get_plan_usage(pool: asyncpg.Pool, tenant_ids: list[UUID], plans: list[dict]) -> list[dict]:
     """tenant_subscriptions is tenant-scoped RLS, so which plan each tenant
     is on can't be read in one cross-tenant query -- same tenant-loop shape
@@ -131,9 +173,10 @@ async def get_dashboard_summary(pool: asyncpg.Pool) -> dict:
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
-    payments_today, payments_month, plans_usage = await asyncio.gather(
+    payments_today, payments_month, payments_month_by_kind, plans_usage = await asyncio.gather(
         _get_payments_summary(pool, tenant_ids, today_start, now),
         _get_payments_summary(pool, tenant_ids, month_start, now),
+        _get_payments_by_kind(pool, tenant_ids, month_start, now),
         _get_plan_usage(pool, tenant_ids, plans),
     )
 
@@ -145,6 +188,7 @@ async def get_dashboard_summary(pool: asyncpg.Pool) -> dict:
         "new_tenants_30d": new_30d,
         "payments_today": payments_today,
         "payments_this_month": payments_month,
+        "payments_this_month_by_kind": payments_month_by_kind,
     }
 
 

@@ -139,6 +139,18 @@ FROM subscription_payments
 WHERE created_at >= :period_start AND created_at < :period_end
 GROUP BY status, currency;
 
+-- name: list_paid_payments
+-- Full 'paid' history for one tenant, oldest first -- backs the Platform
+-- Admin dashboard's "new vs recurring" split (platform_dashboard/service.py):
+-- a tenant's first paid row is a new subscriber, every later one is a
+-- renewal. Needs full history, not just the reporting period, to tell them
+-- apart -- there's no cheap way to know "was this tenant's very first
+-- payment" from a single period-scoped query.
+SELECT amount, currency, performed_at
+FROM subscription_payments
+WHERE status = 'paid'
+ORDER BY performed_at;
+
 -- name: set_subscription_payment_provider_transaction^
 UPDATE subscription_payments
 SET provider_transaction_id = :provider_transaction_id, provider_state = COALESCE(:provider_state, provider_state)
