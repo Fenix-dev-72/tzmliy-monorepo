@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { DashboardPageContainer } from "@/components/shared/DashboardPageContainer";
 import { SearchFilterBar } from "@/components/shared/SearchFilterBar";
 import { PaginationBar } from "@/components/shared/PaginationBar";
+import { EntityListCard } from "@/components/shared/EntityListCard";
 
 const content = {
   uz: {
@@ -247,7 +248,7 @@ export function CustomersPage() {
           {visibleCustomers.map((c) => {
             const expanded = expandedId === c.id;
             return (
-              <div key={c.id} className="bg-card/95 border-card-border overflow-hidden rounded-[14px] border shadow-sm">
+              <EntityListCard key={c.id}>
                 <button
                   className="flex w-full flex-wrap items-center justify-between gap-3 p-4 text-left sm:p-5"
                   onClick={() => setExpandedId(expanded ? null : c.id)}
@@ -299,7 +300,7 @@ export function CustomersPage() {
                     </div>
                   </div>
                 )}
-              </div>
+              </EntityListCard>
             );
           })}
         </div>
