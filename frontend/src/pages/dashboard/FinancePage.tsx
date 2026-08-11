@@ -18,6 +18,7 @@ import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { DashboardPageContainer } from "@/components/shared/DashboardPageContainer";
 import { EntityListCard, EntityListRow } from "@/components/shared/EntityListCard";
 import { PaginationBar } from "@/components/shared/PaginationBar";
+import { StatusBadge } from "@/components/shared/StatusBadge";
 
 const content = {
   uz: {
@@ -141,8 +142,6 @@ const content = {
     loadMore: "Загрузить ещё",
   },
 };
-
-const STATUS_COLOR = { pending: "#F59E0B", approved: "#10B981", rejected: "#EF4444" };
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -496,7 +495,7 @@ export function FinancePage() {
             ) : (
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 {plans.map((plan) => (
-                  <div key={plan.id} className="glass-card p-5 transition-all hover:-translate-y-1">
+                  <div key={plan.id} className="glass-card card-hover-lift p-5">
                     <div className="mb-1 flex items-center justify-between">
                       <span className="text-sm font-bold text-foreground">{plan.name}</span>
                       <span className="text-primary font-mono text-lg font-extrabold">
@@ -595,16 +594,10 @@ export function FinancePage() {
                       <div className="text-xs text-foreground-muted">{new Date(req.created_at).toLocaleString()}</div>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span
-                        className="rounded-full border px-2.5 py-1 text-[11px] font-semibold"
-                        style={{
-                          background: `${STATUS_COLOR[req.status]}15`,
-                          borderColor: `${STATUS_COLOR[req.status]}30`,
-                          color: STATUS_COLOR[req.status],
-                        }}
-                      >
-                        {req.status === "pending" ? t.statusPending : req.status === "approved" ? t.statusApproved : t.statusRejected}
-                      </span>
+                      <StatusBadge
+                        status={req.status}
+                        label={req.status === "pending" ? t.statusPending : req.status === "approved" ? t.statusApproved : t.statusRejected}
+                      />
                       {req.status === "pending" && (
                         <>
                           <button
