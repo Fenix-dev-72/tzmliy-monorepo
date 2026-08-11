@@ -5,6 +5,7 @@ existing repository functions directly rather than duplicating queries."""
 
 import asyncio
 from datetime import datetime, timedelta, timezone
+from typing import Literal
 from uuid import UUID
 
 import asyncpg
@@ -281,3 +282,93 @@ async def list_system_issues(pool: asyncpg.Pool) -> list[dict]:
 
     all_issues.sort(key=lambda i: i["occurred_at"] or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
     return all_issues[:_ISSUES_TOTAL_CAP]
+
+
+# --- Revenue analytics (dashboard trend chart + top-tenants ranking) ------
+#
+# Same "no table of its own" shape as the rest of this module. Bucketing is
+# done in Python, not SQL date_trunc, because subscription_payments carries
+# RLS -- there's no single cross-tenant query to bucket in the first place,
+# only a per-tenant loop (same as _get_payments_by_kind above). Fine at
+# today's tenant count; if this ever needs to scale to hundreds of
+# long-lived tenants, move the per-tenant bucketing into SQL like
+# analytics/service.py's get_revenue_timeseries does for a single tenant.
+
+_TASHKENT_TZ = timezone(timedelta(hours=5))
+_TOP_TENANTS_CAP = 7
+
+
+def _revenue_bucket_boundaries(period: Literal["week", "month", "year"], now_tashkent: datetime) -> list[datetime]:
+    if period == "week":
+        anchor = now_tashkent.replace(hour=0, minute=0, second=0, microsecond=0)
+        return [anchor - timedelta(days=i) for i in range(6, -1, -1)]
+    if period == "month":
+        anchor = now_tashkent.replace(hour=0, minute=0, second=0, microsecond=0)
+        return [anchor - timedelta(days=i) for i in range(29, -1, -1)]
+    # "year": one bucket per calendar month, Jan..Dec of the current year.
+    year_start = now_tashkent.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+    return [year_start.replace(month=m) for m in range(1, 13)]
+
+
+def _bucket_start_for(dt: datetime, period: Literal["week", "month", "year"], boundaries: list[datetime]) -> datetime | None:
+    dt_tashkent = dt.astimezone(_TASHKENT_TZ)
+    if period == "year":
+        candidate = dt_tashkent.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    else:
+        candidate = dt_tashkent.replace(hour=0, minute=0, second=0, microsecond=0)
+    return candidate if candidate in boundaries else None
+
+
+async def get_revenue_analytics(pool: asyncpg.Pool, period: Literal["week", "month", "year"]) -> dict:
+    async with platform_connection(pool) as conn:
+        tenants = await tenants_repository.list_tenants(conn)
+
+    now_tashkent = datetime.now(_TASHKENT_TZ)
+    boundaries = _revenue_bucket_boundaries(period, now_tashkent)
+    window_start = boundaries[0]
+
+    settings = get_settings()
+    semaphore = asyncio.Semaphore(settings.tenant_loop_max_concurrency)
+
+    async def _one(tenant: dict) -> tuple[list[dict], list[dict]]:
+        async with semaphore:
+            async with tenant_connection(pool, tenant["id"]) as conn:
+                history = await billing_repository.list_paid_payments(conn)
+        bucketed: list[dict] = []
+        tenant_totals: dict[str, int] = {}
+        for row in history:
+            if row["performed_at"] is None or row["performed_at"] < window_start:
+                continue
+            bucket_start = _bucket_start_for(row["performed_at"], period, boundaries)
+            if bucket_start is None:
+                continue
+            bucketed.append({"bucket_start": bucket_start, "currency": row["currency"], "amount": row["amount"]})
+            tenant_totals[row["currency"]] = tenant_totals.get(row["currency"], 0) + row["amount"]
+        tenant_rows = [
+            {"tenant_id": tenant["id"], "tenant_name": tenant["name"], "currency": cur, "total_amount": amt}
+            for cur, amt in tenant_totals.items()
+        ]
+        return bucketed, tenant_rows
+
+    results = await asyncio.gather(*(_one(t) for t in tenants))
+
+    merged_buckets: dict[tuple[datetime, str], int] = {}
+    all_tenant_rows: list[dict] = []
+    for bucketed, tenant_rows in results:
+        for row in bucketed:
+            key = (row["bucket_start"], row["currency"])
+            merged_buckets[key] = merged_buckets.get(key, 0) + row["amount"]
+        all_tenant_rows.extend(tenant_rows)
+
+    # Gap-fill: every boundary appears for every currency actually seen, even
+    # if 0 -- the frontend chart needs a complete x-axis, not sparse points.
+    currencies = {cur for (_, cur) in merged_buckets} or {"UZS"}
+    buckets_out = [
+        {"bucket_start": b, "currency": cur, "total_amount": merged_buckets.get((b, cur), 0)}
+        for b in boundaries
+        for cur in currencies
+    ]
+
+    top_tenants = sorted(all_tenant_rows, key=lambda r: r["total_amount"], reverse=True)[:_TOP_TENANTS_CAP]
+
+    return {"buckets": buckets_out, "top_tenants": top_tenants}

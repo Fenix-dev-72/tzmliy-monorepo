@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { NavLink } from "react-router";
 import { CreditCard, DatabaseBackup, LayoutDashboard, Megaphone, MessageSquareWarning, PlusCircle } from "lucide-react";
 import { useLang } from "@/lib/i18n/LangContext";
@@ -21,9 +22,15 @@ const content = {
   },
 };
 
+// Desktop-only (lg:+) hover-to-expand icon rail -- same pattern as the
+// tenant dashboard's DashboardSidebar.tsx (collapsed 68px icons-only,
+// expands to 236px with labels on hover). Platform Admin has no
+// below-`lg` nav equivalent (bottom bar / "more" sheet) -- it's an
+// internal team tool, desktop-first by existing convention.
 export function PlatformDashboardSidebar() {
   const { lang } = useLang();
   const t = content[lang];
+  const [expanded, setExpanded] = useState(false);
 
   const items = [
     { to: "/platform/dashboard", end: true, icon: LayoutDashboard, label: t.home },
@@ -35,26 +42,36 @@ export function PlatformDashboardSidebar() {
   ];
 
   return (
-    <aside className="border-card-border bg-background/60 hidden w-[260px] shrink-0 border-r lg:block">
-      <div className="sticky top-16 flex flex-col gap-1 px-3 py-6">
+    <>
+      <div aria-hidden className="hidden lg:block lg:w-[68px] lg:shrink-0" />
+      <aside
+        onMouseEnter={() => setExpanded(true)}
+        onMouseLeave={() => setExpanded(false)}
+        className={`border-card-border bg-background/60 no-scrollbar fixed top-16 left-0 z-35 hidden h-[calc(100vh-4rem)] flex-col gap-0.5 overflow-x-hidden overflow-y-auto border-r py-4 transition-[width] duration-200 ease-out lg:flex ${
+          expanded ? "w-[236px] px-3" : "w-[68px] px-2.5"
+        }`}
+      >
         {items.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
             end={item.end}
+            title={item.label}
             className={({ isActive }) =>
-              `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
-                isActive
-                  ? "bg-accent-orange/12 text-accent-orange"
-                  : "text-foreground-muted hover:translate-x-0.5 hover:bg-accent hover:text-foreground"
-              }`
+              `relative flex items-center rounded-xl py-2.5 text-[13.5px] font-semibold whitespace-nowrap transition-colors ${
+                expanded ? "justify-start gap-2.5 px-3" : "justify-center px-0"
+              } ${isActive ? "bg-accent-orange/13 text-accent-orange" : "text-foreground-muted hover:bg-accent hover:text-foreground"}`
             }
           >
-            <item.icon size={18} />
-            {item.label}
+            <item.icon size={18} className="shrink-0" />
+            <span
+              className={`overflow-hidden transition-opacity duration-150 ${expanded ? "w-auto opacity-100" : "w-0 opacity-0"}`}
+            >
+              {item.label}
+            </span>
           </NavLink>
         ))}
-      </div>
-    </aside>
+      </aside>
+    </>
   );
 }

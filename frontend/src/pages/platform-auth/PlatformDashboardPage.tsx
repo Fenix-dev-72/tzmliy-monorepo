@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
+import { Cell, Pie, PieChart, RadialBar, RadialBarChart, ResponsiveContainer, Tooltip as RechartsTooltip } from "recharts";
 import { AlertTriangle, ArrowUpRight, Building2, CreditCard, Cpu, HardDrive, MemoryStick, Users } from "lucide-react";
 import { useLang } from "@/lib/i18n/LangContext";
+import { useThemeContext } from "@/lib/theme/ThemeContext";
 import { usePlatformAuth } from "@/lib/auth/platformAuthStore";
 import * as platformDashboardApi from "@/lib/api/platformDashboard";
 import type { DashboardSummary, ServerMetrics, TenantStorageUsage } from "@/lib/api/platformDashboard";
@@ -11,7 +13,9 @@ import type { Tenant } from "@/lib/api/platformTenants";
 import * as platformBackupApi from "@/lib/api/platformBackup";
 import type { BackupSettingsStatus } from "@/lib/api/platformBackup";
 import { formatMoney } from "@/lib/format/money";
+import { categoricalPalette } from "@/lib/format/chartColors";
 import { KpiCard } from "@/pages/dashboard/home/KpiCard";
+import { RevenueTrendCard } from "./RevenueTrendCard";
 
 const content = {
   uz: {
@@ -109,19 +113,28 @@ function bytesToGb(bytes: number): string {
   return (bytes / 1024 ** 3).toFixed(1);
 }
 
-function MetricBar({ label, icon: Icon, percent, detail }: { label: string; icon: typeof Cpu; percent: number; detail: string }) {
+// Small circular percent gauge (CPU/RAM/Disk row) -- recharts' RadialBarChart,
+// unused elsewhere in this repo before now. Same 70%/90% color thresholds as
+// the old linear MetricBar it replaces (metricColor above).
+function RadialGauge({ label, icon: Icon, percent, detail }: { label: string; icon: typeof Cpu; percent: number; detail: string }) {
   const color = metricColor(percent);
+  const data = [{ value: Math.min(100, percent) }];
   return (
-    <div>
-      <div className="mb-1.5 flex items-center justify-between gap-2 text-sm">
-        <span className="flex items-center gap-1.5 font-medium text-foreground">
-          <Icon size={15} className="text-foreground-muted" />
-          {label}
-        </span>
-        <span className="font-mono text-xs text-foreground-muted">{detail}</span>
+    <div className="flex flex-col items-center gap-2 text-center">
+      <div className="relative size-[92px]">
+        <ResponsiveContainer width="100%" height="100%">
+          <RadialBarChart innerRadius="72%" outerRadius="100%" barSize={8} data={data} startAngle={90} endAngle={-270}>
+            <RadialBar dataKey="value" background={{ fill: "var(--accent)" }} cornerRadius={8} fill={color} isAnimationActive={false} />
+          </RadialBarChart>
+        </ResponsiveContainer>
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+          <Icon size={14} className="text-foreground-muted mb-0.5" />
+          <span className="font-mono text-sm font-bold text-foreground">{percent.toFixed(0)}%</span>
+        </div>
       </div>
-      <div className="bg-accent h-2 w-full overflow-hidden rounded-full">
-        <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, percent)}%`, background: color }} />
+      <div>
+        <p className="text-xs font-medium text-foreground">{label}</p>
+        <p className="text-foreground-muted font-mono text-[11px] whitespace-nowrap">{detail}</p>
       </div>
     </div>
   );
@@ -131,6 +144,7 @@ export function PlatformDashboardPage() {
   const { lang } = useLang();
   const t = content[lang];
   const { accessToken } = usePlatformAuth();
+  const { isDark } = useThemeContext();
 
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [tenants, setTenants] = useState<Tenant[] | null>(null);
@@ -173,6 +187,12 @@ export function PlatformDashboardPage() {
   }
   const totalNewPeople = newPayments.reduce((sum, p) => sum + p.count, 0);
   const totalRecurringPeople = recurringPayments.reduce((sum, p) => sum + p.count, 0);
+
+  // Donut only shows plans that actually have subscribers -- an empty slice
+  // for a brand-new plan with 0 tenants would just be visual noise here
+  // (unlike the tenant-count list it replaces, which showed every plan).
+  const plansWithTenants = useMemo(() => (summary?.plans_usage ?? []).filter((p) => p.tenant_count > 0), [summary]);
+  const planPalette = useMemo(() => categoricalPalette(isDark), [isDark]);
 
   return (
     <main className="mx-auto max-w-[1440px] px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
@@ -365,29 +385,35 @@ export function PlatformDashboardPage() {
               )}
             </div>
 
-            <div className="glass-card space-y-4 p-5 sm:p-6">
-              <h3 className="text-sm font-semibold text-foreground">{t.serverTitle}</h3>
+            <div className="glass-card p-5 sm:p-6">
+              <h3 className="mb-4 text-sm font-semibold text-foreground">{t.serverTitle}</h3>
               {metrics === null ? (
                 <div className="bg-accent/60 h-32 animate-pulse rounded-xl" />
               ) : (
-                <>
-                  <MetricBar label={t.cpu} icon={Cpu} percent={metrics.cpu_percent} detail={`${metrics.cpu_percent.toFixed(0)}%`} />
-                  <MetricBar
+                <div className="flex items-start justify-around gap-2">
+                  <RadialGauge label={t.cpu} icon={Cpu} percent={metrics.cpu_percent} detail={`${metrics.cpu_percent.toFixed(0)}%`} />
+                  <RadialGauge
                     label={t.memory}
                     icon={MemoryStick}
                     percent={metrics.memory_percent}
-                    detail={`${bytesToGb(metrics.memory_used_bytes)} / ${bytesToGb(metrics.memory_total_bytes)} GB`}
+                    detail={`${bytesToGb(metrics.memory_used_bytes)}/${bytesToGb(metrics.memory_total_bytes)}GB`}
                   />
-                  <MetricBar
+                  <RadialGauge
                     label={t.disk}
                     icon={HardDrive}
                     percent={metrics.disk_percent}
-                    detail={`${bytesToGb(metrics.disk_used_bytes)} / ${bytesToGb(metrics.disk_total_bytes)} GB`}
+                    detail={`${bytesToGb(metrics.disk_used_bytes)}/${bytesToGb(metrics.disk_total_bytes)}GB`}
                   />
-                </>
+                </div>
               )}
             </div>
           </div>
+
+          {accessToken && (
+            <div className="mb-6">
+              <RevenueTrendCard accessToken={accessToken} />
+            </div>
+          )}
 
           <div className="glass-card p-5 sm:p-6">
             <div className="mb-4 flex items-center justify-between gap-3">
@@ -406,29 +432,66 @@ export function PlatformDashboardPage() {
 
             {!summary ? (
               <div className="bg-accent/60 h-20 animate-pulse rounded-xl" />
+            ) : plansWithTenants.length === 0 ? (
+              <p className="text-foreground-muted py-6 text-center text-sm">—</p>
             ) : (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {summary.plans_usage.map((plan) => {
-                  const maxCount = Math.max(1, ...summary.plans_usage.map((p) => p.tenant_count));
-                  const width = (plan.tenant_count / maxCount) * 100;
-                  return (
+              <div className="flex flex-col items-center gap-4 sm:flex-row">
+                <div className="relative h-40 w-40 shrink-0">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={plansWithTenants}
+                        dataKey="tenant_count"
+                        nameKey="name"
+                        innerRadius="60%"
+                        outerRadius="100%"
+                        paddingAngle={plansWithTenants.length > 1 ? 2 : 0}
+                        startAngle={90}
+                        endAngle={-270}
+                        stroke="none"
+                        isAnimationActive={false}
+                      >
+                        {plansWithTenants.map((p, i) => (
+                          <Cell key={p.code} fill={planPalette[i % planPalette.length]} />
+                        ))}
+                      </Pie>
+                      <RechartsTooltip
+                        content={({ active, payload }) => {
+                          if (!active || !payload?.length) return null;
+                          const p = payload[0].payload as (typeof plansWithTenants)[number];
+                          return (
+                            <div className="glass-card px-3 py-2 text-xs shadow-lg">
+                              <div className="font-semibold text-foreground">{p.name}</div>
+                              <div className="text-foreground-muted">
+                                {p.tenant_count} {t.tenantsSuffix}
+                              </div>
+                            </div>
+                          );
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                    <span className="font-mono text-lg font-bold text-foreground">{summary.total_tenants}</span>
+                    <span className="text-[10px] text-foreground-muted">{t.tenantsSuffix}</span>
+                  </div>
+                </div>
+
+                <ul className="min-w-0 flex-1 space-y-1.5 self-stretch">
+                  {plansWithTenants.map((p, i) => (
                     <Link
-                      key={plan.code}
+                      key={p.code}
                       to="/platform/billing-plans"
-                      className="border-card-border/60 hover:border-primary/40 block rounded-xl border p-3 transition-colors"
+                      className="hover:bg-accent flex items-center gap-2 rounded-lg px-1.5 py-1 text-sm transition-colors"
                     >
-                      <div className="mb-1.5 flex items-center justify-between gap-2">
-                        <span className="truncate text-sm font-medium text-foreground">{plan.name}</span>
-                        <span className="font-mono text-xs text-foreground-muted">
-                          {plan.tenant_count} {t.tenantsSuffix}
-                        </span>
-                      </div>
-                      <div className="bg-accent h-1.5 w-full overflow-hidden rounded-full">
-                        <div className="gold-gradient-bg h-full rounded-full transition-all" style={{ width: `${width}%` }} />
-                      </div>
+                      <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: planPalette[i % planPalette.length] }} />
+                      <span className="min-w-0 flex-1 truncate text-foreground">{p.name}</span>
+                      <span className="font-mono shrink-0 text-xs font-semibold text-foreground-muted">
+                        {p.tenant_count} {t.tenantsSuffix}
+                      </span>
                     </Link>
-                  );
-                })}
+                  ))}
+                </ul>
               </div>
             )}
           </div>

@@ -52,6 +52,24 @@ class TenantStorageUsageOut(BaseModel):
     computed_at: datetime | None
 
 
+class RevenueBucketOut(BaseModel):
+    bucket_start: datetime
+    currency: str
+    total_amount: int
+
+
+class TopTenantRevenueOut(BaseModel):
+    tenant_id: UUID
+    tenant_name: str
+    currency: str
+    total_amount: int
+
+
+class RevenueAnalyticsOut(BaseModel):
+    buckets: list[RevenueBucketOut]
+    top_tenants: list[TopTenantRevenueOut]
+
+
 class SystemIssueOut(BaseModel):
     id: str
     source: Literal["notification", "report_export", "payroll", "backup"]

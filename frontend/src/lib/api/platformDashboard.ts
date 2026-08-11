@@ -83,6 +83,30 @@ export function getSystemIssues(accessToken: string) {
   return apiFetch<SystemIssue[]>("/platform/v1/dashboard/system-issues", { accessToken });
 }
 
+export type RevenuePeriod = "week" | "month" | "year";
+
+export interface RevenueBucket {
+  bucket_start: string;
+  currency: string;
+  total_amount: number;
+}
+
+export interface TopTenantRevenue {
+  tenant_id: string;
+  tenant_name: string;
+  currency: string;
+  total_amount: number;
+}
+
+export interface RevenueAnalytics {
+  buckets: RevenueBucket[];
+  top_tenants: TopTenantRevenue[];
+}
+
+export function getRevenueAnalytics(accessToken: string, period: RevenuePeriod) {
+  return apiFetch<RevenueAnalytics>(`/platform/v1/dashboard/revenue-analytics?period=${period}`, { accessToken });
+}
+
 /**
  * Same hand-parsed SSE pattern as analytics.ts's subscribeLeaderboard --
  * `EventSource` can't send a custom Authorization header, so this uses a
