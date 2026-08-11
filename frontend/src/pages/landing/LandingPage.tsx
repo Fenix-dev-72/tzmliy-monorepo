@@ -2,6 +2,7 @@ import { Navigate } from "react-router";
 import { useTenantAuth } from "@/lib/auth/tenantAuthStore";
 import { Navbar } from "./sections/Navbar";
 import { HeroSection } from "./sections/HeroSection";
+import { TrustStrip } from "./sections/TrustStrip";
 import { StatsSection } from "./sections/StatsSection";
 import { FeaturesGrid } from "./sections/FeaturesGrid";
 import { FeatureShowcase } from "./sections/FeatureShowcase";
@@ -10,6 +11,7 @@ import { DataAnalyticsSection } from "./sections/DataAnalyticsSection";
 import { IntegrationsSection } from "./sections/IntegrationsSection";
 import { TabsShowcase } from "./sections/TabsShowcase";
 import { PricingSection } from "./sections/PricingSection";
+import { FAQSection } from "./sections/FAQSection";
 import { CTASection } from "./sections/CTASection";
 import { Footer } from "./sections/Footer";
 
@@ -33,6 +35,7 @@ export function LandingPage() {
     <div className="bg-background text-foreground min-h-screen overflow-x-hidden">
       <Navbar />
       <HeroSection />
+      <TrustStrip />
       <StatsSection />
       <FeaturesGrid />
       <FeatureShowcase />
@@ -41,6 +44,7 @@ export function LandingPage() {
       <IntegrationsSection />
       <TabsShowcase />
       <PricingSection />
+      <FAQSection />
       <CTASection />
       <Footer />
     </div>

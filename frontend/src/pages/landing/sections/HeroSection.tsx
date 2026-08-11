@@ -25,6 +25,7 @@ const content = {
     desc: "Savdo, moliya, CRM, qo'ng'iroqlar va analitika — barcha jarayonlaringiz bitta joyda, real vaqt rejimida.",
     ctaPrimary: "Bepul boshlash",
     ctaSecondary: "Batafsil",
+    ctaMicro: "Kartasiz, 2 daqiqada boshlang",
   },
   ru: {
     badge: "Мультитенантная B2B SaaS платформа",
@@ -34,6 +35,7 @@ const content = {
     desc: "Продажи, финансы, CRM, звонки и аналитика — все процессы в одном месте, в реальном времени.",
     ctaPrimary: "Начать бесплатно",
     ctaSecondary: "Подробнее",
+    ctaMicro: "Без карты, начните за 2 минуты",
   },
 };
 
@@ -68,7 +70,7 @@ export function HeroSection() {
           <p className="text-foreground-muted mx-auto mb-9 max-w-xl text-lg leading-relaxed">{t.desc}</p>
         </Reveal>
 
-        <Reveal delay={220} className="mb-16 flex flex-wrap items-center justify-center gap-4">
+        <Reveal delay={220} className="mb-4 flex flex-wrap items-center justify-center gap-4">
           <Link
             to="/register"
             className="gold-gradient-bg flex items-center gap-2 rounded-xl px-7 py-3.5 text-[15px] font-bold text-[#0A0E1A] shadow-[0_8px_32px_rgba(212,175,55,0.35)] transition-opacity hover:opacity-90"
@@ -82,6 +84,10 @@ export function HeroSection() {
           >
             {t.ctaSecondary}
           </a>
+        </Reveal>
+
+        <Reveal delay={260} className="text-foreground-muted mb-16 text-xs">
+          {t.ctaMicro}
         </Reveal>
       </div>
 
