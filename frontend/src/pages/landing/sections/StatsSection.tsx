@@ -11,31 +11,37 @@ import { cn } from "@/components/ui/utils";
 // reference's pink accent, and using the repo's existing CountUp/Reveal
 // primitives instead of a separate animation library.
 
+// 2026-08-11: previous copy here claimed "150+ companies trust us / 12,000+
+// active users / 99% satisfaction" -- fabricated adoption numbers with zero
+// real customers behind them (Tizimly is pre-launch, confirmed 0 real paid
+// tenants in production as of this pass). Replaced with real, verifiable
+// product-capability facts that stay true regardless of customer count --
+// same visual format (CountUp grid), honest content.
 const content = {
   uz: {
-    badge: "Raqamlarda Tizimly",
+    badge: "Tizimly imkoniyatlari",
     title1: "Tizimlyning",
     titleHighlight: "kuchi",
-    desc: "150 dan ortiq kompaniya savdo, moliya va CRM jarayonlarini bitta platformada boshqarish uchun Tizimlyga ishonch bildirmoqda.",
+    desc: "Savdo, moliya, CRM, qo'ng'iroqlar va analitikani bitta platformada birlashtirgan tayyor yechim — o'zbek bozori uchun moslashtirilgan.",
     cta: "Batafsil",
     stats: [
-      { value: 150, suffix: "+", label: "kompaniya ishonch bildirmoqda", color: "var(--color-primary)" },
-      { value: 12000, suffix: "+", label: "faol foydalanuvchi", color: "var(--color-secondary)" },
-      { value: 500000, suffix: "+", label: "oylik operatsiya", color: "var(--color-success)" },
-      { value: 99, suffix: "%", label: "mijozlar mamnuniyati", color: "var(--color-accent-orange)" },
+      { value: 5, suffix: "", label: "asosiy modul bitta platformada", color: "var(--color-primary)" },
+      { value: 7, suffix: "+", label: "tayyor integratsiya", color: "var(--color-secondary)" },
+      { value: 15, suffix: "", label: "kunlik bepul sinov, kartasiz", color: "var(--color-success)" },
+      { value: 100, suffix: "%", label: "real vaqt rejimidagi ma'lumot", color: "var(--color-accent-orange)" },
     ],
   },
   ru: {
-    badge: "Tizimly в цифрах",
+    badge: "Возможности Tizimly",
     title1: "Сила",
     titleHighlight: "Tizimly",
-    desc: "Более 150 компаний доверяют Tizimly управление продажами, финансами и CRM-процессами на единой платформе.",
+    desc: "Готовое решение, объединяющее продажи, финансы, CRM, звонки и аналитику на одной платформе — адаптировано для рынка Узбекистана.",
     cta: "Подробнее",
     stats: [
-      { value: 150, suffix: "+", label: "компаний доверяют нам", color: "var(--color-primary)" },
-      { value: 12000, suffix: "+", label: "активных пользователей", color: "var(--color-secondary)" },
-      { value: 500000, suffix: "+", label: "операций в месяц", color: "var(--color-success)" },
-      { value: 99, suffix: "%", label: "удовлетворённость клиентов", color: "var(--color-accent-orange)" },
+      { value: 5, suffix: "", label: "ключевых модулей в одной системе", color: "var(--color-primary)" },
+      { value: 7, suffix: "+", label: "готовых интеграций", color: "var(--color-secondary)" },
+      { value: 15, suffix: "", label: "дней бесплатно, без карты", color: "var(--color-success)" },
+      { value: 100, suffix: "%", label: "данных в реальном времени", color: "var(--color-accent-orange)" },
     ],
   },
 };
