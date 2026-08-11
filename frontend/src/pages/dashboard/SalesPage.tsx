@@ -42,6 +42,8 @@ import { Button } from "@/components/ui/button";
 import { DashboardPageContainer } from "@/components/shared/DashboardPageContainer";
 import { SearchFilterBar } from "@/components/shared/SearchFilterBar";
 import { PaginationBar } from "@/components/shared/PaginationBar";
+import { EntityListCard } from "@/components/shared/EntityListCard";
+import { StatusBadge } from "@/components/shared/StatusBadge";
 
 const content = {
   uz: {
@@ -324,7 +326,7 @@ function SaleRow({
   }
 
   return (
-    <div className="bg-card/95 border-card-border overflow-hidden rounded-[14px] border shadow-sm">
+    <EntityListCard>
       <button className="flex w-full items-center justify-between gap-3 p-4 text-left sm:p-5" onClick={toggle}>
         <div className="min-w-0">
           <div className="truncate text-sm font-semibold text-foreground">{customerName}</div>
@@ -335,16 +337,7 @@ function SaleRow({
         <div className="flex shrink-0 items-center gap-3">
           {sale.source && <SourceBadge source={sale.source} />}
           <span className="font-mono text-sm font-semibold text-primary">{formatMoney(sale.price_amount, sale.currency)}</span>
-          <span
-            className="rounded-full border px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap"
-            style={{
-              background: `${STATUS_COLOR[sale.status]}15`,
-              borderColor: `${STATUS_COLOR[sale.status]}30`,
-              color: STATUS_COLOR[sale.status],
-            }}
-          >
-            {t.statuses[sale.status]}
-          </span>
+          <StatusBadge status={sale.status} label={t.statuses[sale.status]} />
           <ChevronDown size={16} className={`text-foreground-muted transition-transform ${expanded ? "rotate-180" : ""}`} />
         </div>
       </button>
@@ -462,15 +455,9 @@ function SaleRow({
           )}
         </div>
       )}
-    </div>
+    </EntityListCard>
   );
 }
-
-const STATUS_COLOR: Record<SaleStatus, string> = {
-  active: "#F59E0B",
-  completed: "#10B981",
-  cancelled: "#EF4444",
-};
 
 type SaleItem = { productId: string; quantity: string; price: string };
 
