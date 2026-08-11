@@ -7,7 +7,7 @@ from fastapi.responses import StreamingResponse
 
 from app.core.deps import PlatformAuthContext, get_current_platform_admin, get_pool
 from app.modules.platform_dashboard import service
-from app.modules.platform_dashboard.schemas import DashboardSummaryOut, TenantStorageUsageOut
+from app.modules.platform_dashboard.schemas import DashboardSummaryOut, SystemIssueOut, TenantStorageUsageOut
 
 router = APIRouter(prefix="/platform/v1/dashboard", tags=["platform-dashboard"])
 
@@ -26,6 +26,13 @@ async def get_storage_usage(
     pool=Depends(get_pool), _admin: PlatformAuthContext = Depends(get_current_platform_admin)
 ):
     return await service.list_tenant_storage_usage(pool)
+
+
+@router.get("/system-issues", response_model=list[SystemIssueOut])
+async def get_system_issues(
+    pool=Depends(get_pool), _admin: PlatformAuthContext = Depends(get_current_platform_admin)
+):
+    return await service.list_system_issues(pool)
 
 
 def _collect_server_metrics() -> dict:

@@ -11,7 +11,11 @@ import asyncpg
 
 from app.core.config import get_settings
 from app.core.database import platform_connection, tenant_connection
+from app.modules.backups import repository as backups_repository
 from app.modules.billing import repository as billing_repository
+from app.modules.finance import repository as finance_repository
+from app.modules.notifications import repository as notifications_repository
+from app.modules.reports import repository as reports_repository
 from app.modules.tenants import repository as tenants_repository
 
 
@@ -142,3 +146,94 @@ async def get_dashboard_summary(pool: asyncpg.Pool) -> dict:
         "payments_today": payments_today,
         "payments_this_month": payments_month,
     }
+
+
+# --- System issues (Platform Admin "server-side problems" view) -----------
+#
+# Distinct from complaints (user-submitted) -- this aggregates failures the
+# system already tracks in its own job/outbox tables (Telegram delivery
+# dead-letters, failed report exports, failed payroll runs) plus the
+# platform-level daily backup's last-run status. Deliberately NOT a new
+# generic error-log/APM system -- just surfaces what's already there,
+# cross-tenant, in one place instead of per-tenant/per-page.
+
+_ISSUES_PER_TENANT_SOURCE = 5
+_ISSUES_TOTAL_CAP = 100
+
+
+async def list_system_issues(pool: asyncpg.Pool) -> list[dict]:
+    async with platform_connection(pool) as conn:
+        tenants = await tenants_repository.list_tenants(conn)
+        backup_settings = await backups_repository.get_backup_settings(conn)
+
+    settings = get_settings()
+    semaphore = asyncio.Semaphore(settings.tenant_loop_max_concurrency)
+
+    async def _one(tenant: dict) -> list[dict]:
+        async with semaphore:
+            async with tenant_connection(pool, tenant["id"]) as conn:
+                # Sequential, not gather()'d -- a single asyncpg Connection
+                # can't run concurrent queries on itself (unlike the pool,
+                # which _get_payments_summary etc. hand out one connection
+                # per concurrent tenant, not one connection per concurrent
+                # query within a tenant).
+                dead_letters = await notifications_repository.list_dead_letter_outbox(conn, _ISSUES_PER_TENANT_SOURCE)
+                failed_exports = await reports_repository.list_failed_export_jobs(conn, _ISSUES_PER_TENANT_SOURCE)
+                failed_payroll = await finance_repository.list_failed_payroll_jobs(conn, _ISSUES_PER_TENANT_SOURCE)
+        issues = []
+        for row in dead_letters:
+            issues.append(
+                {
+                    "id": f"notification:{row['id']}",
+                    "source": "notification",
+                    "tenant_id": tenant["id"],
+                    "tenant_name": tenant["name"],
+                    "title": f"Telegram xabari yetkazilmadi ({row['channel']})",
+                    "detail": row["last_error"],
+                    "occurred_at": row["created_at"],
+                }
+            )
+        for row in failed_exports:
+            issues.append(
+                {
+                    "id": f"report_export:{row['id']}",
+                    "source": "report_export",
+                    "tenant_id": tenant["id"],
+                    "tenant_name": tenant["name"],
+                    "title": f"Hisobot eksporti muvaffaqiyatsiz ({row['entity']}, {row['format']})",
+                    "detail": row["error"],
+                    "occurred_at": row["created_at"],
+                }
+            )
+        for row in failed_payroll:
+            issues.append(
+                {
+                    "id": f"payroll:{row['id']}",
+                    "source": "payroll",
+                    "tenant_id": tenant["id"],
+                    "tenant_name": tenant["name"],
+                    "title": "Bonus/maosh hisob-kitobi muvaffaqiyatsiz",
+                    "detail": row["error"],
+                    "occurred_at": row["created_at"],
+                }
+            )
+        return issues
+
+    per_tenant_results = await asyncio.gather(*(_one(t) for t in tenants))
+    all_issues = [issue for tenant_issues in per_tenant_results for issue in tenant_issues]
+
+    if backup_settings is not None and backup_settings["last_backup_status"] == "failed":
+        all_issues.append(
+            {
+                "id": "backup:last-run",
+                "source": "backup",
+                "tenant_id": None,
+                "tenant_name": None,
+                "title": "Kunlik backup muvaffaqiyatsiz",
+                "detail": backup_settings["last_backup_error"],
+                "occurred_at": backup_settings["last_backup_at"],
+            }
+        )
+
+    all_issues.sort(key=lambda i: i["occurred_at"] or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+    return all_issues[:_ISSUES_TOTAL_CAP]

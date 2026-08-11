@@ -59,6 +59,22 @@ export function getStorageUsage(accessToken: string) {
   return apiFetch<TenantStorageUsage[]>("/platform/v1/dashboard/storage-usage", { accessToken });
 }
 
+export type SystemIssueSource = "notification" | "report_export" | "payroll" | "backup";
+
+export interface SystemIssue {
+  id: string;
+  source: SystemIssueSource;
+  tenant_id: string | null;
+  tenant_name: string | null;
+  title: string;
+  detail: string | null;
+  occurred_at: string | null;
+}
+
+export function getSystemIssues(accessToken: string) {
+  return apiFetch<SystemIssue[]>("/platform/v1/dashboard/system-issues", { accessToken });
+}
+
 /**
  * Same hand-parsed SSE pattern as analytics.ts's subscribeLeaderboard --
  * `EventSource` can't send a custom Authorization header, so this uses a

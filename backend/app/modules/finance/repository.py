@@ -387,6 +387,11 @@ async def get_payroll_job(conn: asyncpg.Connection, job_id: UUID) -> dict | None
     return _row(row)
 
 
+async def list_failed_payroll_jobs(conn: asyncpg.Connection, limit: int = 20) -> list[dict]:
+    rows = [row async for row in _queries.list_failed_payroll_jobs(conn, limit=limit)]
+    return [dict(r) for r in rows]
+
+
 async def claim_pending_payroll_job(conn: asyncpg.Connection) -> dict | None:
     row = await _queries.claim_pending_payroll_job(conn)
     return _row(row)

@@ -138,6 +138,15 @@ FROM notification_outbox
 ORDER BY created_at DESC
 LIMIT 200;
 
+-- name: list_dead_letter_outbox
+-- Backs the Platform Admin "System Issues" view (platform_dashboard module)
+-- -- messages that exhausted every retry and will never send on their own.
+SELECT id, tenant_id, channel, text_body, last_error, created_at
+FROM notification_outbox
+WHERE status = 'dead_letter'
+ORDER BY created_at DESC
+LIMIT :limit;
+
 -- name: get_outbox_message_by_id^
 SELECT id, tenant_id, channel, telegram_chat_id, text_body, document_object_key, document_filename, category_id, status, retry_count, max_retries, next_attempt_at, last_error, created_by_user_id, created_at, sent_at
 FROM notification_outbox

@@ -241,6 +241,11 @@ async def list_outbox_for_tenant(conn: asyncpg.Connection) -> list[dict]:
     return _rows(rows)
 
 
+async def list_dead_letter_outbox(conn: asyncpg.Connection, limit: int = 20) -> list[dict]:
+    rows = [row async for row in _queries.list_dead_letter_outbox(conn, limit=limit)]
+    return _rows(rows)
+
+
 async def get_outbox_message_by_id(conn: asyncpg.Connection, outbox_id: UUID) -> dict | None:
     row = await _queries.get_outbox_message_by_id(conn, id=outbox_id)
     return _row(row)

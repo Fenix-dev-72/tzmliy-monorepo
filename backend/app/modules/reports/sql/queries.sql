@@ -106,6 +106,14 @@ SELECT id, tenant_id, entity, format, status, error, file_object_key, requested_
 FROM report_export_jobs
 WHERE id = :job_id;
 
+-- name: list_failed_export_jobs
+-- Backs the Platform Admin "System Issues" view (platform_dashboard module).
+SELECT id, tenant_id, entity, format, error, created_at
+FROM report_export_jobs
+WHERE status = 'failed'
+ORDER BY created_at DESC
+LIMIT :limit;
+
 -- name: claim_pending_export_job^
 -- Atomic claim (multi-worker safe, 2026-07-14) -- see finance's
 -- claim_pending_payroll_job for the full race-condition rationale (a plain

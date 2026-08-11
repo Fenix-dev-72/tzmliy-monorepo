@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -41,6 +42,16 @@ class TenantStorageUsageOut(BaseModel):
     billable_storage_limit_bytes: int | None
     usage_ratio_bps: int
     computed_at: datetime | None
+
+
+class SystemIssueOut(BaseModel):
+    id: str
+    source: Literal["notification", "report_export", "payroll", "backup"]
+    tenant_id: UUID | None
+    tenant_name: str | None
+    title: str
+    detail: str | None
+    occurred_at: datetime | None
 
 
 class ServerMetricsOut(BaseModel):

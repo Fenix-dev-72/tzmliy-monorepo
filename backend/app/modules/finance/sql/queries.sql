@@ -224,6 +224,14 @@ SELECT id, tenant_id, period_start, period_end, user_id, status, error, requeste
 FROM payroll_calculation_jobs
 WHERE id = :job_id;
 
+-- name: list_failed_payroll_jobs
+-- Backs the Platform Admin "System Issues" view (platform_dashboard module).
+SELECT id, tenant_id, period_start, period_end, error, created_at
+FROM payroll_calculation_jobs
+WHERE status = 'failed'
+ORDER BY created_at DESC
+LIMIT :limit;
+
 -- name: claim_pending_payroll_job^
 -- Atomic claim (multi-worker safe, 2026-07-14): the old list-then-separately-
 -- mark-processing pattern let two worker processes both see the same

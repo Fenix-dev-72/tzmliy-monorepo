@@ -1,16 +1,20 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { CheckCircle2, Clock, MessageSquareWarning } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock, MessageSquareWarning, ServerCrash } from "lucide-react";
 import { useLang } from "@/lib/i18n/LangContext";
 import { usePlatformAuth } from "@/lib/auth/platformAuthStore";
 import * as complaintsApi from "@/lib/api/complaints";
 import type { Complaint, ComplaintStatus } from "@/lib/api/complaints";
+import * as platformDashboardApi from "@/lib/api/platformDashboard";
+import type { SystemIssue, SystemIssueSource } from "@/lib/api/platformDashboard";
 import { Button } from "@/components/ui/button";
 
 const content = {
   uz: {
     title: "Shikoyatlar",
     sub: "Tenant xodimlaridan kelgan yordam so'rovlari",
+    tabUsers: "Foydalanuvchi shikoyatlari",
+    tabSystem: "Server muammolari",
     empty: "Hozircha shikoyatlar yo'q",
     loadError: "Ma'lumotlarni yuklab bo'lmadi",
     markInProgress: "Jarayonga olish",
@@ -23,10 +27,21 @@ const content = {
     sendReply: "Javob yuborish",
     replySent: "Javob yuborildi",
     yourReply: "Sizning javobingiz:",
+    issuesSub: "Tizim o'zi aniqlagan muammolar (yetkazilmagan xabarlar, muvaffaqiyatsiz hisobotlar/hisob-kitoblar, backup)",
+    issuesEmpty: "Hozircha server muammolari yo'q",
+    platformLevel: "Platforma darajasida",
+    sources: {
+      notification: "Bildirishnoma",
+      report_export: "Hisobot eksporti",
+      payroll: "Bonus/maosh",
+      backup: "Backup",
+    } as Record<SystemIssueSource, string>,
   },
   ru: {
     title: "Жалобы",
     sub: "Запросы о помощи от сотрудников тенантов",
+    tabUsers: "Жалобы пользователей",
+    tabSystem: "Проблемы сервера",
     empty: "Жалоб пока нет",
     loadError: "Не удалось загрузить данные",
     markInProgress: "Взять в работу",
@@ -39,6 +54,15 @@ const content = {
     sendReply: "Отправить ответ",
     replySent: "Ответ отправлен",
     yourReply: "Ваш ответ:",
+    issuesSub: "Проблемы, которые система обнаружила сама (недоставленные сообщения, неудачные отчёты/расчёты, бэкап)",
+    issuesEmpty: "Проблем сервера пока нет",
+    platformLevel: "Уровень платформы",
+    sources: {
+      notification: "Уведомление",
+      report_export: "Экспорт отчёта",
+      payroll: "Бонус/зарплата",
+      backup: "Бэкап",
+    } as Record<SystemIssueSource, string>,
   },
 };
 
@@ -48,7 +72,55 @@ const STATUS_COLOR: Record<ComplaintStatus, string> = {
   resolved: "#10B981",
 };
 
+const SOURCE_ICON: Record<SystemIssueSource, typeof ServerCrash> = {
+  notification: AlertTriangle,
+  report_export: AlertTriangle,
+  payroll: AlertTriangle,
+  backup: ServerCrash,
+};
+
 export function PlatformComplaintsPage() {
+  const { lang } = useLang();
+  const t = content[lang];
+  const [tab, setTab] = useState<"users" | "system">("users");
+
+  return (
+    <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
+      <div className="mb-6 flex items-center gap-2.5">
+        <MessageSquareWarning size={22} className="text-primary" />
+        <div>
+          <h1 className="font-heading text-xl font-extrabold text-foreground sm:text-2xl">{t.title}</h1>
+          <p className="text-sm text-foreground-muted">{t.sub}</p>
+        </div>
+      </div>
+
+      <div className="border-card-border mb-6 flex gap-1 border-b">
+        <button
+          type="button"
+          onClick={() => setTab("users")}
+          className={`border-b-2 px-3 pb-2.5 text-sm font-semibold transition-colors ${
+            tab === "users" ? "border-primary text-primary" : "border-transparent text-foreground-muted hover:text-foreground"
+          }`}
+        >
+          {t.tabUsers}
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("system")}
+          className={`border-b-2 px-3 pb-2.5 text-sm font-semibold transition-colors ${
+            tab === "system" ? "border-primary text-primary" : "border-transparent text-foreground-muted hover:text-foreground"
+          }`}
+        >
+          {t.tabSystem}
+        </button>
+      </div>
+
+      {tab === "users" ? <UserComplaintsTab /> : <SystemIssuesTab />}
+    </main>
+  );
+}
+
+function UserComplaintsTab() {
   const { lang } = useLang();
   const t = content[lang];
   const { accessToken } = usePlatformAuth();
@@ -104,15 +176,7 @@ export function PlatformComplaintsPage() {
   }
 
   return (
-    <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
-      <div className="mb-6 flex items-center gap-2.5">
-        <MessageSquareWarning size={22} className="text-primary" />
-        <div>
-          <h1 className="font-heading text-xl font-extrabold text-foreground sm:text-2xl">{t.title}</h1>
-          <p className="text-sm text-foreground-muted">{t.sub}</p>
-        </div>
-      </div>
-
+    <>
       {error && <div className="glass-card p-6 text-center text-sm text-foreground-muted">{error}</div>}
 
       {!error && complaints === null && <div className="bg-accent/60 h-32 animate-pulse rounded-xl" />}
@@ -192,6 +256,72 @@ export function PlatformComplaintsPage() {
           })}
         </div>
       )}
-    </main>
+    </>
+  );
+}
+
+function SystemIssuesTab() {
+  const { lang } = useLang();
+  const t = content[lang];
+  const { accessToken } = usePlatformAuth();
+
+  const [issues, setIssues] = useState<SystemIssue[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!accessToken) return;
+    platformDashboardApi
+      .getSystemIssues(accessToken)
+      .then(setIssues)
+      .catch(() => setError(t.loadError));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessToken]);
+
+  return (
+    <>
+      <p className="text-foreground-muted mb-4 text-sm">{t.issuesSub}</p>
+
+      {error && <div className="glass-card p-6 text-center text-sm text-foreground-muted">{error}</div>}
+
+      {!error && issues === null && <div className="bg-accent/60 h-32 animate-pulse rounded-xl" />}
+
+      {!error && issues !== null && issues.length === 0 && (
+        <p className="glass-card py-10 text-center text-sm text-foreground-muted">{t.issuesEmpty}</p>
+      )}
+
+      {!error && issues !== null && issues.length > 0 && (
+        <div className="space-y-3">
+          {issues.map((issue) => {
+            const Icon = SOURCE_ICON[issue.source];
+            return (
+              <div key={issue.id} className="glass-card p-4 sm:p-5">
+                <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
+                  <div className="flex items-start gap-2.5">
+                    <Icon size={17} className="text-destructive mt-0.5 shrink-0" />
+                    <div>
+                      <p className="font-semibold text-foreground">{issue.title}</p>
+                      <p className="text-foreground-muted text-xs">
+                        {issue.tenant_name ?? t.platformLevel}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="border-destructive/30 bg-destructive/10 text-destructive shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap">
+                    {t.sources[issue.source]}
+                  </span>
+                </div>
+                {issue.detail && (
+                  <p className="border-card-border bg-accent/40 mb-2 rounded-lg border p-3 text-sm whitespace-pre-wrap text-foreground-muted">
+                    {issue.detail}
+                  </p>
+                )}
+                {issue.occurred_at && (
+                  <span className="text-foreground-muted text-xs">{new Date(issue.occurred_at).toLocaleString()}</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </>
   );
 }
