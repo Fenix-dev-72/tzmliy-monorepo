@@ -6,6 +6,8 @@ from uuid import UUID
 from email_validator import EmailNotValidError, validate_email
 from pydantic import BaseModel, Field, field_validator
 
+from app.modules.tenants.schemas import _validate_slug
+
 # Loose E.164-ish check -- optional leading '+', 9-15 digits. Just needs to
 # reject obvious garbage (test tokens, typos) before it's routed to send_code;
 # the phone providers' own webhooks/OTP flows don't parse this further.
@@ -60,6 +62,7 @@ class RefreshRequest(BaseModel):
 class MeOut(BaseModel):
     id: UUID
     tenant_id: UUID
+    tenant_slug: str | None = None
     email: str | None
     phone: str | None
     full_name: str | None = None
@@ -128,6 +131,8 @@ class RegistrationComplete(BaseModel):
     company_name: str = Field(min_length=1)
     slug: str = Field(min_length=1)
     password: str = Field(min_length=8, max_length=72)
+
+    _validate_slug = field_validator("slug")(_validate_slug)
 
 
 class TwoFactorSetupOut(BaseModel):

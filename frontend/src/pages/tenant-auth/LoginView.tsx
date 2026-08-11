@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router";
-import { ArrowRight, Eye, EyeOff, Loader2, Lock, Phone, User } from "lucide-react";
+import { ArrowRight, Building2, Eye, EyeOff, Loader2, Lock, Phone, User } from "lucide-react";
 import { useLang } from "@/lib/i18n/LangContext";
 import { useTenantAuth } from "@/lib/auth/tenantAuthStore";
 import { ApiError } from "@/lib/api/client";
 import * as tenantAuthApi from "@/lib/api/tenantAuth";
+import { useSubdomainTenant } from "@/lib/tenant/useSubdomainTenant";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { FormField } from "@/components/auth/FormField";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,10 @@ const content = {
     lockedError: "Biroz kuting va qayta urinib ko'ring",
     noAccount: "Hisobingiz yo'qmi?",
     register: "Ro'yxatdan o'tish",
+    signingInTo: "kompaniyasiga kirish",
+    notFoundTitle: "Bunday kompaniya topilmadi",
+    notFoundDesc: "Manzil noto'g'ri kiritilgan bo'lishi mumkin.",
+    backToRoot: "tizimly.uz ga o'tish",
   },
   ru: {
     identifier: "Email или имя пользователя",
@@ -43,6 +48,10 @@ const content = {
     lockedError: "Подождите немного и попробуйте снова",
     noAccount: "Нет аккаунта?",
     register: "Зарегистрироваться",
+    signingInTo: "Вход в компанию",
+    notFoundTitle: "Такая компания не найдена",
+    notFoundDesc: "Возможно, адрес введён неверно.",
+    backToRoot: "Перейти на tizimly.uz",
   },
 };
 
@@ -53,6 +62,7 @@ export function LoginView() {
   const t = content[lang];
   const navigate = useNavigate();
   const { login } = useTenantAuth();
+  const subdomainTenant = useSubdomainTenant();
   const [mode, setMode] = useState<"password" | "phone">("password");
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
@@ -110,8 +120,41 @@ export function LoginView() {
     }
   }
 
+  if (subdomainTenant.slug && subdomainTenant.loading) {
+    return (
+      <AuthCard>
+        <div className="flex items-center justify-center py-10">
+          <Loader2 size={28} className="text-primary animate-spin" />
+        </div>
+      </AuthCard>
+    );
+  }
+
+  if (subdomainTenant.notFound) {
+    return (
+      <AuthCard>
+        <div className="flex flex-col items-center gap-3 py-6 text-center">
+          <Building2 size={32} className="text-foreground-muted" />
+          <h2 className="font-display text-[22px] font-bold text-foreground">{t.notFoundTitle}</h2>
+          <p className="text-sm text-foreground-muted">{t.notFoundDesc}</p>
+          <a href="https://tizimly.uz/login" className="text-primary mt-2 text-sm font-semibold">
+            {t.backToRoot}
+          </a>
+        </div>
+      </AuthCard>
+    );
+  }
+
   return (
     <AuthCard>
+      {subdomainTenant.tenantName && (
+        <div className="mb-6 flex items-center gap-2 text-center sm:text-left">
+          <Building2 size={18} className="text-primary shrink-0" />
+          <h2 className="font-display text-[17px] font-bold text-foreground">
+            {subdomainTenant.tenantName} {t.signingInTo}
+          </h2>
+        </div>
+      )}
       {mode === "password" ? (
         <form onSubmit={handlePasswordLogin}>
           <FormField

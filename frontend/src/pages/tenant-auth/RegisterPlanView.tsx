@@ -24,6 +24,7 @@ const content = {
     loadError: "Tariflarni yuklab bo'lmadi",
     need2fa: "To'lov qilish uchun avval hisobingizda 2FA yoqilgan bo'lishi kerak (Sozlamalar bo'limi tez orada qo'shiladi). Hozircha bepul sinov bilan davom eting.",
     genericError: "Xatolik yuz berdi, qayta urinib ko'ring",
+    yourAddress: "Sizning shaxsiy manzilingiz:",
   },
   ru: {
     title: "Выберите тариф",
@@ -38,6 +39,7 @@ const content = {
     loadError: "Не удалось загрузить тарифы",
     need2fa: "Для оплаты сначала нужно включить 2FA в аккаунте (раздел настроек скоро появится). Пока продолжите с бесплатным периодом.",
     genericError: "Произошла ошибка, попробуйте снова",
+    yourAddress: "Ваш личный адрес:",
   },
 };
 
@@ -45,7 +47,7 @@ export function RegisterPlanView() {
   const { lang } = useLang();
   const t = content[lang];
   const navigate = useNavigate();
-  const { status, accessToken } = useTenantAuth();
+  const { status, accessToken, user } = useTenantAuth();
 
   const [plans, setPlans] = useState<BillingPlan[] | null>(null);
   const [trialPlan, setTrialPlan] = useState<BillingPlanPublic | null>(null);
@@ -100,7 +102,14 @@ export function RegisterPlanView() {
         <Sparkles size={24} className="text-primary" />
       </div>
       <h2 className="font-display mb-1 text-center text-[28px] font-bold text-foreground">{t.title}</h2>
-      <p className="mb-7 text-center text-sm text-foreground-muted">{t.sub}</p>
+      <p className="mb-4 text-center text-sm text-foreground-muted">{t.sub}</p>
+
+      {user?.tenant_slug && (
+        <p className="mb-7 text-center text-[13px] text-foreground-muted">
+          {t.yourAddress}{" "}
+          <span className="font-mono text-foreground font-semibold">{user.tenant_slug}.tizimly.uz</span>
+        </p>
+      )}
 
       <div className="bg-background/60 border-card-border mb-7 rounded-2xl border p-6 text-center">
         <div className="border-success/25 bg-success/12 mx-auto mb-4 flex size-12 items-center justify-center rounded-xl border">

@@ -295,6 +295,19 @@ async def list_tenants(pool: asyncpg.Pool):
         return await repository.list_tenants(conn)
 
 
+async def get_tenant_by_id(pool: asyncpg.Pool, tenant_id: UUID) -> dict | None:
+    async with platform_connection(pool) as conn:
+        return await repository.get_tenant_by_id(conn, tenant_id)
+
+
+async def get_tenant_by_slug(pool: asyncpg.Pool, slug: str) -> dict | None:
+    # tenants has no RLS (platform-level, like platform_admins) -- safe to
+    # query via platform_connection without a tenant_id in scope, same as
+    # every other tenants.* lookup in this module.
+    async with platform_connection(pool) as conn:
+        return await repository.get_tenant_by_slug(conn, slug)
+
+
 async def create_tenant_admin_user(
     pool: asyncpg.Pool, admin_id: UUID, tenant_id: UUID, email: str, password: str, reason: str
 ):

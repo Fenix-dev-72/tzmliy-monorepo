@@ -17,6 +17,9 @@ export interface TenantUser {
   role_name: string;
   totp_enabled: boolean;
   permissions: string[];
+  // The tenant's own subdomain ({tenant_slug}.tizimly.uz) -- null only if
+  // somehow missing on an old/malformed tenant row (shouldn't happen).
+  tenant_slug: string | null;
   // Self-service integration links this user still needs to complete
   // (client requirement, 2026-07-13) -- empty means fully onboarded.
   pending_links: PendingLink[];

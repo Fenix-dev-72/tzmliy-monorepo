@@ -22,10 +22,28 @@ from app.modules.tenants.schemas import (
     TenantAdminUserCreate,
     TenantCreate,
     TenantOut,
+    TenantPublicOut,
     TokenPair,
 )
 
 router = APIRouter(prefix="/platform/v1", tags=["platform"])
+
+# Public (no auth) -- backs the per-tenant subdomain login page
+# ({slug}.tizimly.uz): the frontend resolves the subdomain to a tenant name
+# before rendering the login form, and shows a "company not found" state for
+# an unknown slug. Deliberately a separate router/prefix from the
+# platform-admin one above (/api/v1, not /platform/v1) since this is
+# tenant-facing, not an admin tool -- see the nginx-prefix gotcha in
+# backend/CLAUDE.md about not conflating the two.
+public_router = APIRouter(prefix="/api/v1/tenants", tags=["tenants"])
+
+
+@public_router.get("/by-slug/{slug}", response_model=TenantPublicOut)
+async def get_tenant_by_slug(slug: str, pool=Depends(get_pool)):
+    tenant = await service.get_tenant_by_slug(pool, slug)
+    if tenant is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Tenant not found")
+    return tenant
 
 
 @router.post("/auth/login", response_model=PlatformLoginResponse)

@@ -369,6 +369,14 @@ async def get_user(pool: asyncpg.Pool, tenant_id: UUID, user_id: UUID):
         pending_links.append("crm")
 
     user["pending_links"] = pending_links
+    # Surfaced so the frontend can show the tenant's own subdomain
+    # ({slug}.tizimly.uz) after login/registration -- tenants has no RLS, so
+    # this is a plain platform_connection lookup, same as every other
+    # tenants.* read. Best-effort: a missing slug (shouldn't happen, but
+    # tenants predate the subdomain feature in principle) just omits it.
+    async with platform_connection(pool) as conn:
+        tenant = await tenants_repository.get_tenant_by_id(conn, tenant_id)
+    user["tenant_slug"] = tenant["slug"] if tenant else None
     return user
 
 

@@ -112,3 +112,11 @@ export function completeRegistration(params: {
 }) {
   return apiFetch<TokenPair>("/api/v1/auth/register/complete", { method: "POST", body: params });
 }
+
+// --- Per-tenant subdomain login ({slug}.tizimly.uz) ---------------------
+// Public, unauthenticated lookup -- backs the subdomain-branded login page.
+// Throws ApiError(404) for an unknown/mistyped slug.
+
+export function getTenantBySlug(slug: string) {
+  return apiFetch<{ name: string; status: string }>(`/api/v1/tenants/by-slug/${encodeURIComponent(slug)}`);
+}

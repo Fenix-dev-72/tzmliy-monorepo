@@ -40,6 +40,7 @@ from app.modules.products.router import router as products_router
 from app.modules.reports import export_worker as reports_export_worker
 from app.modules.reports.router import router as reports_router
 from app.modules.sales.router import router as sales_router
+from app.modules.tenants.router import public_router as tenants_public_router
 from app.modules.tenants.router import router as tenants_router
 
 
@@ -141,7 +142,21 @@ _settings = get_settings()
 # separated origin list (e.g. "https://app.dashboarduz.uz") once the
 # frontend's real domain is known -- never leave "*" set for real tenant data.
 app.add_middleware(RateLimitMiddleware, settings=_settings)
-if _settings.cors_allowed_origins:
+if _settings.cors_allowed_origin_regex:
+    # Per-tenant subdomain rollout ({slug}.tizimly.uz) -- scoped regex, takes
+    # priority over cors_allowed_origins since a fixed list can't enumerate
+    # every tenant slug. Unlike the "*" branch below, this is meant to be
+    # tight (e.g. ^https://([a-z0-9-]+\.)?tizimly\.uz$), not any-origin.
+    from fastapi.middleware.cors import CORSMiddleware
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origin_regex=_settings.cors_allowed_origin_regex,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+elif _settings.cors_allowed_origins:
     from fastapi.middleware.cors import CORSMiddleware
 
     if _settings.cors_allowed_origins.strip() == "*":
@@ -170,6 +185,7 @@ app.include_router(roles_router)
 app.include_router(catalog_router)
 app.include_router(products_router)
 app.include_router(tenants_router)
+app.include_router(tenants_public_router)
 app.include_router(customers_router)
 app.include_router(sales_router)
 app.include_router(finance_router)

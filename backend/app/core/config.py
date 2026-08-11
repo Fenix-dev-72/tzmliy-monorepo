@@ -158,6 +158,16 @@ class Settings(BaseSettings):
     # use "*" -- responses carry credentials.
     cors_allowed_origins: str = ""
 
+    # Optional regex alternative to cors_allowed_origins, for the per-tenant
+    # subdomain rollout ({slug}.tizimly.uz) -- a fixed origin list can't
+    # enumerate every tenant slug. Deliberately a *separate* setting from the
+    # existing "*" -> allow_origin_regex=".*" escape hatch in main.py (that
+    # one matches literally any origin and is flagged there as never-use-in-
+    # production); this one is meant to be scoped tightly, e.g.
+    # ^https://([a-z0-9-]+\.)?tizimly\.uz$. Empty means unused (main.py falls
+    # back to cors_allowed_origins as before).
+    cors_allowed_origin_regex: str = ""
+
     # Fernet key encrypting integration secrets at rest (e.g. calls provider
     # webhook secrets) -- generate with:
     # python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
